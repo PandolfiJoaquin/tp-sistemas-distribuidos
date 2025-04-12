@@ -14,13 +14,23 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-	defer conn.Close()
+	defer func(conn *amqp.Connection) {
+		err := conn.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}(conn)
 
 	ch, err := conn.Channel()
 	if err != nil {
 		fmt.Println(err)
 	}
-	defer ch.Close()
+	defer func(ch *amqp.Channel) {
+		err := ch.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}(ch)
 
 	moviesToFilterQueue, err := ch.QueueDeclare("movies-to-filter-production", false, false, false, false, nil)
 	if err != nil {
@@ -36,21 +46,27 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-	
+
 	go func() {
 		for d := range msgsMovies {
+			fmt.Printf("Received a message: %s\n", d.Body)
 			sendToQ1(ch, q1Queue, d)
-			d.Ack(false)
+			fmt.Println("Message sent to q1.")
+			if err := d.Ack(false); err != nil {
+				fmt.Printf("Error acknowledging message: %v", err)
+			}
 		}
-		}()
-		
+	}()
+
 	forever := make(chan bool)
 	<-forever
 }
 
 func sendToQ1(ch *amqp.Channel, q1Queue amqp.Queue, d amqp.Delivery) {
-	ch.Publish("", q1Queue.Name, false, false, amqp.Publishing{
+	if err := ch.Publish("", q1Queue.Name, false, false, amqp.Publishing{
 		ContentType: "application/json",
 		Body:        d.Body,
-	})
+	}); err != nil {
+		fmt.Printf("Error publishing message to q1: %v", err)
+	}
 }

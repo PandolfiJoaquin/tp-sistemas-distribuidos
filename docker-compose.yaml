@@ -23,19 +23,19 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
-  preprocessor:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-        NODE: preprocessor
-    container_name: preprocessor
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
+#  preprocessor:
+#    build:
+#      dockerfile: ./server/Dockerfile
+#      args:
+#        NODE: preprocessor
+#    container_name: preprocessor
+#    environment:
+#      - RABBITMQ_DEFAULT_USER=monke
+#      - RABBITMQ_DEFAULT_PASS=joaco1
+#    depends_on:
+#      rabbitmq:
+#        condition: service_healthy
+#        restart: true
   production-filter:
     build:
       dockerfile: ./server/Dockerfile

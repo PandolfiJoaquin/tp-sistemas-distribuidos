@@ -6,11 +6,11 @@ import (
 )
 
 type Middleware struct {
-	conn   *amqp.Connection
-	ch     *amqp.Channel
-	queues map[string]*amqp.Queue
+	conn *amqp.Connection
+	ch   *amqp.Channel
 }
 
+// Takes care of the creation of both the connection and the channel.
 func NewMiddleware(rabbitUser string, rabbitPass string) (*Middleware, error) {
 	conn, err := amqp.Dial("amqp://" + rabbitUser + ":" + rabbitPass + "@rabbitmq:5672/")
 	if err != nil {
@@ -24,23 +24,11 @@ func NewMiddleware(rabbitUser string, rabbitPass string) (*Middleware, error) {
 	return &Middleware{conn: conn, ch: ch}, nil
 }
 
-func (m *Middleware) DeclareQueue(name string) error {
-	if _, ok := m.queues[name]; ok {
-		return fmt.Errorf("queue already exists")
-	}
-
-	queue, err := m.ch.QueueDeclare(name, false, true, false, false, nil)
-	if err != nil {
-		return fmt.Errorf("error declaring queue: %s", err)
-	}
-	m.queues[name] = &queue
-	return nil
-}
-
 func (m *Middleware) Send(queueName string, body []byte) error {
+	// TODO: Deberia ser publish with context?
 	err := m.ch.Publish(
 		"",
-		queueName,
+		queueName, //routing key
 		false,
 		false,
 		amqp.Publishing{
@@ -51,6 +39,67 @@ func (m *Middleware) Send(queueName string, body []byte) error {
 		return fmt.Errorf("error sending message: %s", err)
 	}
 	return nil
+}
+
+func (m *Middleware) GetChanToSend(name string) (chan<- []byte, error) {
+	queue, err := m.ch.QueueDeclare(name, false, false, false, false, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error declaring queue: %s", err)
+	}
+
+	chanToSend := make(chan []byte)
+	go func() {
+		for msg := range chanToSend {
+
+			if err := m.Send(queue.Name, msg); err != nil {
+				//TODO: deberia tener otro canal para devolver el error?
+				fmt.Printf("Error sending message: %s", err)
+			}
+		}
+	}()
+	return chanToSend, nil
+}
+
+type Message struct {
+	Body    []byte
+	amqpMsg amqp.Delivery
+}
+
+func (m *Message) Ack() error {
+	if err := m.amqpMsg.Ack(false); err != nil {
+		return fmt.Errorf("error acknowledging message: %s", err)
+	}
+	return nil
+}
+
+func (m *Middleware) GetChanToRecv(name string) (<-chan Message, error) {
+	queue, err := m.ch.QueueDeclare(name, false, false, false, false, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error declaring queue: %s", err)
+	}
+
+	amqpChan, err := m.ch.Consume(
+		queue.Name,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to register a consumer: %s", err)
+	}
+
+	inboxChan := make(chan Message)
+	go func() {
+		for msg := range amqpChan {
+			inboxChan <- Message{msg.Body, msg}
+		}
+	}()
+
+	return inboxChan, nil
 }
 
 func (m *Middleware) ConsumeAndProcess(queueName string) (<-chan amqp.Delivery, error) {
@@ -79,6 +128,7 @@ func (m *Middleware) Close() error {
 	if err := m.conn.Close(); err != nil {
 		return fmt.Errorf("failed to close connection: %s", err)
 	}
+
 	return nil
 }
 
