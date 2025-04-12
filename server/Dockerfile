@@ -3,12 +3,12 @@ FROM golang:1.23.0-alpine3.20 AS builder
 
 WORKDIR /home/app
 
-COPY /client/go.mod /client/go.sum ./
+COPY /server/go.mod /server/go.sum ./
 RUN go mod download
 
-COPY /client ./
+COPY /server ./
 
-RUN go build -o client ./main.go
+RUN go build -o server ./main.go
 
 # # Test stage
 # FROM builder AS client-test-stage
@@ -23,6 +23,6 @@ FROM alpine:3.20
 
 WORKDIR /home/app
 
-COPY --from=builder /home/app/client ./
+COPY --from=builder /home/app/server ./
 
-ENTRYPOINT ["./client"]
+ENTRYPOINT ["./server"]
