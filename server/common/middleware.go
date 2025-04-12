@@ -2,13 +2,12 @@ package common
 
 import (
 	"fmt"
-
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Middleware struct {
-	conn *amqp.Connection
-	ch *amqp.Channel
+	conn   *amqp.Connection
+	ch     *amqp.Channel
 	queues map[string]*amqp.Queue
 }
 
@@ -21,7 +20,7 @@ func NewMiddleware(rabbitUser string, rabbitPass string) (*Middleware, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open a channel: %s", err)
 	}
-	
+
 	return &Middleware{conn: conn, ch: ch}, nil
 }
 
@@ -29,13 +28,48 @@ func (m *Middleware) DeclareQueue(name string) error {
 	if _, ok := m.queues[name]; ok {
 		return fmt.Errorf("queue already exists")
 	}
-	
+
 	queue, err := m.ch.QueueDeclare(name, false, true, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("error declaring queue: %s", err)
 	}
 	m.queues[name] = &queue
 	return nil
+}
+
+func (m *Middleware) Send(queueName string, body []byte) error {
+	err := m.ch.Publish(
+		"",
+		queueName,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        []byte(body),
+		})
+	if err != nil {
+		return fmt.Errorf("error sending message: %s", err)
+	}
+	return nil
+}
+
+func (m *Middleware) ConsumeAndProcess(queueName string) (<-chan amqp.Delivery, error) {
+
+	msgs, err := m.ch.Consume(
+		queueName,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to register a consumer: %s", err)
+	}
+
+	return msgs, nil
 }
 
 func (m *Middleware) Close() error {

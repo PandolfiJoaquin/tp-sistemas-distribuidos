@@ -12,7 +12,9 @@ services:
   #       restart: true
   gateway :
     build:
-      dockerfile: ./server/gateway/Dockerfile
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: gateway
     container_name: gateway
     environment:
       - RABBITMQ_DEFAULT_USER=monke
@@ -23,7 +25,9 @@ services:
         restart: true
   preprocessor:
     build:
-      dockerfile: ./server/preprocessor/Dockerfile
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: preprocessor
     container_name: preprocessor
     environment:
       - RABBITMQ_DEFAULT_USER=monke
@@ -34,7 +38,9 @@ services:
         restart: true
   production-filter:
     build:
-      dockerfile: ./server/production-filter/Dockerfile
+      dockerfile: ./server/Dockerfile
+      args:
+          NODE: production-filter
     container_name: production-filter
     environment:
       - RABBITMQ_DEFAULT_USER=monke
@@ -45,7 +51,9 @@ services:
         restart: true
   year-filter:
     build:
-      dockerfile: ./server/year-filter/Dockerfile
+      dockerfile: ./server/Dockerfile
+      args:
+          NODE: year-filter
     container_name: year-filter
     environment:
       - RABBITMQ_DEFAULT_USER=monke

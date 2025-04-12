@@ -39,6 +39,7 @@ var batch = []Movie{
 }
 
 func main() {
+
 	rabbitUser := os.Getenv("RABBITMQ_DEFAULT_USER")
 	rabbitPass := os.Getenv("RABBITMQ_DEFAULT_PASS")
 	conn, err := amqp.Dial(fmt.Sprintf("amqp://%s:%s@rabbitmq:5672/", rabbitUser, rabbitPass))
@@ -51,7 +52,7 @@ func main() {
 		}
 	}()
 
-	ch, err := conn.Channel()	
+	ch, err := conn.Channel()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -86,15 +87,15 @@ func main() {
 	}
 
 	err = ch.PublishWithContext(ctx,
-		"",     // exchange
+		"",                      // exchange
 		movesToFilterQueue.Name, // routing key
-		false,  // mandatory
-		false,  // immediate
+		false,                   // mandatory
+		false,                   // immediate
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        body,
 		})
-		
+
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -110,8 +111,8 @@ func main() {
 			fmt.Println("Movies: ", movies)
 			d.Ack(false)
 		}
-		}()
-		
+	}()
+
 	forever := make(chan bool)
 	<-forever
 }
