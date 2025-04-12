@@ -1,4 +1,4 @@
-module server
+module production-filter
 
 go 1.23.0
 
