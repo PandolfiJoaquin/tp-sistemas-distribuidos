@@ -3,12 +3,12 @@ FROM golang:1.23.0-alpine3.20 AS builder
 
 WORKDIR /home/app
 
-COPY /server/go.mod /server/go.sum ./
+COPY /server/production-filter/go.mod /server/production-filter/go.sum ./
 RUN go mod download
 
-COPY /server ./
+COPY /server/production-filter ./
 
-RUN go build -o server ./main.go
+RUN go build -o production-filter ./main.go
 
 # # Test stage
 # FROM builder AS client-test-stage
@@ -23,6 +23,6 @@ FROM alpine:3.20
 
 WORKDIR /home/app
 
-COPY --from=builder /home/app/server ./
+COPY --from=builder /home/app/production-filter ./
 
-ENTRYPOINT ["./server"]
+ENTRYPOINT ["./production-filter"]

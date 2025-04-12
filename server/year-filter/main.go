@@ -22,23 +22,35 @@ func main() {
 	}
 	defer ch.Close()
 
-	q, err := ch.QueueDeclare("test-queue", false, false, false, false, nil)
+	q1YearFilterQueue, err := ch.QueueDeclare("q1-year-filter", false, false, false, false, nil)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	msgs, err := ch.Consume(q.Name, "", false, false, false, false, nil)
+	q1ResultsQueue, err := ch.QueueDeclare("q1-results", false, false, false, false, nil)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	msgs, err := ch.Consume(q1YearFilterQueue.Name, "", false, false, false, false, nil)
 	if err != nil {
 		fmt.Println(err)
 	}
 	
 	go func() {
 		for d := range msgs {
-			fmt.Println("Received a message: ", string(d.Body))
-			d.Ack(false)	
+			sendToQ1Results(ch, q1ResultsQueue, d)
+			d.Ack(false)
 		}
 		}()
 		
 	forever := make(chan bool)
 	<-forever
+}
+
+func sendToQ1Results(ch *amqp.Channel, q1ResultsQueue amqp.Queue, d amqp.Delivery) {
+	ch.Publish("", q1ResultsQueue.Name, false, false, amqp.Publishing{
+		ContentType: "application/json",
+		Body:        d.Body,
+	})
 }

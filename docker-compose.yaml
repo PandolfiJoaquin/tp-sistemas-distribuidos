@@ -1,22 +1,59 @@
 services:
-  server:
+  # client:
+  #   build:
+  #     dockerfile: ./client/Dockerfile
+  #   container_name: client
+  #   environment:
+  #     - RABBITMQ_DEFAULT_USER=monke
+  #     - RABBITMQ_DEFAULT_PASS=joaco1
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #       restart: true
+  gateway :
     build:
-      dockerfile: ./server/Dockerfile
-    container_name: server
+      dockerfile: ./server/gateway/Dockerfile
+    container_name: gateway
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
     depends_on:
-      - rabbitmq
-  client:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+  preprocessor:
     build:
-      dockerfile: ./client/Dockerfile
-    container_name: client
+      dockerfile: ./server/preprocessor/Dockerfile
+    container_name: preprocessor
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+  production-filter:
+    build:
+      dockerfile: ./server/production-filter/Dockerfile
+    container_name: production-filter
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+  year-filter:
+    build:
+      dockerfile: ./server/year-filter/Dockerfile
+    container_name: year-filter
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -30,8 +67,8 @@ services:
     #   - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
-      interval: 30s
-      timeout: 10s
+      interval: 10s
+      timeout: 5s
       retries: 3
 
 # volumes:
