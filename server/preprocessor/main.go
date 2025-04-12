@@ -1,56 +1,61 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
-
-	amqp "github.com/rabbitmq/amqp091-go"
+	"tp-sistemas-distribuidos/server/common"
 )
 
 func main() {
 	rabbitUser := os.Getenv("RABBITMQ_DEFAULT_USER")
 	rabbitPass := os.Getenv("RABBITMQ_DEFAULT_PASS")
-	conn, err := amqp.Dial(fmt.Sprintf("amqp://%s:%s@rabbitmq:5672/", rabbitUser, rabbitPass))
-	if err != nil {
-		fmt.Println(err)
-	}
-	defer conn.Close()
-
-	ch, err := conn.Channel()
-	if err != nil {
-		fmt.Println(err)
-	}
-	defer ch.Close()
-
-	batchesQueue, err := ch.QueueDeclare("batches", false, false, false, false, nil)
+	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	moviesToFilterQueue, err := ch.QueueDeclare("movies-to-filter-production", false, false, false, false, nil)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	msgsMovies, err := ch.Consume(batchesQueue.Name, "", false, false, false, false, nil)
-	if err != nil {
-		fmt.Println(err)
-	}
-	
-	go func() {
-		for d := range msgsMovies {
-			sendToFilterQueue(ch, moviesToFilterQueue, d)
-			d.Ack(false)
+	defer func() {
+		if err := middleware.Close(); err != nil {
+			fmt.Println(err)
 		}
-		}()
-		
+	}()
+
+	moviesToFilterChan, err := middleware.GetChanToRecv("movies-to-preprocess")
+	if err != nil {
+		fmt.Printf("error with channel 'movies-to-preprocess': %v", err)
+	}
+
+	nextFilterChan, err := middleware.GetChanToSend("movies-to-filter-production")
+	if err != nil {
+		fmt.Printf("error with channel 'movies-to-filter-production': %v", err)
+	}
+
+	go start(moviesToFilterChan, nextFilterChan)
+
 	forever := make(chan bool)
 	<-forever
 }
 
-func sendToFilterQueue(ch *amqp.Channel, moviesToFilterQueue amqp.Queue, d amqp.Delivery) {
-	ch.Publish("", moviesToFilterQueue.Name, false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        d.Body,
-	})
+func start(moviesToFilterChan <-chan common.Message, nextFilterChan chan<- []byte) {
+	for msg := range moviesToFilterChan {
+		var movies []common.Movie
+		if err := json.Unmarshal(msg.Body, &movies); err != nil {
+			fmt.Printf("Error unmarshalling message: %v", err)
+			fmt.Printf("message: %v", msg.Body)
+		}
+		fmt.Printf("Movies passing through preprocessor: %s\n", movies)
+		//TODO: filter movies
+		fmt.Printf("Movies preprocessed: %s\n", movies)
+
+		response, err := json.Marshal(movies)
+		if err != nil {
+			fmt.Printf("Error marshalling movies: %v", err)
+			continue
+		}
+		nextFilterChan <- response
+		if err := msg.Ack(); err != nil {
+			fmt.Printf("Error acknowledging message: %v", err)
+		}
+	}
 }

@@ -7,14 +7,7 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-type Movie struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Year  int    `json:"year"`
-	Genre string `json:"genre"`
-}
-
-var batch = []Movie{
+var batch = []common.Movie{
 	{
 		ID:    "1",
 		Title: "Interstellar",
@@ -36,7 +29,6 @@ var batch = []Movie{
 }
 
 func main() {
-	//create connection
 	rabbitUser := os.Getenv("RABBITMQ_DEFAULT_USER")
 	rabbitPass := os.Getenv("RABBITMQ_DEFAULT_PASS")
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
@@ -50,16 +42,12 @@ func main() {
 		}
 	}()
 
-	//create queue to write into (movies-to-filter-production)
-	moviesToFilterChan, err := middleware.GetChanToSend("movies-to-filter-production")
-	//movesToFilterQueue, err := ch.QueueDeclare("movies-to-filter-production", false, false, false, false, nil)
+	moviesToFilterChan, err := middleware.GetChanToSend("movies-to-preprocess")
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("error with channel 'movies-to-preprocess': %v", err)
 	}
 
-	//create queue to read from (q1-results)
 	q1ResultsChan, err := middleware.GetChanToRecv("q1-results")
-	//q1ResultsQueue, err := ch.QueueDeclare("q1-results", false, false, false, false, nil)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -69,25 +57,27 @@ func main() {
 		fmt.Printf("Error marshalling batch: %v", err)
 		return
 	}
-	//send message
+
 	moviesToFilterChan <- body
 	fmt.Println("Message sent.")
-	//read message
-	go func() {
-		for msg := range q1ResultsChan {
-			var movies []Movie
-			err = json.Unmarshal(msg.Body, &movies)
-			if err != nil {
-				fmt.Printf("Error unmarshalling message: %v", err)
-			}
-			fmt.Println("Movies: ", movies)
 
-			if err := msg.Ack(); err != nil {
-				fmt.Printf("Error acknowledging message: %v", err)
-			}
-		}
-	}()
+	go processMessages(q1ResultsChan)
 
 	forever := make(chan bool)
 	<-forever
+}
+
+func processMessages(q1ResultsChan <-chan common.Message) {
+	for msg := range q1ResultsChan {
+		var movies []common.Movie
+		if err := json.Unmarshal(msg.Body, &movies); err != nil {
+			fmt.Printf("Error unmarshalling message: %v", err)
+		}
+		fmt.Println("Movies: ", movies)
+
+		if err := msg.Ack(); err != nil {
+			fmt.Printf("Error acknowledging message: %v", err)
+		}
+	}
+	return
 }
