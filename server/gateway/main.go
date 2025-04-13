@@ -7,6 +7,9 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
+const PREVIOUS_STEP = "movies-to-preprocess"
+const NEXT_STEP = "q1-results"
+
 var batch = []common.Movie{
 	{
 		ID:    "1",
@@ -48,12 +51,12 @@ func main() {
 		}
 	}()
 
-	moviesToFilterChan, err := middleware.GetChanToSend("movies-to-preprocess")
+	moviesToFilterChan, err := middleware.GetChanToSend(PREVIOUS_STEP)
 	if err != nil {
 		fmt.Printf("error with channel 'movies-to-preprocess': %v", err)
 	}
 
-	q1ResultsChan, err := middleware.GetChanToRecv("q1-results")
+	q1ResultsChan, err := middleware.GetChanToRecv(NEXT_STEP)
 	if err != nil {
 		fmt.Println(err)
 	}

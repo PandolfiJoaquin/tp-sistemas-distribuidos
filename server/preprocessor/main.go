@@ -7,6 +7,9 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
+const nextQueue = "filter-year-q1"
+const previousQueue = "movies-to-preprocess"
+
 func main() {
 	rabbitUser := os.Getenv("RABBITMQ_DEFAULT_USER")
 	rabbitPass := os.Getenv("RABBITMQ_DEFAULT_PASS")
@@ -21,17 +24,17 @@ func main() {
 		}
 	}()
 
-	moviesToFilterChan, err := middleware.GetChanToRecv("movies-to-preprocess")
+	previousChan, err := middleware.GetChanToRecv(previousQueue)
 	if err != nil {
-		fmt.Printf("error with channel 'movies-to-preprocess': %v", err)
+		fmt.Printf("error with channel %s: %v", previousQueue, err)
 	}
 
-	nextFilterChan, err := middleware.GetChanToSend("movies-to-filter-production")
+	nextChan, err := middleware.GetChanToSend(nextQueue)
 	if err != nil {
-		fmt.Printf("error with channel 'movies-to-filter-production': %v", err)
+		fmt.Printf("error with channel '%s': %v", nextQueue, err)
 	}
 
-	go start(moviesToFilterChan, nextFilterChan)
+	go start(previousChan, nextChan)
 
 	forever := make(chan bool)
 	<-forever

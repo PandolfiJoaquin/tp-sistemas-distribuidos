@@ -7,6 +7,9 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
+const PREVIOUS_STEP = "filter-production-q1"
+const NEXT_STEP = "q1-results"
+
 func main() {
 	rabbitUser := os.Getenv("RABBITMQ_DEFAULT_USER")
 	rabbitPass := os.Getenv("RABBITMQ_DEFAULT_PASS")
@@ -21,14 +24,14 @@ func main() {
 		}
 	}()
 
-	moviesToFilterChan, err := middleware.GetChanToRecv("movies-to-filter-production")
+	moviesToFilterChan, err := middleware.GetChanToRecv(PREVIOUS_STEP)
 	if err != nil {
-		fmt.Printf("error with channel 'movies-to-filter-production': %v", err)
+		fmt.Printf("error with channel '%s': %v", PREVIOUS_STEP, err)
 	}
 
-	nextFilterChan, err := middleware.GetChanToSend("q1-year-filter")
+	nextFilterChan, err := middleware.GetChanToSend(NEXT_STEP)
 	if err != nil {
-		fmt.Printf("error with channel 'q1-year-filter': %v", err)
+		fmt.Printf("error with channel '%s': %v", NEXT_STEP, err)
 	}
 
 	go start(moviesToFilterChan, nextFilterChan)

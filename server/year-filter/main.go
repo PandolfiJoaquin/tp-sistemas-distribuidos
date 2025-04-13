@@ -7,6 +7,9 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
+const PREVIOUS_STEP = "filter-year-q1"
+const NEXT_STEP = "filter-production-q1"
+
 func main() {
 	rabbitUser := os.Getenv("RABBITMQ_DEFAULT_USER")
 	rabbitPass := os.Getenv("RABBITMQ_DEFAULT_PASS")
@@ -21,24 +24,24 @@ func main() {
 		}
 	}()
 
-	moviesToFilterChan, err := middleware.GetChanToRecv("q1-year-filter")
+	previousChan, err := middleware.GetChanToRecv(PREVIOUS_STEP)
 	if err != nil {
-		fmt.Printf("error with channel 'q1-year-filter': %v", err)
+		fmt.Printf("error with channel '%s': %v", PREVIOUS_STEP, err)
 	}
 
-	nextFilterChan, err := middleware.GetChanToSend("q1-results")
+	nextChan, err := middleware.GetChanToSend(NEXT_STEP)
 	if err != nil {
-		fmt.Printf("error with channel 'q1-results': %v", err)
+		fmt.Printf("error with channel '%s': %v", NEXT_STEP, err)
 	}
 
-	go start(moviesToFilterChan, nextFilterChan)
+	go start(previousChan, nextChan)
 
 	forever := make(chan bool)
 	<-forever
 }
 
-func start(moviesToFilterChan <-chan common.Message, nextFilterChan chan<- []byte) {
-	for msg := range moviesToFilterChan {
+func start(previousChan <-chan common.Message, nextChan chan<- []byte) {
+	for msg := range previousChan {
 		var movies []common.Movie
 		if err := json.Unmarshal(msg.Body, &movies); err != nil {
 			fmt.Printf("Error unmarshalling message: %v", err)
@@ -53,7 +56,7 @@ func start(moviesToFilterChan <-chan common.Message, nextFilterChan chan<- []byt
 			fmt.Printf("Error marshalling movies: %v", err)
 			continue
 		}
-		nextFilterChan <- response
+		nextChan <- response
 		if err := msg.Ack(); err != nil {
 			fmt.Printf("Error acknowledging message: %v", err)
 		}

@@ -5,12 +5,23 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+type Message struct {
+	Body    []byte
+	amqpMsg amqp.Delivery
+}
+
+func (m *Message) Ack() error {
+	if err := m.amqpMsg.Ack(false); err != nil {
+		return fmt.Errorf("error acknowledging message: %s", err)
+	}
+	return nil
+}
+
 type Middleware struct {
 	conn *amqp.Connection
 	ch   *amqp.Channel
 }
 
-// Takes care of the creation of both the connection and the channel.
 func NewMiddleware(rabbitUser string, rabbitPass string) (*Middleware, error) {
 	conn, err := amqp.Dial("amqp://" + rabbitUser + ":" + rabbitPass + "@rabbitmq:5672/")
 	if err != nil {
@@ -33,7 +44,7 @@ func (m *Middleware) Send(queueName string, body []byte) error {
 		false,
 		amqp.Publishing{
 			ContentType: "application/json",
-			Body:        []byte(body),
+			Body:        body,
 		})
 	if err != nil {
 		return fmt.Errorf("error sending message: %s", err)
@@ -58,18 +69,6 @@ func (m *Middleware) GetChanToSend(name string) (chan<- []byte, error) {
 		}
 	}()
 	return chanToSend, nil
-}
-
-type Message struct {
-	Body    []byte
-	amqpMsg amqp.Delivery
-}
-
-func (m *Message) Ack() error {
-	if err := m.amqpMsg.Ack(false); err != nil {
-		return fmt.Errorf("error acknowledging message: %s", err)
-	}
-	return nil
 }
 
 func (m *Middleware) GetChanToRecv(name string) (<-chan Message, error) {
@@ -102,25 +101,6 @@ func (m *Middleware) GetChanToRecv(name string) (<-chan Message, error) {
 	return inboxChan, nil
 }
 
-func (m *Middleware) ConsumeAndProcess(queueName string) (<-chan amqp.Delivery, error) {
-
-	msgs, err := m.ch.Consume(
-		queueName,
-		"",
-		false,
-		false,
-		false,
-		false,
-		nil,
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to register a consumer: %s", err)
-	}
-
-	return msgs, nil
-}
-
 func (m *Middleware) Close() error {
 	if err := m.ch.Close(); err != nil {
 		return fmt.Errorf("failed to close channel: %s", err)
@@ -131,6 +111,3 @@ func (m *Middleware) Close() error {
 
 	return nil
 }
-
-// func (m *Middleware) ReceiveMessage(queueName string, exchange string, routingKey string) error {
-// }
