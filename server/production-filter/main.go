@@ -46,7 +46,7 @@ func start(moviesToFilterChan <-chan common.Message, nextFilterChan chan<- []byt
 		}
 		fmt.Printf("Movies passing through production filter: %s\n", movies)
 		//TODO: filter movies
-		fmt.Printf("Movies filtered by production: %s\n", movies)
+		fmt.Printf("Movies filtered by production: %v\n", movies)
 
 		response, err := json.Marshal(movies)
 		if err != nil {

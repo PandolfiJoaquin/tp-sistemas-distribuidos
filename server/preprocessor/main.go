@@ -44,9 +44,9 @@ func start(moviesToFilterChan <-chan common.Message, nextFilterChan chan<- []byt
 			fmt.Printf("Error unmarshalling message: %v", err)
 			fmt.Printf("message: %v", msg.Body)
 		}
-		fmt.Printf("Movies passing through preprocessor: %s\n", movies)
+		fmt.Printf("Movies passing through preprocessor: %v\n", movies)
 		//TODO: filter movies
-		fmt.Printf("Movies preprocessed: %s\n", movies)
+		fmt.Printf("Movies preprocessed: %v\n", movies)
 
 		response, err := json.Marshal(movies)
 		if err != nil {

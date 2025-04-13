@@ -26,6 +26,12 @@ var batch = []common.Movie{
 		Year:  2011,
 		Genre: "Comedy",
 	},
+	{
+		ID:    "3",
+		Title: "El padrino",
+		Year:  1980,
+		Genre: "Drama",
+	},
 }
 
 func main() {

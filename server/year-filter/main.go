@@ -44,11 +44,11 @@ func start(moviesToFilterChan <-chan common.Message, nextFilterChan chan<- []byt
 			fmt.Printf("Error unmarshalling message: %v", err)
 			fmt.Printf("message: %v", msg.Body)
 		}
-		fmt.Printf("Movies passing through year filter: %s\n", movies)
-		//TODO: filter movies
-		fmt.Printf("Movies filtered by year: %s\n", movies)
+		fmt.Printf("Movies passing through year filter: %v\n", movies)
+		filteredMovies := common.Filter[common.Movie](movies, func(movie common.Movie) bool { return movie.Year >= 2000 })
+		fmt.Printf("Movies filtered by year: %v\n", filteredMovies)
 
-		response, err := json.Marshal(movies)
+		response, err := json.Marshal(filteredMovies)
 		if err != nil {
 			fmt.Printf("Error marshalling movies: %v", err)
 			continue
