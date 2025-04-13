@@ -1,4 +1,4 @@
-module production-filter
+module tp-sistemas-distribuidos/server
 
 go 1.23.0
 

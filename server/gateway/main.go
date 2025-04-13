@@ -1,23 +1,16 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
-
-	amqp "github.com/rabbitmq/amqp091-go"
+	"tp-sistemas-distribuidos/server/common"
 )
 
-type Movie struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Year  int    `json:"year"`
-	Genre string `json:"genre"`
-}
+const PREVIOUS_STEP = "movies-to-preprocess"
+const NEXT_STEP = "q1-results"
 
-var batch = []Movie{
+var batch = []common.Movie{
 	{
 		ID:    "1",
 		Title: "Interstellar",
@@ -36,48 +29,37 @@ var batch = []Movie{
 		Year:  2011,
 		Genre: "Comedy",
 	},
+	{
+		ID:    "3",
+		Title: "El padrino",
+		Year:  1980,
+		Genre: "Drama",
+	},
 }
 
 func main() {
 	rabbitUser := os.Getenv("RABBITMQ_DEFAULT_USER")
 	rabbitPass := os.Getenv("RABBITMQ_DEFAULT_PASS")
-	conn, err := amqp.Dial(fmt.Sprintf("amqp://%s:%s@rabbitmq:5672/", rabbitUser, rabbitPass))
+	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
 	if err != nil {
 		fmt.Println(err)
 	}
+
 	defer func() {
-		if err := conn.Close(); err != nil {
+		if err := middleware.Close(); err != nil {
 			fmt.Println(err)
 		}
 	}()
 
-	ch, err := conn.Channel()	
+	moviesToFilterChan, err := middleware.GetChanToSend(PREVIOUS_STEP)
+	if err != nil {
+		fmt.Printf("error with channel 'movies-to-preprocess': %v", err)
+	}
+
+	q1ResultsChan, err := middleware.GetChanToRecv(NEXT_STEP)
 	if err != nil {
 		fmt.Println(err)
 	}
-	defer func() {
-		if err := ch.Close(); err != nil {
-			fmt.Println(err)
-		}
-	}()
-
-	movesToFilterQueue, err := ch.QueueDeclare("movies-to-filter-production", false, false, false, false, nil)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	q1ResultsQueue, err := ch.QueueDeclare("q1-results", false, false, false, false, nil)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	msgs, err := ch.Consume(q1ResultsQueue.Name, "", false, false, false, false, nil)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	body, err := json.Marshal(batch)
 	if err != nil {
@@ -85,33 +67,26 @@ func main() {
 		return
 	}
 
-	err = ch.PublishWithContext(ctx,
-		"",     // exchange
-		movesToFilterQueue.Name, // routing key
-		false,  // mandatory
-		false,  // immediate
-		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        body,
-		})
-		
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println("Message sent")
+	moviesToFilterChan <- body
+	fmt.Println("Message sent.")
 
-	go func() {
-		for d := range msgs {
-			var movies []Movie
-			err = json.Unmarshal(d.Body, &movies)
-			if err != nil {
-				fmt.Println(err)
-			}
-			fmt.Println("Movies: ", movies)
-			d.Ack(false)
-		}
-		}()
-		
+	go processMessages(q1ResultsChan)
+
 	forever := make(chan bool)
 	<-forever
+}
+
+func processMessages(q1ResultsChan <-chan common.Message) {
+	for msg := range q1ResultsChan {
+		var movies []common.Movie
+		if err := json.Unmarshal(msg.Body, &movies); err != nil {
+			fmt.Printf("Error unmarshalling message: %v", err)
+		}
+		fmt.Println("Movies: ", movies)
+
+		if err := msg.Ack(); err != nil {
+			fmt.Printf("Error acknowledging message: %v", err)
+		}
+	}
+	return
 }
