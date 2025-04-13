@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"tp-sistemas-distribuidos/server/common"
 )
 
@@ -48,10 +49,10 @@ func start(moviesToFilterChan <-chan common.Message, nextFilterChan chan<- []byt
 			fmt.Printf("message: %v", msg.Body)
 		}
 		fmt.Printf("Movies passing through production filter: %s\n", movies)
-		//TODO: filter movies
-		fmt.Printf("Movies filtered by production: %v\n", movies)
+		filteredMovies := common.Filter(movies, filterByProductionQ1)
+		fmt.Printf("Movies filtered by production: %v\n", filteredMovies)
 
-		response, err := json.Marshal(movies)
+		response, err := json.Marshal(filteredMovies)
 		if err != nil {
 			fmt.Printf("Error marshalling movies: %v", err)
 			continue
@@ -61,4 +62,9 @@ func start(moviesToFilterChan <-chan common.Message, nextFilterChan chan<- []byt
 			fmt.Printf("Error acknowledging message: %v", err)
 		}
 	}
+}
+
+func filterByProductionQ1(movie common.Movie) bool {
+	return slices.Contains(movie.ProductionCountries, "Argentina") &&
+		slices.Contains(movie.ProductionCountries, "España")
 }

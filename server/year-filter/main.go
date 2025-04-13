@@ -48,7 +48,7 @@ func start(previousChan <-chan common.Message, nextChan chan<- []byte) {
 			fmt.Printf("message: %v", msg.Body)
 		}
 		fmt.Printf("Movies passing through year filter: %v\n", movies)
-		filteredMovies := common.Filter[common.Movie](movies, func(movie common.Movie) bool { return movie.Year >= 2000 })
+		filteredMovies := common.Filter[common.Movie](movies, yearFilterQ1)
 		fmt.Printf("Movies filtered by year: %v\n", filteredMovies)
 
 		response, err := json.Marshal(filteredMovies)
@@ -61,4 +61,8 @@ func start(previousChan <-chan common.Message, nextChan chan<- []byte) {
 			fmt.Printf("Error acknowledging message: %v", err)
 		}
 	}
+}
+
+func yearFilterQ1(movie common.Movie) bool {
+	return movie.Year >= 2000 && movie.Year < 2010
 }
