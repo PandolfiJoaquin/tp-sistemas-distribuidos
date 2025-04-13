@@ -9,7 +9,8 @@ type Movie struct {
 }
 
 type Header struct {
-	Weight uint32 `json:"weight"`
+	Weight      uint32 `json:"weight"`
+	TotalWeight int32  `json:"total_weight"` //-1 if its uknown for the moment
 }
 
 type Batch struct {

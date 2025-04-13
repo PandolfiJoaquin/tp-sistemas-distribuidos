@@ -43,18 +43,19 @@ func main() {
 
 func start(moviesToFilterChan <-chan common.Message, nextFilterChan chan<- []byte) {
 	for msg := range moviesToFilterChan {
-		var movies []common.Movie
-		if err := json.Unmarshal(msg.Body, &movies); err != nil {
+		var batch common.Batch
+		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			fmt.Printf("Error unmarshalling message: %v", err)
 			fmt.Printf("message: %v", msg.Body)
 		}
-		fmt.Printf("Movies passing through production filter: %s\n", movies)
-		filteredMovies := common.Filter(movies, filterByProductionQ1)
+		fmt.Printf("Headers: %v", batch.Header)
+		fmt.Printf("Movies passing through production filter: %v\n", batch.Movies)
+		filteredMovies := common.Filter(batch.Movies, filterByProductionQ1)
 		fmt.Printf("Movies filtered by production: %v\n", filteredMovies)
-
-		response, err := json.Marshal(filteredMovies)
+		batch.Movies = filteredMovies
+		response, err := json.Marshal(batch)
 		if err != nil {
-			fmt.Printf("Error marshalling movies: %v", err)
+			fmt.Printf("Error marshalling batch: %v", err)
 			continue
 		}
 		nextFilterChan <- response

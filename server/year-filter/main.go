@@ -47,8 +47,8 @@ func start(previousChan <-chan common.Message, nextChan chan<- []byte) {
 			fmt.Printf("Error unmarshalling message: %v", err)
 			fmt.Printf("message: %v", msg.Body)
 		}
-		fmt.Printf("Movies passing through year filter: %v\n", movies)
-		filteredMovies := common.Filter[common.Movie](movies, func(movie common.Movie) bool { return movie.Year >= 2000 })
+		fmt.Printf("Movies passing through year filter: %v\n", batch)
+		filteredMovies := common.Filter[common.Movie](batch.Movies, yearFilterQ1)
 		fmt.Printf("Movies filtered by year: %v\n", filteredMovies)
 		batch.Movies = filteredMovies
 		serializeResponse, err := json.Marshal(batch)
