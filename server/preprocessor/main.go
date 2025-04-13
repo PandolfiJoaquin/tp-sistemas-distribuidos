@@ -40,23 +40,25 @@ func main() {
 	<-forever
 }
 
-func start(moviesToFilterChan <-chan common.Message, nextFilterChan chan<- []byte) {
-	for msg := range moviesToFilterChan {
-		var movies []common.Movie
-		if err := json.Unmarshal(msg.Body, &movies); err != nil {
+func start(moviesToPreprocessChan <-chan common.Message, nextStepChan chan<- []byte) {
+	for msg := range moviesToPreprocessChan {
+		var batch common.Batch
+		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			fmt.Printf("Error unmarshalling message: %v", err)
 			fmt.Printf("message: %v", msg.Body)
 		}
-		fmt.Printf("Movies passing through preprocessor: %v\n", movies)
-		//TODO: filter movies
-		fmt.Printf("Movies preprocessed: %v\n", movies)
 
-		response, err := json.Marshal(movies)
+		fmt.Printf("headers: %v", batch.Header)
+		fmt.Printf("Movies passing through preprocessor: %v\n", batch.Movies)
+		//TODO: preprocess
+		fmt.Printf("Movies preprocessed: %v\n", batch.Movies)
+
+		response, err := json.Marshal(batch)
 		if err != nil {
-			fmt.Printf("Error marshalling movies: %v", err)
+			fmt.Printf("Error marshalling batch: %v", err)
 			continue
 		}
-		nextFilterChan <- response
+		nextStepChan <- response
 		if err := msg.Ack(); err != nil {
 			fmt.Printf("Error acknowledging message: %v", err)
 		}

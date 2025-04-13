@@ -42,21 +42,21 @@ func main() {
 
 func start(previousChan <-chan common.Message, nextChan chan<- []byte) {
 	for msg := range previousChan {
-		var movies []common.Movie
-		if err := json.Unmarshal(msg.Body, &movies); err != nil {
+		var batch common.Batch
+		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			fmt.Printf("Error unmarshalling message: %v", err)
 			fmt.Printf("message: %v", msg.Body)
 		}
 		fmt.Printf("Movies passing through year filter: %v\n", movies)
-		filteredMovies := common.Filter[common.Movie](movies, yearFilterQ1)
+		filteredMovies := common.Filter[common.Movie](movies, func(movie common.Movie) bool { return movie.Year >= 2000 })
 		fmt.Printf("Movies filtered by year: %v\n", filteredMovies)
-
-		response, err := json.Marshal(filteredMovies)
+		batch.Movies = filteredMovies
+		serializeResponse, err := json.Marshal(batch)
 		if err != nil {
 			fmt.Printf("Error marshalling movies: %v", err)
 			continue
 		}
-		nextChan <- response
+		nextChan <- serializeResponse
 		if err := msg.Ack(); err != nil {
 			fmt.Printf("Error acknowledging message: %v", err)
 		}
