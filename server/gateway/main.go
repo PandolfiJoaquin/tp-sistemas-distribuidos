@@ -40,8 +40,15 @@ func main() {
 		return
 	}
 
+	eofBody, err := json.Marshal(common.EOF)
+	if err != nil {
+		fmt.Printf("Error marshalling EOF: %v", err)
+		return
+	}
+
 	moviesToFilterChan <- body
-	fmt.Println("Message sent.")
+	moviesToFilterChan <- eofBody
+	fmt.Println("Messages sent.")
 
 	go processMessages(q1ResultsChan)
 

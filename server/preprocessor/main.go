@@ -50,7 +50,7 @@ func start(moviesToPreprocessChan <-chan common.Message, nextStepChan chan<- []b
 
 		fmt.Printf("headers: %v", batch.Header)
 		fmt.Printf("Movies passing through preprocessor: %v\n", batch.Movies)
-		preprocessBatch := batch
+		preprocessBatch := batch //TODO: do preprocessing
 		fmt.Printf("Movies preprocessed: %v\n", batch.Movies)
 		response, err := json.Marshal(preprocessBatch)
 		if err != nil {

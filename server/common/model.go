@@ -18,6 +18,10 @@ type Batch struct {
 	Movies []Movie `json:"movies"`
 }
 
+func (b *Batch) isEof() bool {
+	return b.Header.TotalWeight >= 0
+}
+
 var mockedMovies = []Movie{
 	{
 		ID:                  "1",
@@ -42,20 +46,27 @@ var mockedMovies = []Movie{
 	},
 	{
 		ID:                  "4",
-		Title:               "El padrino",
-		Year:                1980,
-		Genre:               "Drama",
-		ProductionCountries: []string{"España"},
-	},
-	{
-		ID:                  "5",
 		Title:               "El secreto de sus ojos",
 		Year:                2009,
 		Genre:               "Drama",
 		ProductionCountries: []string{"Argentina", "España"},
 	},
+	{
+		ID:                  "5",
+		Title:               "El padrino",
+		Year:                1980,
+		Genre:               "Drama",
+		ProductionCountries: []string{"España"},
+	},
 }
+
 var MockedBatch = Batch{
 	Header: Header{Weight: uint32(len(mockedMovies))},
 	Movies: mockedMovies,
+}
+
+var EOF = Batch{
+	Header: Header{
+		TotalWeight: int32(len(MockedBatch.Movies)),
+	},
 }
