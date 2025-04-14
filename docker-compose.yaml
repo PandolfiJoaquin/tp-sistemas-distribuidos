@@ -75,7 +75,7 @@ services:
     #   - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
-      interval: 10s
+      interval: 2s
       timeout: 5s
       retries: 3
 
