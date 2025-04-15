@@ -18,8 +18,8 @@ type Batch struct {
 	Movies []Movie `json:"movies"`
 }
 
-func (b *Batch) isEof() bool {
-	return b.Header.TotalWeight >= 0
+func (b *Batch) IsEof() bool {
+	return b.Header.TotalWeight > 0
 }
 
 var mockedMovies = []Movie{
