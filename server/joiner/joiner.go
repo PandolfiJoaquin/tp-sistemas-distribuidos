@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+	"time"
 
 	"tp-sistemas-distribuidos/server/common"
 )
@@ -67,30 +68,74 @@ func (j *Joiner) start(moviesChan, reviewsChan <-chan common.Message, nextStepCh
 		slog.Info("Receiving messages", slog.Any("moviesStatus:", moviesStatus), slog.Any("reviewsStatus", reviewsStatus))
 		select {
 		case _ = <-movies[moviesStatus]:
+			slog.Info("Received all movies. starting to pop reviews")
+			time.Sleep(2 * time.Second)
+			reviewsStatus = ON
 			continue
 		case _ = <-reviews[reviewsStatus]:
+			slog.Info("Processing reviews")
+			time.Sleep(2 * time.Second)
+			nextStepChan <- []byte("Reduce this")
 			continue
 		}
 	}
 
 }
 
-func (j *Joiner) preprocessBatch(batch common.Batch) common.Batch {
-	return batch //TODO: do preprocessing
-}
+//func (j *Joiner) processMessages(moviesToPreprocessChan <-chan common.Message, nextStepChan chan<- []byte) {
+//	for msg := range moviesToPreprocessChan {
+//		var batch common.Batch
+//		if err := json.Unmarshal(msg.Body, &batch); err != nil {
+//			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+//			continue
+//		}
+//
+//		slog.Info("processing batch", slog.Any("headers", batch.Header), slog.Any("movies", batch.Movies))
+//
+//		preprocessBatch := batch
+//		if !batch.IsEof() {
+//			preprocessBatch = j.preprocessBatch(batch)
+//			slog.Info("movies left after preprocessing", slog.Any("movies", preprocessBatch.Movies))
+//		}
+//
+//		response, err := json.Marshal(preprocessBatch)
+//		if err != nil {
+//			slog.Error("error marshalling batch", slog.String("error", err.Error()))
+//			continue
+//		}
+//
+//		nextStepChan <- response
+//		if err := msg.Ack(); err != nil {
+//			slog.Error("error acknowledging message", slog.String("error", err.Error()))
+//		}
+//	}
+//}
 
 func mockMoviesChan() (<-chan common.Message, error) {
 	moviesChan := make(chan common.Message, 1)
+	go func() {
+		time.Sleep(5 * time.Second)
+		moviesChan <- common.Message{}
+	}()
 	return moviesChan, nil
 }
 
 func mockReviewsChan() (<-chan common.Message, error) {
 	reviewsChan := make(chan common.Message, 1)
+	go func() {
+		time.Sleep(10 * time.Second)
+		reviewsChan <- common.Message{}
+	}()
 	return reviewsChan, nil
 }
 
 func mockQ3Chan() (chan<- []byte, error) {
 	moviesChan := make(chan []byte, 1)
+	go func() {
+		time.Sleep(15 * time.Second)
+		response := <-moviesChan
+		slog.Info("Mock received message from Joiner", slog.Any("message", string(response)))
+	}()
 	return moviesChan, nil
 
 }

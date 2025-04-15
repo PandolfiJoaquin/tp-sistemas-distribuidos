@@ -62,6 +62,19 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
+  joiner:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+          NODE: joiner
+    container_name: year-filter
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
