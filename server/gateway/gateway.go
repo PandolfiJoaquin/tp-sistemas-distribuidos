@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 
 	"tp-sistemas-distribuidos/server/common"
@@ -31,19 +32,19 @@ func (g *Gateway) Start() {
 		if err := middleware.Close(); err != nil {
 			slog.Error("error closing middleware", slog.String("error", err.Error()))
 		}
-		}()
+	}()
 
 	g.middleware = middleware
 
 	moviesToFilterChan, err := middleware.GetChanToSend(PREVIOUS_STEP)
 	if err != nil {
-		slog.Error("error with channel 'movies-to-preprocess'", slog.String("error", err.Error()))
+		slog.Error(fmt.Sprintf("error with channel '%s'", PREVIOUS_STEP), slog.String("error", err.Error()))
 		return
 	}
 
 	q1ResultsChan, err := middleware.GetChanToRecv(NEXT_STEP)
 	if err != nil {
-		slog.Error("error with channel 'q1-results'", slog.String("error", err.Error()))
+		slog.Error(fmt.Sprintf("error with channel '%s'", NEXT_STEP), slog.String("error", err.Error()))
 		return
 	}
 
