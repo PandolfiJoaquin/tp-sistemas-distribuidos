@@ -2,25 +2,27 @@ package utils
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
+	"io"
 	"os"
-	"strconv"
 	"pkg/models"
 )
 
+// MoviesReader is a struct that reads movies from a CSV file.
+
 type MoviesReader struct {
-	Finished bool
-	Reader *csv.Reader
-	file *os.File
-	batch_size int
-	fields []string
+	Finished  bool
+	Reader    *csv.Reader
+	file      *os.File
+	batchSize int
+	fields    []string
 }
 
-func NewMoviesReader(path string, batch_size int) *MoviesReader {
+func NewMoviesReader(path string, batchSize int) (*MoviesReader, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		fmt.Println("Error opening file:", err)		
-		return nil
+		return nil, fmt.Errorf("error opening file: %v", err)
 	}
 
 	csv_reader := csv.NewReader(file)
@@ -29,51 +31,50 @@ func NewMoviesReader(path string, batch_size int) *MoviesReader {
 
 	fields, err := csv_reader.Read() // Read the header line
 	if err != nil {
-		fmt.Println("Error reading header:", err)
-		return nil
+		return nil, fmt.Errorf("error reading header line: %v", err)
 	}
 
 	reader := &MoviesReader{
-		Reader: csv_reader,
-		file: file,
-		batch_size: batch_size,
-		fields : fields,
+		Reader:    csv_reader,
+		file:      file,
+		batchSize: batchSize,
+		fields:    fields,
 	}
 
-	return reader
+	return reader, nil
 }
 
-func (mr *MoviesReader) ReadMovie() (*models.Movie, error) {
+func (mr *MoviesReader) ReadMovie() (*models.RawMovie, error) {
 	expectedFields := len(mr.fields)
 
 	if mr.Finished {
 		return nil, nil
 	}
 
-		record, err := mr.Reader.Read()
+	record, err := mr.Reader.Read()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			mr.Finished = true
+			return nil, nil
+		} else {
+			return nil, err
+		}
+	}
+
+	// If we read a record but its field count is off, try to join with more rows.
+	if len(record) != expectedFields {
+		record, err = joinRecords(mr.Reader, record, expectedFields)
 		if err != nil {
-			if err.Error() == "EOF" {
-				mr.Finished = true
-				return nil, nil
-			}else {
-				return nil, err
-			}
+			return nil, err
 		}
+	}
 
-		// If we read a record but its field count is off, try to join with more rows.
-		if len(record) != expectedFields {
-			record, err = joinRecords(mr.Reader, record, expectedFields)
-			if err != nil {
-				return nil, err
-			}
-		}
+	movie, err := parseMovie(record)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing movie: %v", err)
+	}
 
-		movie, err := parseMovie(record)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing movie: %v", err)
-		}
-
-		return movie, nil
+	return movie, nil
 }
 
 func joinRecords(r *csv.Reader, current []string, expectedFields int) ([]string, error) {
@@ -103,113 +104,17 @@ func (mr *MoviesReader) Close() {
 	}
 }
 
-func parseMovie(record []string) (*models.Movie, error) {
-	adult := record[0] == "True"
-
-	collection, err := ParseObject[models.Collection](record[1])
-	if err != nil {
-		return nil, err
+func (mr *MoviesReader) ReadMovies() ([]*models.RawMovie, error) {
+	var movies []*models.RawMovie
+	for i := 0; i < mr.batchSize; i++ {
+		movie, err := mr.ReadMovie()
+		if err != nil {
+			return nil, err
+		}
+		if movie == nil {
+			break
+		}
+		movies = append(movies, movie)
 	}
-
-
-	budget, err := strconv.ParseUint(record[2], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing budget: %v", err)
-	}
-
-	genres , err := ParseObjectArray[models.Genre](record[3])
-	if err != nil {
-		return nil, fmt.Errorf("error parsing genres: %v", err)
-	}
-
-	homepage := record[4]
-
-	id, err := strconv.ParseInt(record[5], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing id: %v", err)
-	}
-
-	imdbID := record[6]
-	originalLanguage := record[7]
-	originalTitle := record[8]
-	overview := record[9]
-	popularity, err := strconv.ParseFloat(record[10], 64)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing popularity: %v", err)
-	}
-
-	posterPath := record[11]
-
-	productionCompanies, err := ParseObjectArray[models.Company](record[12])
-	if err != nil {
-		return nil, err
-	}
-
-	productionCountries, err := ParseObjectArray[models.Country](record[13])
-	if err != nil {
-		return nil, err
-	}
-
-	releaseDate := record[14]
-	revenue, err := strconv.ParseInt(record[15], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing revenue: %v", err)
-	}
-
-    var runtime float64
-    if record[16] == "" {
-        runtime = 0
-    } else {
-        runtime, err = strconv.ParseFloat(record[16], 64)
-        if err != nil {
-            return nil, fmt.Errorf("error parsing runtime: %v", err)
-        }
-    }
-
-	spokenLanguages , err := ParseObjectArray[models.Language](record[17])
-	if err != nil {
-		return nil, err
-	}
-
-	status := record[18]
-	tagline := record[19]
-	title := record[20]
-	video := record[21] == "True"
-
-	voteAverage, err := strconv.ParseFloat(record[22], 64)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing vote average: %v", err)
-	}
-
-	voteCount, err := strconv.ParseInt(record[23], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing vote count: %v", err)
-	}
-
-	return &models.Movie{
-		Adult:               adult,
-		BelongsToCollection: collection,
-		Budget:              budget,
-		Genres:              genres,
-		Homepage:            homepage,
-		ID:                  id,
-		IMDBID:              imdbID,
-		OriginalLanguage:    originalLanguage,
-		OriginalTitle:       originalTitle,
-		Overview:            overview,
-		Popularity:          popularity,
-		PosterPath:          posterPath,
-		ProductionCompanies: productionCompanies,
-		ProductionCountries: productionCountries,
-		ReleaseDate:         releaseDate,
-		Revenue:             revenue,
-		Runtime:             runtime,
-		SpokenLanguages:     spokenLanguages,
-		Status:              status,
-		Tagline: 		     tagline,
-		Title:               title,
-		Video:               video,
-		VoteAverage:         voteAverage,
-		VoteCount:           voteCount,
-	} , nil
+	return movies, nil
 }
