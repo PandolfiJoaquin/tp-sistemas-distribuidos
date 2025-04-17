@@ -66,6 +66,8 @@ func (p *Preprocessor) processMessages(moviesToPreprocessChan <-chan common.Mess
 		if !batch.IsEof() {
 			preprocessBatch = p.preprocessBatch(batch)
 			slog.Info("movies left after preprocessing", slog.Any("movies", preprocessBatch.Movies))
+		} else {
+			slog.Info("EOF received")
 		}
 
 		response, err := json.Marshal(preprocessBatch)

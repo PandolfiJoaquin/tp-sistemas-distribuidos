@@ -23,6 +23,18 @@ func main() {
 		return
 	}
 
-	joiner := NewJoiner(rabbitUser, rabbitPass)
+	joiner, err := NewJoiner(rabbitUser, rabbitPass)
+	if err != nil {
+		slog.Error("error creating joiner", slog.String("error", err.Error()))
+		return
+	}
+
+	defer func(joiner *Joiner) {
+		err := joiner.Close()
+		if err != nil {
+			slog.Error("error closing joiner", slog.String("error", err.Error()))
+		}
+	}(joiner)
+
 	joiner.Start()
 }

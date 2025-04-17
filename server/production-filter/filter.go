@@ -9,7 +9,7 @@ import (
 )
 
 const PREVIOUS_STEP = "filter-production-q1"
-const NEXT_STEP = "q1-results"
+const NEXT_STEP = "movies-to-join"
 
 type ProductionFilter struct {
 	rabbitUser string

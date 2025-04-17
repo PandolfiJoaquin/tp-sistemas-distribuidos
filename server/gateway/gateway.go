@@ -80,7 +80,7 @@ func (g *Gateway) processMessages(q1ResultsChan <-chan common.Message) {
 		if batch.IsEof() {
 			slog.Info("EOF received")
 		} else {
-			slog.Info("Got movies", slog.Any("headers", batch.Header), slog.Any("movies", batch.Movies))
+			slog.Info("Got batch", slog.Any("headers", batch.Header), slog.Any("movies", batch.Movies))
 		}
 
 		if err := msg.Ack(); err != nil {
