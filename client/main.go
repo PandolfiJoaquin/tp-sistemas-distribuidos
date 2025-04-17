@@ -1,35 +1,16 @@
 package main
 
 import (
-	"analyzer-client/utils"
 	"fmt"
+	"log/slog"
+	"pkg/log"
 )
 
-const FILEPATH = "movies_metadata.csv"
-
-
-
 func main() {
-	movies := make([]*utils.Movie, 0)
-	reader := utils.NewMoviesReader(FILEPATH, 1000)
-	defer reader.Close()
-	for reader.Finished == false {
-		movie, err := reader.ReadMovie()
-		if err != nil {
-			fmt.Println("Error reading movie:", err)
-			return
-		}
-		if movie == nil {
-			continue
-		}
-
-		movies = append(movies, movie)
-
-	} 
-
-	fmt.Printf("Read %d movies\n", len(movies))
-
-
-	
-
+	logger, err := log.SetupLogger("client", false, nil)
+	if err != nil {
+		fmt.Printf("error creating logger: %v", err)
+		return
+	}
+	slog.SetDefault(logger)
 }

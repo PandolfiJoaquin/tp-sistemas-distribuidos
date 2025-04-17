@@ -1,14 +1,15 @@
 # Build stage
-FROM golang:1.23.0-alpine3.20 AS builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /home/app
 
-COPY /client/go.mod /client/go.sum ./
-RUN go mod download
+COPY client/. ./client/
+COPY pkg/ ./pkg/
 
-COPY /client ./
+WORKDIR /home/app/client
 
-RUN go build -o client ./main.go
+RUN go mod tidy
+RUN go build -o client_bin 
 
 # # Test stage
 # FROM builder AS client-test-stage
@@ -23,6 +24,6 @@ FROM alpine:3.20
 
 WORKDIR /home/app
 
-COPY --from=builder /home/app/client ./
+COPY --from=builder /home/app/client/client_bin ./
 
-ENTRYPOINT ["./client"]
+ENTRYPOINT ["./client_bin"]

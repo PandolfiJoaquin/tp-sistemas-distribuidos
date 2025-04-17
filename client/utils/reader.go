@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	// "strings"
+	"pkg/models"
 )
 
 type MoviesReader struct {
@@ -43,9 +43,7 @@ func NewMoviesReader(path string, batch_size int) *MoviesReader {
 	return reader
 }
 
-
-func (mr *MoviesReader) ReadMovie() (*Movie, error) {
-	// Assume you’ve already read the header row and its length is the expected number of fields.
+func (mr *MoviesReader) ReadMovie() (*models.Movie, error) {
 	expectedFields := len(mr.fields)
 
 	if mr.Finished {
@@ -78,7 +76,6 @@ func (mr *MoviesReader) ReadMovie() (*Movie, error) {
 		return movie, nil
 }
 
-
 func joinRecords(r *csv.Reader, current []string, expectedFields int) ([]string, error) {
 	// Keep joining records until we have at least expectedFields fields.
 	joined := current
@@ -89,7 +86,6 @@ func joinRecords(r *csv.Reader, current []string, expectedFields int) ([]string,
 		}
 
 		// Here we simply join the last field with all fields from the next read,
-		// separating by a space (or you might use "\n", depending on your data).
 		joined[len(joined)-1] = joined[len(joined)-1] + " " + next[0]
 
 		// If the next record had additional fields, append them.
@@ -107,10 +103,10 @@ func (mr *MoviesReader) Close() {
 	}
 }
 
-func parseMovie(record []string) (*Movie, error) {
+func parseMovie(record []string) (*models.Movie, error) {
 	adult := record[0] == "True"
 
-	collection, err := ParseObject[Collection](record[1])
+	collection, err := ParseObject[models.Collection](record[1])
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +117,7 @@ func parseMovie(record []string) (*Movie, error) {
 		return nil, fmt.Errorf("error parsing budget: %v", err)
 	}
 
-	genres , err := ParseObjectArray[Genre](record[3])
+	genres , err := ParseObjectArray[models.Genre](record[3])
 	if err != nil {
 		return nil, fmt.Errorf("error parsing genres: %v", err)
 	}
@@ -144,12 +140,12 @@ func parseMovie(record []string) (*Movie, error) {
 
 	posterPath := record[11]
 
-	productionCompanies, err := ParseObjectArray[Company](record[12])
+	productionCompanies, err := ParseObjectArray[models.Company](record[12])
 	if err != nil {
 		return nil, err
 	}
 
-	productionCountries, err := ParseObjectArray[Country](record[13])
+	productionCountries, err := ParseObjectArray[models.Country](record[13])
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +166,7 @@ func parseMovie(record []string) (*Movie, error) {
         }
     }
 
-	spokenLanguages , err := ParseObjectArray[Language](record[17])
+	spokenLanguages , err := ParseObjectArray[models.Language](record[17])
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +186,7 @@ func parseMovie(record []string) (*Movie, error) {
 		return nil, fmt.Errorf("error parsing vote count: %v", err)
 	}
 
-	return &Movie{
+	return &models.Movie{
 		Adult:               adult,
 		BelongsToCollection: collection,
 		Budget:              budget,

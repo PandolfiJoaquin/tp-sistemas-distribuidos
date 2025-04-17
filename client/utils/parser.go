@@ -99,10 +99,7 @@ func fixJSONObject(input string) (string, error) {
 	return goodJSON, nil
 }
 
-
-// fixJSONArrayUsingRegex extracts each object based on simple curly-brace
-// boundaries (assuming there are no nested objects) and fixes them.
-func fixJSONArrayUsingRegex(input string) (string, error) {
+func fixJSONArray(input string) (string, error) {
 	input = strings.TrimSpace(input)
 	if len(input) < 2 || input[0] != '[' || input[len(input)-1] != ']' {
 		return "", fmt.Errorf("input is not a valid JSON array: %q", input)
@@ -156,7 +153,7 @@ func ParseObjectArray[T any] (input string) ([]T, error){
 		return []T{}, nil
 	}
 
-	fixed , err := fixJSONArrayUsingRegex(input)
+	fixed , err := fixJSONArray(input)
 	if err != nil {
 		return nil, fmt.Errorf("error fixing JSON array: %v", err)
 	}

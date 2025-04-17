@@ -1,7 +1,4 @@
-package utils
-
-import (
-)
+package models
 
 type Movie struct {
 	Adult               bool          `json:"adult"`
