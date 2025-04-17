@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -14,13 +15,18 @@ const ON = 1
 const OFF = 0
 
 type Joiner struct {
-	rabbitUser string
-	rabbitPass string
-	middleware *common.Middleware
+	rabbitUser     string
+	rabbitPass     string
+	middleware     *common.Middleware
+	moviesReceived []common.Batch
 }
 
 func NewJoiner(rabbitUser, rabbitPass string) *Joiner {
-	return &Joiner{rabbitUser: rabbitUser, rabbitPass: rabbitPass}
+	return &Joiner{
+		rabbitUser:     rabbitUser,
+		rabbitPass:     rabbitPass,
+		moviesReceived: []common.Batch{},
+	}
 }
 
 func (j *Joiner) Start() {
@@ -67,15 +73,28 @@ func (j *Joiner) start(moviesChan, reviewsChan <-chan common.Message, nextStepCh
 	for {
 		slog.Info("Receiving messages", slog.Any("moviesStatus:", moviesStatus), slog.Any("reviewsStatus", reviewsStatus))
 		select {
-		case _ = <-movies[moviesStatus]:
-			slog.Info("Received all movies. starting to pop reviews")
-			time.Sleep(2 * time.Second)
-			reviewsStatus = ON
-			continue
+		case msg := <-movies[moviesStatus]:
+			//slog.Info("Received all movies. starting to pop reviews")
+			//time.Sleep(2 * time.Second)
+			//reviewsStatus = ON
+			//continue
+
+			var batch common.Batch
+			if err := json.Unmarshal(msg.Body, &batch); err != nil {
+				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+				continue
+			}
+			//todo save batch
+
+			//todo if all batches where received turn reviewsStatus to ON
+
+
+			//if err := msg.Ack(); err != nil {
+			//	slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			//}
+
 		case _ = <-reviews[reviewsStatus]:
-			slog.Info("Processing reviews")
-			time.Sleep(2 * time.Second)
-			nextStepChan <- []byte("Reduce this")
+			//todo join and send back
 			continue
 		}
 	}
