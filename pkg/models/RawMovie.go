@@ -51,12 +51,12 @@ type Company struct {
 
 // Country represents production country
 type Country struct {
-	ISOMovie string `json:"iso_movie"`
-	Name     string `json:"name"`
+	Code string `json:"code"` // ISO 3166-1 alpha-2 code
+	Name string `json:"name"`
 }
 
 // Language represents spoken language
 type Language struct {
-	ISoLanguage string `json:"iso_language"`
-	Name        string `json:"name"`
+	Code string `json:"code"` // ISO 639-1 code
+	Name string `json:"name"`
 }
