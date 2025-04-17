@@ -67,7 +67,7 @@ services:
       dockerfile: ./server/Dockerfile
       args:
           NODE: joiner
-    container_name: year-filter
+    container_name: joiner
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
