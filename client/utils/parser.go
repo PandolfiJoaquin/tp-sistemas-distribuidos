@@ -130,8 +130,8 @@ func fixJSONArray(input string) (string, error) {
 	return "[" + strings.Join(fixedObjects, ", ") + "]", nil
 }
 
-// ParseObject parses a JSON object into a struct of type T.
-func ParseObject[T any](input string) (*T, error) {
+// ParseJSONToObject parses a JSON object into a struct of type T.
+func ParseJSONToObject[T any](input string) (*T, error) {
 	if input == "" {
 		return nil, nil
 	}
@@ -150,8 +150,8 @@ func ParseObject[T any](input string) (*T, error) {
 	return &result, nil
 }
 
-// ParseObjectArray parses a JSON array of objects into a slice of type T.
-func ParseObjectArray[T any](input string) ([]T, error) {
+// ParseJSONArray parses a JSON array of objects into a slice of type T.
+func ParseJSONArray[T any](input string) ([]T, error) {
 	if input == "" {
 		return nil, nil
 	}
@@ -174,7 +174,7 @@ func ParseObjectArray[T any](input string) ([]T, error) {
 	return result, nil
 }
 
-// parseBool converts a string to bool ("True"/"False"), empty -> false.
+// parseBool converts a string to bool ("True"/"False")
 func parseBool(str, field string) (bool, error) {
 	// Uses strings.EqualFold to handle case insensitivity.
 	if strings.EqualFold(str, "true") {
@@ -186,7 +186,7 @@ func parseBool(str, field string) (bool, error) {
 	return false, fmt.Errorf("invalid %s: %q", field, str)
 }
 
-// parseUint32 converts a string to uint32, empty -> 0.
+// parseUint32 converts a string to uint32
 func parseUint32(str, field string) (uint32, error) {
 	if str == "" {
 		return 0, nil
@@ -198,7 +198,7 @@ func parseUint32(str, field string) (uint32, error) {
 	return uint32(v), nil
 }
 
-// parseUint64 converts a string to uint64, empty -> 0.
+// parseUint64 converts a string to uint64
 func parseUint64(str, field string) (uint64, error) {
 	if str == "" {
 		return 0, nil
@@ -210,6 +210,7 @@ func parseUint64(str, field string) (uint64, error) {
 	return v, nil
 }
 
+// parseFloat32 converts a string to float32
 func parseFloat32(str, field string) (float32, error) {
 	if str == "" {
 		return 0, nil
@@ -221,6 +222,7 @@ func parseFloat32(str, field string) (float32, error) {
 	return float32(v), nil
 }
 
+// parseTime converts a string to time.Time
 func parseTime(str, field string) (time.Time, error) {
 	if str == "" {
 		return time.Time{}, nil
@@ -228,18 +230,6 @@ func parseTime(str, field string) (time.Time, error) {
 	v, err := time.Parse("2006-01-02", str)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("error parsing %s: %v", field, err)
-	}
-	return v, nil
-}
-
-// parseFloat64 converts a string to float64, empty -> 0.
-func parseFloat64(str, field string) (float64, error) {
-	if str == "" {
-		return 0, nil
-	}
-	v, err := strconv.ParseFloat(str, 64)
-	if err != nil {
-		return 0, fmt.Errorf("error parsing %s: %v", field, err)
 	}
 	return v, nil
 }
@@ -278,7 +268,7 @@ func parseMovie(record []string) (*models.RawMovie, error) {
 		return nil, err
 	}
 
-	collection, err := ParseObject[models.Collection](record[colCollection])
+	collection, err := ParseJSONToObject[models.Collection](record[colCollection])
 	if err != nil {
 		return nil, fmt.Errorf("error parsing collection: %v", err)
 	}
@@ -288,7 +278,7 @@ func parseMovie(record []string) (*models.RawMovie, error) {
 		return nil, err
 	}
 
-	genres, err := ParseObjectArray[models.Genre](record[colGenres])
+	genres, err := ParseJSONArray[models.Genre](record[colGenres])
 	if err != nil {
 		return nil, fmt.Errorf("error parsing genres: %v", err)
 	}
@@ -303,12 +293,12 @@ func parseMovie(record []string) (*models.RawMovie, error) {
 		return nil, err
 	}
 
-	productionCompanies, err := ParseObjectArray[models.Company](record[colProductionCompanies])
+	productionCompanies, err := ParseJSONArray[models.Company](record[colProductionCompanies])
 	if err != nil {
 		return nil, fmt.Errorf("error parsing production companies: %v", err)
 	}
 
-	productionCountries, err := ParseObjectArray[models.Country](record[colProductionCountries])
+	productionCountries, err := ParseJSONArray[models.Country](record[colProductionCountries])
 	if err != nil {
 		return nil, fmt.Errorf("error parsing production countries: %v", err)
 	}
@@ -328,7 +318,7 @@ func parseMovie(record []string) (*models.RawMovie, error) {
 		return nil, err
 	}
 
-	spokenLanguages, err := ParseObjectArray[models.Language](record[colSpokenLanguages])
+	spokenLanguages, err := ParseJSONArray[models.Language](record[colSpokenLanguages])
 	if err != nil {
 		return nil, fmt.Errorf("error parsing spoken languages: %v", err)
 	}
