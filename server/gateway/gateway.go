@@ -4,74 +4,132 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-
+	"net"
+	"pkg/communication"
 	"tp-sistemas-distribuidos/server/common"
 )
 
 const PREVIOUS_STEP = "movies-to-preprocess"
 const NEXT_STEP = "q1-results"
 
-type Gateway struct {
-	rabbitUser string
-	rabbitPass string
-	middleware *common.Middleware
+type GatewayConfig struct {
+	RabbitUser string
+	RabbitPass string
+	port       string
 }
 
-func NewGateway(rabbitUser, rabbitPass string) *Gateway {
-	return &Gateway{rabbitUser: rabbitUser, rabbitPass: rabbitPass}
+func NewGatewayConfig(rabbitUser, rabbitPass, port string) GatewayConfig {
+	return GatewayConfig{
+		RabbitUser: rabbitUser,
+		RabbitPass: rabbitPass,
+		port:       port,
+	}
+}
+
+type Gateway struct {
+	middleware     *common.Middleware
+	moviesToFilter chan<- []byte
+	q1Results      <-chan common.Message
+	config         GatewayConfig
+	listener       net.Listener
+	running        bool
+}
+
+func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
+	config := NewGatewayConfig(rabbitUser, rabbitPass, port)
+	gateway := &Gateway{
+		config:  config,
+		running: true,
+	}
+
+	listener, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		slog.Error("error starting gateway", slog.String("error", err.Error()))
+		return nil, err
+	}
+	gateway.listener = listener
+
+	err = gateway.middlewareSetup()
+	if err != nil {
+		slog.Error("error setting up gateway", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return gateway, nil
+}
+
+func (g *Gateway) middlewareSetup() error {
+	middleware, err := common.NewMiddleware(g.config.RabbitUser, g.config.RabbitPass)
+	if err != nil {
+		slog.Error("error creating middleware", slog.String("error", err.Error()))
+		return err
+	}
+	g.middleware = middleware
+
+	moviesToFilter, err := g.middleware.GetChanToSend(PREVIOUS_STEP)
+	if err != nil {
+		slog.Error("error getting channel 'movies-to-preprocess'", slog.String("error", err.Error()))
+	}
+
+	g.moviesToFilter = moviesToFilter
+
+	q1Results, err := g.middleware.GetChanToRecv(NEXT_STEP)
+	if err != nil {
+		slog.Error("error getting channel 'q1-results'", slog.String("error", err.Error()))
+	}
+
+	g.q1Results = q1Results
+
+	return nil
+}
+
+func (g *Gateway) listen() {
+	for g.running {
+		conn, err := g.listener.Accept()
+		if err != nil && g.running {
+			slog.Error("error accepting connection", slog.String("error", err.Error()))
+			continue
+		}
+		g.handleConnection(conn)
+	}
+}
+
+func (g *Gateway) handleConnection(conn net.Conn) {
+	defer conn.Close()
+	slog.Info("Client connected", slog.String("address", conn.RemoteAddr().String()))
+	total := 0
+	for {
+		movies, err := communication.RecvMovies(conn)
+		if err != nil {
+			slog.Error("error receiving movies", slog.String("error", err.Error()))
+			return
+		}
+
+		body, err := json.Marshal(movies)
+		if err != nil {
+			slog.Error("error marshalling movies", slog.String("error", err.Error()))
+			return
+		}
+
+		g.moviesToFilter <- body
+
+		total += int(movies.Header.Weight)
+
+		if movies.IsEof() {
+			break
+		}
+
+	}
+
+	slog.Info("Total movies received", slog.Int("total", total))
 }
 
 func (g *Gateway) Start() {
-	middleware, err := common.NewMiddleware(g.rabbitUser, g.rabbitPass)
-	if err != nil {
-		slog.Error("error creating middleware", slog.String("error", err.Error()))
-		return
-	}
-
-	defer func() {
-		if err := middleware.Close(); err != nil {
-			slog.Error("error closing middleware", slog.String("error", err.Error()))
-		}
-	}()
-
-	g.middleware = middleware
-
-	moviesToFilterChan, err := middleware.GetChanToSend(PREVIOUS_STEP)
-	if err != nil {
-		slog.Error(fmt.Sprintf("error with channel '%s'", PREVIOUS_STEP), slog.String("error", err.Error()))
-		return
-	}
-
-	q1ResultsChan, err := middleware.GetChanToRecv(NEXT_STEP)
-	if err != nil {
-		slog.Error(fmt.Sprintf("error with channel '%s'", NEXT_STEP), slog.String("error", err.Error()))
-		return
-	}
-
-	body, err := json.Marshal(common.MockedBatch)
-	if err != nil {
-		slog.Error("error marshalling batch", slog.String("error", err.Error()))
-		return
-	}
-
-	eofBody, err := json.Marshal(common.EOF)
-	if err != nil {
-		slog.Error("error marshalling EOF", slog.String("error", err.Error()))
-		return
-	}
-
-	moviesToFilterChan <- body
-	moviesToFilterChan <- eofBody
-	slog.Info("Messages sent.")
-
-	go g.processMessages(q1ResultsChan)
-
-	forever := make(chan bool)
-	<-forever
+	g.listen()
 }
 
-func (g *Gateway) processMessages(q1ResultsChan <-chan common.Message) {
-	for msg := range q1ResultsChan {
+func (g *Gateway) processMessages() {
+	for msg := range g.q1Results {
 		var batch common.Batch
 		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))

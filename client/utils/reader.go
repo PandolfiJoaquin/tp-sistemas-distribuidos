@@ -17,6 +17,7 @@ type MoviesReader struct {
 	file      *os.File
 	batchSize int
 	fields    []string
+	Total     int
 }
 
 func NewMoviesReader(path string, batchSize int) (*MoviesReader, error) {
@@ -25,17 +26,21 @@ func NewMoviesReader(path string, batchSize int) (*MoviesReader, error) {
 		return nil, fmt.Errorf("error opening file: %v", err)
 	}
 
-	csv_reader := csv.NewReader(file)
-	csv_reader.LazyQuotes = true
-	csv_reader.FieldsPerRecord = -1 // Allow variable number of fields
+	csvReader := csv.NewReader(file)
+	if csvReader == nil {
+		return nil, fmt.Errorf("error creating CSV reader")
+	}
 
-	fields, err := csv_reader.Read() // Read the header line
+	csvReader.LazyQuotes = true
+	csvReader.FieldsPerRecord = -1 // Allow variable number of fields
+
+	fields, err := csvReader.Read() // Read the header line
 	if err != nil {
 		return nil, fmt.Errorf("error reading header line: %v", err)
 	}
 
 	reader := &MoviesReader{
-		Reader:    csv_reader,
+		Reader:    csvReader,
 		file:      file,
 		batchSize: batchSize,
 		fields:    fields,
@@ -74,6 +79,7 @@ func (mr *MoviesReader) ReadMovie() (*models.RawMovie, error) {
 		return nil, fmt.Errorf("error parsing movie: %v", err)
 	}
 
+	mr.Total++
 	return movie, nil
 }
 
@@ -104,8 +110,8 @@ func (mr *MoviesReader) Close() {
 	}
 }
 
-func (mr *MoviesReader) ReadMovies() ([]*models.RawMovie, error) {
-	var movies []*models.RawMovie
+func (mr *MoviesReader) ReadMovies() ([]models.RawMovie, error) {
+	var movies []models.RawMovie
 	for i := 0; i < mr.batchSize; i++ {
 		movie, err := mr.ReadMovie()
 		if err != nil {
@@ -114,7 +120,7 @@ func (mr *MoviesReader) ReadMovies() ([]*models.RawMovie, error) {
 		if movie == nil {
 			break
 		}
-		movies = append(movies, movie)
+		movies = append(movies, *movie)
 	}
 	return movies, nil
 }

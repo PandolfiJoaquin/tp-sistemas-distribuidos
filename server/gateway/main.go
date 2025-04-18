@@ -7,6 +7,8 @@ import (
 	"pkg/log"
 )
 
+const PORT = "12345"
+
 func main() {
 	logger, err := log.SetupLogger("gateway", false, nil)
 	if err != nil {
@@ -23,6 +25,10 @@ func main() {
 		return
 	}
 
-	gateway := NewGateway(rabbitUser, rabbitPass)
+	gateway, err := NewGateway(rabbitUser, rabbitPass, PORT)
+	if err != nil {
+		slog.Error("error creating gateway", slog.String("error", err.Error()))
+		return
+	}
 	gateway.Start()
 }
