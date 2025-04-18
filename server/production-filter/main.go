@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"tp-sistemas-distribuidos/server/common"
+	"pkg/log"
 )
 
 
 func main() {
-	logger, err := common.SetupLogger("production-filter", false, nil)
+	logger, err := log.SetupLogger("production-filter", false, nil)
 	if err != nil {
 		fmt.Printf("error creating logger: %v", err)
 		return

@@ -1,11 +1,14 @@
-FROM golang:1.23-alpine as builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /build
 
 ARG NODE
 
-COPY server/go.mod .
-COPY server/go.sum .
+COPY server/go.mod ./server/
+COPY server/go.sum ./server/
+COPY pkg/ ./pkg/
+
+WORKDIR /build/server
 
 RUN go mod download
 
@@ -14,7 +17,7 @@ COPY server/${NODE}/ ${NODE}/
 
 RUN go build -o /build/app tp-sistemas-distribuidos/server/${NODE}
 
-FROM busybox:latest
+FROM busybox:1.32.1
 LABEL app="imdb"
 
 COPY --from=builder /build/app /

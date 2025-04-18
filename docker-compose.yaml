@@ -1,15 +1,11 @@
 services:
-  # client:
-  #   build:
-  #     dockerfile: ./client/Dockerfile
-  #   container_name: client
-  #   environment:
-  #     - RABBITMQ_DEFAULT_USER=monke
-  #     - RABBITMQ_DEFAULT_PASS=joaco1
-  #   depends_on:
-  #     rabbitmq:
-  #       condition: service_healthy
-  #       restart: true
+  client:
+    build:
+      dockerfile: ./client/Dockerfile
+    container_name: client
+    depends_on:
+      - gateway
+
   gateway :
     build:
       dockerfile: ./server/Dockerfile
