@@ -11,6 +11,7 @@ type Message struct {
 }
 
 func (m *Message) Ack() error {
+
 	if err := m.amqpMsg.Ack(false); err != nil {
 		return fmt.Errorf("error acknowledging message: %s", err)
 	}

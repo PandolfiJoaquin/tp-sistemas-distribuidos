@@ -61,7 +61,7 @@ var mockedMovies = []Movie{
 }
 
 var MockedBatch = Batch{
-	Header: Header{Weight: uint32(len(mockedMovies))},
+	Header: Header{Weight: uint32(len(mockedMovies)), TotalWeight: int32(-1)},
 	Movies: mockedMovies,
 }
 
