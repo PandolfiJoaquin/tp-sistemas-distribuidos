@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type RawMovie struct {
 	Adult               bool        `json:"adult"`
@@ -59,4 +62,9 @@ type Country struct {
 type Language struct {
 	Code string `json:"iso_639_1"` // ISO 639-1 code
 	Name string `json:"name"`
+}
+
+// MarshalText implements encoding.TextMarshaler so Country can be a JSON map key
+func (c Country) MarshalText() ([]byte, error) {
+	return []byte(fmt.Sprintf("%s - %s", c.Code, c.Name)), nil
 }

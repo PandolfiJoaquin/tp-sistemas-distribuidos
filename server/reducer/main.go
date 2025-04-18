@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"tp-sistemas-distribuidos/server/common"
+	"pkg/log"
 )
 
 func main() {
-	logger, err := common.SetupLogger("reducer", false, nil)
+	logger, err := log.SetupLogger("reducer", false, nil)
 	if err != nil {
 		fmt.Printf("error creating logger: %v", err)
 		return
@@ -29,5 +29,6 @@ func main() {
 		return
 	}
 	reducer.Start()
+	
 	reducer.Stop()
 }
