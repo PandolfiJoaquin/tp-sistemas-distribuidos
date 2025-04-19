@@ -19,13 +19,13 @@ type Header struct {
 	TotalWeight int32  `json:"total_weight"` //-1 if its uknown for the moment
 }
 
-type MoviesBatch struct {
-	Header Header  `json:"header"`
-	Movies []Movie `json:"movies"`
+type Batch[T any] struct {
+	Header `json:"header"`
+	Data   []T `json:"data"`
 }
 
-func (b *MoviesBatch) IsEof() bool {
-	return b.Header.TotalWeight > 0
+func (h *Header) IsEof() bool {
+	return h.TotalWeight > 0
 }
 
 type ReviewToJoin struct {
@@ -137,13 +137,13 @@ var mockedMovies = []Movie{
 	},
 }
 
-var MockedBatch = MoviesBatch{
+var MockedBatch = Batch[Movie]{
 	Header: Header{Weight: uint32(len(mockedMovies)), TotalWeight: int32(-1)},
-	Movies: mockedMovies,
+	Data:   mockedMovies,
 }
 
-var EOF = MoviesBatch{
+var EOF = Batch[Movie]{
 	Header: Header{
-		TotalWeight: int32(len(MockedBatch.Movies)),
+		TotalWeight: int32(len(MockedBatch.Data)),
 	},
 }
