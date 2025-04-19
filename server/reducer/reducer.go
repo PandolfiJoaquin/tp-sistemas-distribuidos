@@ -124,7 +124,7 @@ func (r *Reducer) startReceiving() {
 }
 
 func (r *Reducer) processQuery2Message(msg common.Message) error {
-	var batch common.MoviesBatch
+	var batch common.Batch[common.Movie]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		return fmt.Errorf("error unmarshalling query 2 message: %w", err)
 	}
@@ -159,10 +159,10 @@ func (r *Reducer) processQuery3Message(msg common.Message) error {
 	return nil
 }
 
-func (r *Reducer) reduceQ2(batch common.MoviesBatch) (common.CoutriesBudgetMsg, error) {
+func (r *Reducer) reduceQ2(batch common.Batch[common.Movie]) (common.CoutriesBudgetMsg, error) {
 	// me llega un mensaje de peliculas y tengo que reducirlo a un map con cada entrada (pais, $$), me viene filtrado
 	countries := make(map[pkg.Country]uint64)
-	for _, movie := range batch.Movies {
+	for _, movie := range batch.Data {
 		if len(movie.ProductionCountries) > 1 {
 			return common.CoutriesBudgetMsg{}, fmt.Errorf("movie has more than 1 production country for query 2, movie: %v", movie)
 		}
@@ -201,17 +201,6 @@ func (r *Reducer) reduceQ3(batch ReviewsXMoviesBatch) (common.MoviesAvgRatingMsg
 		MoviesRatings: moviesRatingsList,
 	}, nil
 }
-
-// func (r *Reducer) reduceAndSendQ4(batch common.MoviesBatch) error {
-// 	// me llega un mensaje de peliculasXactores y tengo que reducirlo a un map con cada entrada (actor, cant_pelis), me viene filtrado
-// 	return nil
-// }
-
-// func (r *Reducer) reduceAndSendQ5(batch common.MoviesBatch) error {
-// 	// me llega un mensaje de peliculas+overview y tengo que reducirlo a un struct con 2 campos, positivo y negativo,
-// 	// dentro de cada uno tengo sum(tasa(ingreso/presupuesto)) y cant_pelis, me viene filtrado
-// 	return nil
-// }
 
 func (r *Reducer) Stop() error {
 	return r.middleware.Close()

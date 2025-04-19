@@ -287,7 +287,7 @@ func (g *Gateway) handleResult1(msg common.Message) error {
 		return fmt.Errorf("error consuming results: %w", err)
 	}
 
-	if len(batch.Movies) == 0 && batch.Header.TotalWeight == -1 {
+	if len(batch.Data) == 0 && !batch.IsEof() {
 		return nil
 	}
 
@@ -299,7 +299,7 @@ func (g *Gateway) handleResult1(msg common.Message) error {
 	return nil
 }
 
-func (g *Gateway) processResult1(batch common.MoviesBatch) error {
+func (g *Gateway) processResult1(batch common.Batch[common.Movie]) error {
 	if batch.IsEof() {
 		slog.Info("EOF message received", slog.Any("headers", batch.Header))
 		err := communication.SendQueryEof(g.client, 1)
@@ -307,8 +307,8 @@ func (g *Gateway) processResult1(batch common.MoviesBatch) error {
 			return fmt.Errorf("error sending EOF: %w", err)
 		}
 	} else {
-		q1Movies := make([]models.QueryResult, len(batch.Movies))
-		for i, movie := range batch.Movies {
+		q1Movies := make([]models.QueryResult, len(batch.Data))
+		for i, movie := range batch.Data {
 			q1Movies[i] = models.Q1Movie{
 				Title:  movie.Title,
 				Genres: movie.Genres,
@@ -345,8 +345,8 @@ func (g *Gateway) handleResults2(msg common.Message) error {
 	return nil
 }
 
-func (g *Gateway) consumeBatch(msg []byte) (common.MoviesBatch, error) {
-	var batch common.MoviesBatch
+func (g *Gateway) consumeBatch(msg []byte) (common.Batch[common.Movie], error) {
+	var batch common.Batch[common.Movie]
 	if err := json.Unmarshal(msg, &batch); err != nil {
 		return batch, fmt.Errorf("error unmarshalling result: %w", err)
 	}
