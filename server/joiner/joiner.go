@@ -3,42 +3,17 @@ package main
 import (
 	"encoding/json"
 	"log/slog"
-	"time"
 	"tp-sistemas-distribuidos/server/common"
 )
 
 const reviewsToJoinQueue = "reviews-to-join"
 const moviesToJoinWithQueue = "movies-to-join"
+
 // const nextStep = "q1-results"
 const nextStep = "q3-to-reduce"
 const ON = 1
 const OFF = 0
 
-// ReviewToJoin represents a review that should be joined with a movie
-type ReviewToJoin struct {
-	ID      string `json:"id"`
-	MovieID string `json:"movie_id"`
-	Rating  uint32 `json:"rating"`
-}
-
-// ReviewsBatch represents a batch of reviews
-type ReviewsBatch struct {
-	Header  common.Header  `json:"header"`
-	Reviews []ReviewToJoin `json:"reviews"`
-}
-
-// ReviewXMovies represents a review joined with a movie
-type ReviewXMovies struct {
-	MovieID string `json:"movie_id"`
-	Title   string `json:"title"`
-	Rating  uint32 `json:"rating"`
-}
-
-// ReviewsXMoviesBatch represents a batch of reviews joined with movies
-type ReviewsXMoviesBatch struct {
-	Header         common.Header   `json:"header"`
-	ReviewsXMovies []ReviewXMovies `json:"reviews_x_movies"`
-}
 type Joiner struct {
 	rabbitUser     string
 	rabbitPass     string
@@ -66,7 +41,7 @@ func (j *Joiner) Start() {
 		return
 	}
 
-	reviewsChan, err := mockReviewsChan() //j.middleware.GetChanToRecv(reviewsToJoinQueue)
+	reviewsChan, err := j.middleware.GetChanToRecv(reviewsToJoinQueue)
 	if err != nil {
 		slog.Error("error creating channel", slog.String("queue", reviewsToJoinQueue), slog.String("error", err.Error()))
 		return
@@ -113,14 +88,14 @@ func (j *Joiner) start(moviesChan, reviewsChan <-chan common.Message, nextStepCh
 
 		case msg := <-reviews[reviewsStatus]:
 			slog.Info("Received message from reviews")
-			var batch common.Batch[ReviewToJoin]
+			var batch common.Batch[common.Review]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
 
 			reviewXMovies := j.join(batch.Data)
-			reviewsXMoviesBatch := common.Batch[ReviewXMovies]{
+			reviewsXMoviesBatch := common.Batch[common.MovieReview]{
 				Header: batch.Header,
 				Data:   reviewXMovies,
 			}
@@ -133,26 +108,25 @@ func (j *Joiner) start(moviesChan, reviewsChan <-chan common.Message, nextStepCh
 			slog.Info("Sending msgs: ", slog.Any("response", reviewsXMoviesBatch))
 			nextStepChan <- response
 
-			//TODO: Uncomment this when using middleware
-			//if err := msg.Ack(); err != nil {
-			//	slog.Error("error acknowledging message", slog.String("error", err.Error()))
-			//}
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			}
 			continue
 		}
 	}
 }
 
-func (j *Joiner) join(reviews []ReviewToJoin) []ReviewXMovies {
+func (j *Joiner) join(reviews []common.Review) []common.MovieReview {
 	joinedReviews := common.Map(reviews, j.joinReview)
 	return common.Flatten(joinedReviews)
 }
 
-func (j *Joiner) joinReview(r ReviewToJoin) []ReviewXMovies {
+func (j *Joiner) joinReview(r common.Review) []common.MovieReview {
 
 	movies := j.getMovies()
 	moviesForReview := common.Filter(movies, func(m common.Movie) bool { return m.ID == r.MovieID })
-	reviewXMovies := common.Map(moviesForReview, func(m common.Movie) ReviewXMovies {
-		return ReviewXMovies{
+	reviewXMovies := common.Map(moviesForReview, func(m common.Movie) common.MovieReview {
+		return common.MovieReview{
 			MovieID: m.ID,
 			Title:   m.Title,
 			Rating:  r.Rating,
@@ -195,42 +169,4 @@ func (j *Joiner) Close() error {
 		return err
 	}
 	return nil
-}
-
-func mockReviewsChan() (<-chan common.Message, error) {
-	reviewsChan := make(chan common.Message, 1)
-	go func() {
-		time.Sleep(3 * time.Second)
-		batch := ReviewsBatch{Reviews: []ReviewToJoin{
-			{ID: "1", MovieID: "4", Rating: 5},
-			{ID: "2", MovieID: "4", Rating: 4},
-			{ID: "3", MovieID: "5", Rating: 3},
-		},
-			Header: common.Header{Weight: uint32(3), TotalWeight: int32(-1)},
-		}
-		serializedBatch, err := json.Marshal(batch)
-		if err != nil {
-			slog.Error("error marshalling batch", slog.String("error", err.Error()))
-			return
-		}
-
-		reviewsChan <- common.Message{
-			Body: serializedBatch,
-		}
-
-		time.Sleep(1 * time.Second)
-		batch = ReviewsBatch{
-			Header: common.Header{Weight: uint32(0), TotalWeight: int32(3)},
-		}
-		serializedBatch, err = json.Marshal(batch)
-		if err != nil {
-			slog.Error("error marshalling batch", slog.String("error", err.Error()))
-			return
-		}
-
-		reviewsChan <- common.Message{
-			Body: serializedBatch,
-		}
-	}()
-	return reviewsChan, nil
 }

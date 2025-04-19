@@ -272,7 +272,12 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 				return
 			}
 		case msg := <-g.resultsQueues[3]:
-			slog.Info("Received Q3 response: ", slog.String("result", string(msg.Body)))
+			var batch common.BestAndWorstMovies
+			if err := json.Unmarshal(msg.Body, &batch); err != nil {
+				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+				return
+			}
+			slog.Info("Received Q3 response: ", slog.Any("batch", batch))
 			if err := msg.Ack(); err != nil {
 				return
 			}

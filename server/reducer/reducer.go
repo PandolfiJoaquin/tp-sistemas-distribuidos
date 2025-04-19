@@ -20,23 +20,6 @@ var queriesQueues = map[int]queuesNames{
 	5: {previousQueue: "q5-to-reduce", nextQueue: "q5-to-final-reduce"},
 }
 
-// ReviewXMovies represents a review joined with a movie
-type ReviewXMovies struct {
-	MovieID string `json:"movie_id"`
-	Title   string `json:"title"`
-	Rating  uint32 `json:"rating"`
-}
-
-// ReviewsXMoviesBatch represents a batch of reviews joined with movies
-type ReviewsXMoviesBatch struct {
-	Header         common.Header   `json:"header"`
-	ReviewsXMovies []ReviewXMovies `json:"reviews_x_movies"`
-}
-
-func (b *ReviewsXMoviesBatch) IsEof() bool {
-	return b.Header.TotalWeight > 0
-}
-
 type Reducer struct {
 	middleware  *common.Middleware
 	connections map[int]connection
@@ -141,7 +124,7 @@ func (r *Reducer) processQuery2Message(msg common.Message) error {
 }
 
 func (r *Reducer) processQuery3Message(msg common.Message) error {
-	var batch ReviewsXMoviesBatch
+	var batch common.Batch[common.MovieReview]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		return fmt.Errorf("error unmarshalling query 3 message: %w", err)
 	}
@@ -180,10 +163,10 @@ func (r *Reducer) reduceQ2(batch common.Batch[common.Movie]) (common.CoutriesBud
 	}, nil
 }
 
-func (r *Reducer) reduceQ3(batch ReviewsXMoviesBatch) (common.MoviesAvgRatingMsg, error) {
+func (r *Reducer) reduceQ3(batch common.Batch[common.MovieReview]) (common.MoviesAvgRatingMsg, error) {
 	// me llega un mensaje de peliculasXReviews y tengo que reducirlo a un map con cada entrada (peli, sum(ratings), cant_reviews), me viene filtrado
 	movieRatings := make(map[string]common.MovieAvgRating)
-	for _, movieRating := range batch.ReviewsXMovies {
+	for _, movieRating := range batch.Data {
 		if previousRating, ok := movieRatings[movieRating.MovieID]; !ok {
 			movieRatings[movieRating.MovieID] = common.MovieAvgRating{MovieID: movieRating.MovieID, RatingSum: movieRating.Rating, RatingCount: 1}
 		} else {

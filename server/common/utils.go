@@ -27,7 +27,7 @@ func Map[T, U any](slice []T, mapper func(T) U) []U {
 	return result
 }
 
-func Sum[T uint32 | int32 | int](slice []T) int {
+func Sum[T uint32 | int32 | int | float64](slice []T) int {
 	sum := 0
 	for _, item := range slice {
 		sum += int(item)

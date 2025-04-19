@@ -173,7 +173,7 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 		}
 
 		if rb.IsEof() {
-			payload = common.ReviewsBatch{Header: header}
+			payload = common.Batch[common.Review]{Header: header}
 		} else {
 			payload = p.preprocessReviews(rb)
 		}
@@ -227,27 +227,27 @@ func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.Batch
 	return res
 }
 
-func (p *Preprocessor) preprocessReviews(batch models.RawReviewBatch) common.ReviewsBatch {
-	reviews := make([]common.ReviewToJoin, 0)
+func (p *Preprocessor) preprocessReviews(batch models.RawReviewBatch) common.Batch[common.Review] {
+	reviews := make([]common.Review, 0)
 
 	for _, review := range batch.Reviews {
 		id := review.UserID
 		movieID := review.MovieID
 		rating := review.Rating
 
-		reviews = append(reviews, common.ReviewToJoin{
+		reviews = append(reviews, common.Review{
 			ID:      id,
 			MovieID: movieID,
 			Rating:  rating,
 		})
 	}
 
-	res := common.ReviewsBatch{
+	res := common.Batch[common.Review]{
 		Header: common.Header{
 			Weight:      uint32(len(reviews)),
 			TotalWeight: -1,
 		},
-		Reviews: reviews,
+		Data: reviews,
 	}
 
 	return res

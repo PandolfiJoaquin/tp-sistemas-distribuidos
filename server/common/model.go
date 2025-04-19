@@ -28,15 +28,10 @@ func (h *Header) IsEof() bool {
 	return h.TotalWeight > 0
 }
 
-type ReviewToJoin struct {
+type Review struct {
 	ID      string  `json:"id"`
 	MovieID string  `json:"movie_id"`
-	Rating  float32 `json:"rating"`
-}
-
-type ReviewsBatch struct {
-	Header  Header         `json:"header"`
-	Reviews []ReviewToJoin `json:"reviews"`
+	Rating  float64 `json:"rating"`
 }
 
 type ToProcessMsg struct {
@@ -59,9 +54,9 @@ func (b *CoutriesBudgetMsg) IsEof() bool { //TODO: se puede obviar si se compone
 }
 
 type MovieAvgRating struct {
-	MovieID     string `json:"movie_id"`
-	RatingSum   uint32 `json:"rating_sum"`
-	RatingCount uint32 `json:"rating_count"`
+	MovieID     string  `json:"movie_id"`
+	RatingSum   float64 `json:"rating_sum"`
+	RatingCount uint32  `json:"rating_count"`
 }
 
 type MoviesAvgRatingMsg struct {
@@ -146,4 +141,23 @@ var EOF = Batch[Movie]{
 	Header: Header{
 		TotalWeight: int32(len(MockedBatch.Data)),
 	},
+}
+
+// MovieReview represents a review joined with a movie
+type MovieReview struct {
+	MovieID string  `json:"movie_id"`
+	Title   string  `json:"title"`
+	Rating  float64 `json:"rating"`
+}
+
+type Actor struct {
+	ActorID string `json:"actor_id"`
+	Name    string `json:"name"`
+	MovieID string `json:"movie_id"`
+}
+
+type MovieActor struct { //si, es igual al de arriba
+	ActorID string `json:"actor_id"`
+	Name    string `json:"name"`
+	MovieID string `json:"movie_id"`
 }
