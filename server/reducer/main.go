@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	logger, err := log.SetupLogger("joiner", false, nil)
+	logger, err := log.SetupLogger("reducer", false, nil)
 	if err != nil {
 		fmt.Printf("error creating logger: %v", err)
 		return
@@ -23,18 +23,12 @@ func main() {
 		return
 	}
 
-	joiner, err := NewJoiner(rabbitUser, rabbitPass)
+	reducer, err := NewReducer(rabbitUser, rabbitPass)
 	if err != nil {
-		slog.Error("error creating joiner", slog.String("error", err.Error()))
+		slog.Error("error creating reducer", slog.String("error", err.Error()))
 		return
 	}
-
-	defer func(joiner *Joiner) {
-		err := joiner.Close()
-		if err != nil {
-			slog.Error("error closing joiner", slog.String("error", err.Error()))
-		}
-	}(joiner)
-
-	joiner.Start()
+	reducer.Start()
+	
+	reducer.Stop()
 }

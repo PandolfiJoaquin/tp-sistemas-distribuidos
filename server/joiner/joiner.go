@@ -9,7 +9,8 @@ import (
 
 const reviewsToJoinQueue = "reviews-to-join"
 const moviesToJoinWithQueue = "movies-to-join"
-const nextStep = "q1-results"
+// const nextStep = "q1-results"
+const nextStep = "q3-to-reduce"
 const ON = 1
 const OFF = 0
 
@@ -201,13 +202,27 @@ func mockReviewsChan() (<-chan common.Message, error) {
 	go func() {
 		time.Sleep(3 * time.Second)
 		batch := ReviewsBatch{Reviews: []ReviewToJoin{
-			{ID: "1", MovieID: "1", Rating: 5},
-			{ID: "2", MovieID: "1", Rating: 4},
+			{ID: "1", MovieID: "4", Rating: 5},
+			{ID: "2", MovieID: "4", Rating: 4},
 			{ID: "3", MovieID: "5", Rating: 3},
 		},
-			Header: common.Header{Weight: uint32(1), TotalWeight: int32(-1)},
+			Header: common.Header{Weight: uint32(3), TotalWeight: int32(-1)},
 		}
 		serializedBatch, err := json.Marshal(batch)
+		if err != nil {
+			slog.Error("error marshalling batch", slog.String("error", err.Error()))
+			return
+		}
+
+		reviewsChan <- common.Message{
+			Body: serializedBatch,
+		}
+
+		time.Sleep(1 * time.Second)
+		batch = ReviewsBatch{
+			Header: common.Header{Weight: uint32(0), TotalWeight: int32(3)},
+		}
+		serializedBatch, err = json.Marshal(batch)
 		if err != nil {
 			slog.Error("error marshalling batch", slog.String("error", err.Error()))
 			return

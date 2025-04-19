@@ -71,6 +71,47 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
+  reducer:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+          NODE: reducer
+    container_name: reducer
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+  final-reducer-q2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+          NODE: final-reducer
+    container_name: final-reducer-q2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - QUERY_NUM=2
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+  final-reducer-q3:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+          NODE: final-reducer
+    container_name: final-reducer-q3
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - QUERY_NUM=3
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq

@@ -5,11 +5,13 @@ import (
 	"log/slog"
 	"slices"
 
+	pkg "pkg/models"
 	"tp-sistemas-distribuidos/server/common"
 )
 
 const PREVIOUS_STEP = "filter-production-q1"
 const NEXT_STEP = "movies-to-join"
+// const NEXT_STEP = "q2-to-reduce"
 
 type ProductionFilter struct {
 	rabbitUser string
@@ -65,7 +67,7 @@ func (f *ProductionFilter) processMessages(moviesToFilterChan <-chan common.Mess
 
 		filteredMovies := batch.Movies
 		if !batch.IsEof() {
-			filteredMovies = common.Filter(batch.Movies, f.filterByProductionQ1)
+			filteredMovies = common.Filter(batch.Movies, f.filterByProductionQ3)
 			slog.Info("movies left after filtering by production", slog.Any("movies", filteredMovies))
 		}
 
@@ -84,6 +86,18 @@ func (f *ProductionFilter) processMessages(moviesToFilterChan <-chan common.Mess
 }
 
 func (f *ProductionFilter) filterByProductionQ1(movie common.Movie) bool {
-	return slices.Contains(movie.ProductionCountries, "Argentina") &&
-		slices.Contains(movie.ProductionCountries, "España")
+	arg := pkg.Country{Code: "AR", Name: "Argentina"}
+	esp := pkg.Country{Code: "ES", Name: "Spain"}
+	return slices.Contains(movie.ProductionCountries, arg) &&
+		slices.Contains(movie.ProductionCountries, esp)
 }
+
+func (f *ProductionFilter) filterByProductionQ2(movie common.Movie) bool {
+	return len(movie.ProductionCountries) == 1
+}
+
+func (f *ProductionFilter) filterByProductionQ3(movie common.Movie) bool {
+	arg := pkg.Country{Code: "AR", Name: "Argentina"}
+	return slices.Contains(movie.ProductionCountries, arg)
+}
+

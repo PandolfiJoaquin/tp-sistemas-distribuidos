@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type RawMovie struct {
 	Adult               bool        `json:"adult"`
@@ -59,4 +62,30 @@ type Country struct {
 type Language struct {
 	Code string `json:"iso_639_1"` // ISO 639-1 code
 	Name string `json:"name"`
+}
+
+// MarshalJSON implementa json.Marshaler
+func (c Country) MarshalJSON() ([]byte, error) {
+	// Definimos una struct auxiliar con los campos que queremos serializar
+	type Alias Country
+	return json.Marshal(&struct {
+		Alias
+	}{
+		Alias: (Alias)(c),
+	})
+}
+
+// UnmarshalJSON implementa json.Unmarshaler
+func (c *Country) UnmarshalJSON(data []byte) error {
+	type Alias Country
+	aux := &struct {
+		Alias
+	}{}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*c = Country(aux.Alias)
+	return nil
 }
