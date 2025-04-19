@@ -62,7 +62,6 @@ func (f *ProductionFilter) processMessages(moviesToFilterChan <-chan common.Mess
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 			continue
 		}
-		slog.Info("processing barch", slog.Any("headers", batch.Header), slog.Any("movies", len(batch.Movies)))
 		//slog.Info("processing batch", slog.Any("headers", batch.Header), slog.Any("movies", batch.Movies))
 
 		filteredMovies := batch.Movies

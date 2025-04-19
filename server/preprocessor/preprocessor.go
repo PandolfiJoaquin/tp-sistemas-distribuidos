@@ -99,7 +99,6 @@ func (p *Preprocessor) processMessages() {
 
 		if !batch.IsEof() {
 			preprocessBatch = p.preprocessBatch(batch)
-			slog.Info("movies left after preprocessing", slog.Any("movies", preprocessBatch.Movies))
 		} else {
 			slog.Info("EOF received")
 		}
@@ -137,7 +136,7 @@ func (p *Preprocessor) preprocessBatch(batch models.RawMovieBatch) common.Batch 
 			ID:                  id,
 			Title:               title,
 			Year:                year,
-			Genre:               genres,
+			Genres:              genres,
 			ProductionCountries: countries,
 		})
 	}

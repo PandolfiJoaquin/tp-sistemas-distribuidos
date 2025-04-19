@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"pkg/communication"
+	"pkg/models"
 	"tp-sistemas-distribuidos/server/common"
 )
 
@@ -32,6 +33,7 @@ type Gateway struct {
 	q1Results      <-chan common.Message
 	config         GatewayConfig
 	listener       net.Listener
+	client         net.Conn
 	running        bool
 }
 
@@ -90,20 +92,22 @@ func (g *Gateway) listen() {
 			slog.Error("error accepting connection", slog.String("error", err.Error()))
 			continue
 		}
-		g.handleConnection(conn)
+		g.client = conn
+		g.handleConnection()
 	}
 }
 
-func (g *Gateway) handleConnection(conn net.Conn) {
-	defer conn.Close()
-	slog.Info("Client connected", slog.String("address", conn.RemoteAddr().String()))
+func (g *Gateway) handleConnection() {
+	slog.Info("Client connected", slog.String("address", g.client.RemoteAddr().String()))
 	total := 0
 	for {
-		movies, err := communication.RecvMovies(conn)
+		movies, err := communication.RecvMovies(g.client)
 		if err != nil {
 			slog.Error("error receiving movies", slog.String("error", err.Error()))
 			return
 		}
+
+		//slog.Info("Received movies", slog.Any("headers", movies.Header))
 
 		body, err := json.Marshal(movies)
 		if err != nil {
@@ -118,14 +122,17 @@ func (g *Gateway) handleConnection(conn net.Conn) {
 		if movies.IsEof() {
 			break
 		}
-
 	}
 
 	slog.Info("Total movies received", slog.Int("total", total))
 }
 
 func (g *Gateway) Start() {
+	go g.processMessages()
 	g.listen()
+
+	forever := make(chan bool)
+	<-forever
 }
 
 func (g *Gateway) processMessages() {
@@ -133,16 +140,41 @@ func (g *Gateway) processMessages() {
 		var batch common.Batch
 		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+			return
 		}
 
-		if batch.IsEof() {
-			slog.Info("EOF received")
-		} else {
-			slog.Info("Got batch", slog.Any("headers", batch.Header), slog.Any("movies", batch.Movies))
+		// TODO: Check for different query results.
+		q1Movies := make([]models.QueryResult, len(batch.Movies))
+		for i, movie := range batch.Movies {
+			q1Movies[i] = models.Q1Movie{
+				Title:  movie.Title,
+				Genres: movie.Genres,
+			}
+		}
+
+		err := communication.SendQueryResults(g.client, 1, q1Movies)
+		if err != nil {
+			slog.Error("error sending query results", slog.String("error", err.Error()))
+			return
 		}
 
 		if err := msg.Ack(); err != nil {
 			slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			return
 		}
+
+		//if err := json.Unmarshal(msg.Body, &batch); err != nil {
+		//	slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+		//}
+		//
+		//if batch.IsEof() {
+		//	slog.Info("EOF received")
+		//} else {
+		//	slog.Info("Got movies", slog.Any("headers", batch.Header), slog.Any("movies", batch.Movies))
+		//}
+		//
+		//if err := msg.Ack(); err != nil {
+		//	slog.Error("error acknowledging message", slog.String("error", err.Error()))
+		//}
 	}
 }

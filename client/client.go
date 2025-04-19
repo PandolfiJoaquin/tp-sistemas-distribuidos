@@ -66,6 +66,7 @@ func (c *Client) Start() {
 
 func (c *Client) sendMovies(reader *utils.MoviesReader) error {
 	movies, err := reader.ReadMovies()
+	slog.Info("read movies", slog.Int("count", len(movies)))
 	if err != nil {
 		return fmt.Errorf("error sending movies: %w", err)
 	}
@@ -103,5 +104,16 @@ func (c *Client) SendAllMovies() {
 
 func (c *Client) RecvAnswers(wg *sync.WaitGroup) {
 	defer wg.Done()
-	// Implement the logic to receive answers from the server
+	for {
+		results, err := communication.RecvQueryResults(c.conn)
+		if err != nil {
+			slog.Error("error receiving query results", slog.String("error", err.Error()))
+			return
+		}
+
+		for _, result := range results {
+			slog.Info("Got query result", slog.String("result", result.String()))
+		}
+
+	}
 }

@@ -6,7 +6,7 @@ type Movie struct {
 	ID                  string        `json:"id"`
 	Title               string        `json:"title"`
 	Year                int           `json:"year"`
-	Genre               string        `json:"genre"`
+	Genres              []pkg.Genre   `json:"genres"`
 	ProductionCountries []pkg.Country `json:"production_countries"`
 	Budget              uint32        `json:"budget"`
 }
@@ -72,7 +72,7 @@ var mockedMovies = []Movie{
 		ID:                  "1",
 		Title:               "Interstellar",
 		Year:                2010,
-		Genre:               "Space",
+		Genres:              []pkg.Genre{{ID: 1, Name: "Space"}},
 		ProductionCountries: []pkg.Country{{Code: "GB", Name: "England"}, {Code: "US", Name: "USA"}},
 		Budget:              100000000,
 	},
@@ -80,7 +80,7 @@ var mockedMovies = []Movie{
 		ID:                  "2",
 		Title:               "The Dark Knight",
 		Year:                2008,
-		Genre:               "Action",
+		Genres:              []pkg.Genre{{ID: 2, Name: "Action"}},
 		ProductionCountries: []pkg.Country{{Code: "US", Name: "USA"}},
 		Budget:              280000000,
 	},
@@ -88,7 +88,7 @@ var mockedMovies = []Movie{
 		ID:                  "3",
 		Title:               "Rata blanca",
 		Year:                2011,
-		Genre:               "Comedy",
+		Genres:              []pkg.Genre{{ID: 3, Name: "Comedy"}},
 		ProductionCountries: []pkg.Country{{Code: "AR", Name: "Argentina"}},
 		Budget:              930000000,
 	},
@@ -96,7 +96,7 @@ var mockedMovies = []Movie{
 		ID:                  "4",
 		Title:               "El secreto de sus ojos",
 		Year:                2009,
-		Genre:               "Drama",
+		Genres:              []pkg.Genre{{ID: 4, Name: "Drama"}},
 		ProductionCountries: []pkg.Country{{Code: "AR", Name: "Argentina"}, {Code: "ES", Name: "Spain"}},
 		Budget:              69200000,
 	},
@@ -104,7 +104,7 @@ var mockedMovies = []Movie{
 		ID:                  "5",
 		Title:               "Relatos salvajes",
 		Year:                2009,
-		Genre:               "Comedy",
+		Genres:              []pkg.Genre{{ID: 5, Name: "Comedy"}},
 		ProductionCountries: []pkg.Country{{Code: "AR", Name: "Argentina"}},
 		Budget:              27000000,
 	},
@@ -112,7 +112,7 @@ var mockedMovies = []Movie{
 		ID:                  "6",
 		Title:               "El padrino",
 		Year:                1980,
-		Genre:               "Drama",
+		Genres:              []pkg.Genre{{ID: 6, Name: "Drama"}},
 		ProductionCountries: []pkg.Country{{Code: "ES", Name: "Spain"}},
 		Budget:              34000000,
 	},
