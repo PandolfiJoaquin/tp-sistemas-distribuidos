@@ -2,12 +2,15 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"pkg/models"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"log/slog"
 )
 
 // Splits a string into pairs based on commas, while respecting quoted sections.
@@ -261,8 +264,38 @@ const (
 	colVoteCount
 )
 
+var notNa = []int{
+	colID,
+	colTitle,
+	colGenres,
+	colReleaseDate,
+	colOverview,
+	colProductionCountries,
+	colSpokenLanguages,
+	colBudget,
+	colRevenue,
+}
+
+var ErrInvalidMovie = errors.New("invalid movie")
+
+// hasNaNValues checks whether required fields are empty or NaN
+func hasNaNValues(record []string) bool {
+	for _, idx := range notNa {
+		value := record[idx]
+		if value == "" || value == "NaN" {
+			return true
+		}
+	}
+	return false
+}
+
 // parseMovie builds a RawMovie from a CSV record slice.
 func parseMovie(record []string) (*models.RawMovie, error) {
+	if hasNaNValues(record) {
+		slog.Warn("invalid movie, dropping", slog.Any("record", record[colID]))
+		return nil, ErrInvalidMovie
+	}
+
 	adult, err := parseBool(record[colAdult], "adult")
 	if err != nil {
 		return nil, err
@@ -273,7 +306,7 @@ func parseMovie(record []string) (*models.RawMovie, error) {
 		return nil, fmt.Errorf("error parsing collection: %v", err)
 	}
 
-	budget, err := parseUint32(record[colBudget], "budget")
+	budget, err := parseUint64(record[colBudget], "budget")
 	if err != nil {
 		return nil, err
 	}

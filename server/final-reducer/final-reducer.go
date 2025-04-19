@@ -18,10 +18,10 @@ var previousQueuesForQueries = map[int]string{
 }
 
 var resultQueuesForQueries = map[int]string{
-	2: "q2-result",
-	3: "q3-result",
-	4: "q4-result",
-	5: "q5-result",
+	2: "q2-results",
+	3: "q3-results",
+	4: "q4-results",
+	5: "q5-results",
 }
 
 type FinalReducer struct {
@@ -91,7 +91,7 @@ func (r *FinalReducer) Start() {
 }
 
 func (r *FinalReducer) startReceivingQ2() {
-	countries := make(map[pkg.Country]uint32)
+	countries := make(map[pkg.Country]uint64)
 	currentWeight := uint32(0)
 	eofWeight := int32(0)
 	for msg := range r.connection.ChanToRecv {
@@ -113,7 +113,7 @@ func (r *FinalReducer) startReceivingQ2() {
 			eofWeight = int32(batch.Header.TotalWeight)
 		}
 
-		if int32(currentWeight) == eofWeight {
+		if int32(currentWeight) == eofWeight && eofWeight != 0 {
 			top5Countries := calculateTop5Countries(countries)
 			response, err := json.Marshal(top5Countries)
 			if err != nil {
@@ -176,10 +176,15 @@ func (r *FinalReducer) startReceivingQ3() {
 	}
 }
 
-func calculateTop5Countries(countries map[pkg.Country]uint32) common.Top5Countries {
+func calculateTop5Countries(countries map[pkg.Country]uint64) common.Top5Countries {
+	if len(countries) == 0 {
+		slog.Warn("countries count is 0, returning empty top 5 countries")
+		return common.Top5Countries{}
+	}
+
 	type countryBudget struct {
 		country pkg.Country
-		budget  uint32
+		budget  uint64
 	}
 
 	counts := make([]countryBudget, 0, len(countries))

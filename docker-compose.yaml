@@ -1,3 +1,4 @@
+name: tp-dist
 services:
   client:
     build:
@@ -5,46 +6,48 @@ services:
     container_name: client
     depends_on:
       - gateway
+    volumes:
+        - ./archive/:/home/app/archive/
 
-  gateway :
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-        NODE: gateway
-    container_name: gateway
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
+  gateway:
+     build:
+       dockerfile: ./server/Dockerfile
+       args:
+         NODE: gateway
+     container_name: gateway
+     environment:
+       - RABBITMQ_DEFAULT_USER=monke
+       - RABBITMQ_DEFAULT_PASS=joaco1
+     depends_on:
+       rabbitmq:
+         condition: service_healthy
+         restart: true
   preprocessor:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-        NODE: preprocessor
-    container_name: preprocessor
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
+     build:
+       dockerfile: ./server/Dockerfile
+       args:
+         NODE: preprocessor
+     container_name: preprocessor
+     environment:
+       - RABBITMQ_DEFAULT_USER=monke
+       - RABBITMQ_DEFAULT_PASS=joaco1
+     depends_on:
+       rabbitmq:
+         condition: service_healthy
+         restart: true
   production-filter:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-          NODE: production-filter
-    container_name: production-filter
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
+     build:
+       dockerfile: ./server/Dockerfile
+       args:
+           NODE: production-filter
+     container_name: production-filter
+     environment:
+       - RABBITMQ_DEFAULT_USER=monke
+       - RABBITMQ_DEFAULT_PASS=joaco1
+     depends_on:
+       rabbitmq:
+         condition: service_healthy
+         restart: true
   year-filter:
     build:
       dockerfile: ./server/Dockerfile

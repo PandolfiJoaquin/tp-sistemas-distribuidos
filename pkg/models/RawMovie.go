@@ -8,7 +8,7 @@ import (
 type RawMovie struct {
 	Adult               bool        `json:"adult"`
 	BelongsToCollection *Collection `json:"belongs_to_collection,omitempty"`
-	Budget              uint32      `json:"budget"`
+	Budget              uint64      `json:"budget"`
 	Genres              []Genre     `json:"genres"`
 	Homepage            string      `json:"homepage,omitempty"`
 	ID                  uint32      `json:"id"`
@@ -62,6 +62,10 @@ type Country struct {
 type Language struct {
 	Code string `json:"iso_639_1"` // ISO 639-1 code
 	Name string `json:"name"`
+}
+
+func (c Country) Equals(other Country) bool {
+	return c.Code == other.Code && c.Name == other.Name
 }
 
 // MarshalJSON implementa json.Marshaler

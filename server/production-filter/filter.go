@@ -10,8 +10,11 @@ import (
 )
 
 const PREVIOUS_STEP = "filter-production-q1"
-const NEXT_STEP = "movies-to-join"
-// const NEXT_STEP = "q2-to-reduce"
+
+// const NEXT_STEP = "movies-to-join"
+const NEXT_STEP = "q2-to-reduce"
+
+// const NEXT_STEP = "q1-results"
 
 type ProductionFilter struct {
 	rabbitUser string
@@ -62,12 +65,11 @@ func (f *ProductionFilter) processMessages(moviesToFilterChan <-chan common.Mess
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 			continue
 		}
-
-		slog.Info("processing batch", slog.Any("headers", batch.Header), slog.Any("movies", batch.Movies))
+		//slog.Info("processing batch", slog.Any("headers", batch.Header), slog.Any("movies", batch.Movies))
 
 		filteredMovies := batch.Movies
 		if !batch.IsEof() {
-			filteredMovies = common.Filter(batch.Movies, f.filterByProductionQ3)
+			filteredMovies = common.Filter(batch.Movies, f.filterByProductionQ2)
 			slog.Info("movies left after filtering by production", slog.Any("movies", filteredMovies))
 		}
 
@@ -93,11 +95,10 @@ func (f *ProductionFilter) filterByProductionQ1(movie common.Movie) bool {
 }
 
 func (f *ProductionFilter) filterByProductionQ2(movie common.Movie) bool {
-	return len(movie.ProductionCountries) == 1
+	return len(movie.ProductionCountries) == 1 && movie.Budget > 0
 }
 
 func (f *ProductionFilter) filterByProductionQ3(movie common.Movie) bool {
 	arg := pkg.Country{Code: "AR", Name: "Argentina"}
 	return slices.Contains(movie.ProductionCountries, arg)
 }
-
