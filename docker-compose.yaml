@@ -131,6 +131,3 @@ services:
       interval: 2s
       timeout: 5s
       retries: 3
-
-# volumes:
-#   rabbitmq_data:  
