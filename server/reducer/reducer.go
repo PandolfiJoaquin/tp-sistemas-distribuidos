@@ -144,7 +144,6 @@ func (r *Reducer) processQuery2Message(msg common.Message) error {
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		return fmt.Errorf("error unmarshalling query 2 message: %w", err)
 	}
-
 	reduced, err := r.reduceQ2(batch)
 	if err != nil {
 		return fmt.Errorf("error processing query2 message: %w", err)
@@ -178,7 +177,7 @@ func (r *Reducer) processQuery3Message(msg common.Message) error {
 
 func (r *Reducer) reduceQ2(batch common.Batch) (common.CoutriesBudgetMsg, error) {
 	// me llega un mensaje de peliculas y tengo que reducirlo a un map con cada entrada (pais, $$), me viene filtrado
-	countries := make(map[pkg.Country]uint32)
+	countries := make(map[pkg.Country]uint64)
 	for _, movie := range batch.Movies {
 		if len(movie.ProductionCountries) > 1 {
 			return common.CoutriesBudgetMsg{}, fmt.Errorf("movie has more than 1 production country for query 2, movie: %v", movie)

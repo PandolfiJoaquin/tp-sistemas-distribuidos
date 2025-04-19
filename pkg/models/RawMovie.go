@@ -8,7 +8,7 @@ import (
 type RawMovie struct {
 	Adult               bool        `json:"adult"`
 	BelongsToCollection *Collection `json:"belongs_to_collection,omitempty"`
-	Budget              uint32      `json:"budget"`
+	Budget              uint64      `json:"budget"`
 	Genres              []Genre     `json:"genres"`
 	Homepage            string      `json:"homepage,omitempty"`
 	ID                  uint32      `json:"id"`

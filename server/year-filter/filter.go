@@ -83,3 +83,7 @@ func (f *YearFilter) processMessages(previousChan <-chan common.Message, nextCha
 func (f *YearFilter) year2000sFilter(movie common.Movie) bool {
 	return movie.Year >= 2000 && movie.Year < 2010
 }
+
+func (f *YearFilter) yearAfter2000sFilter(movie common.Movie) bool {
+	return movie.Year >= 2000
+}

@@ -8,7 +8,7 @@ type Movie struct {
 	Year                int           `json:"year"`
 	Genres              []pkg.Genre   `json:"genres"`
 	ProductionCountries []pkg.Country `json:"production_countries"`
-	Budget              uint32        `json:"budget"`
+	Budget              uint64        `json:"budget"`
 }
 
 type Header struct {
@@ -27,7 +27,7 @@ func (b *Batch) IsEof() bool {
 
 type CountryBudget struct {
 	Country pkg.Country `json:"country"`
-	Budget  uint32      `json:"budget"`
+	Budget  uint64      `json:"budget"`
 }
 
 type CoutriesBudgetMsg struct {

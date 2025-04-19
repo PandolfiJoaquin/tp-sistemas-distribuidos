@@ -306,7 +306,7 @@ func parseMovie(record []string) (*models.RawMovie, error) {
 		return nil, fmt.Errorf("error parsing collection: %v", err)
 	}
 
-	budget, err := parseUint32(record[colBudget], "budget")
+	budget, err := parseUint64(record[colBudget], "budget")
 	if err != nil {
 		return nil, err
 	}

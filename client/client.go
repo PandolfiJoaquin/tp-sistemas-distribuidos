@@ -9,7 +9,7 @@ import (
 	"tp-sistemas-distribuidos/client/utils"
 )
 
-const PATH = "archive/movies.csv"
+const PATH = "archive/movies_metadata.csv"
 
 type ClientConfig struct {
 	ServerAddress string

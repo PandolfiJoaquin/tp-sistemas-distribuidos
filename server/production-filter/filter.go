@@ -13,6 +13,7 @@ const PREVIOUS_STEP = "filter-production-q1"
 
 // const NEXT_STEP = "movies-to-join"
 const NEXT_STEP = "q2-to-reduce"
+
 // const NEXT_STEP = "q1-results"
 
 type ProductionFilter struct {
@@ -94,7 +95,7 @@ func (f *ProductionFilter) filterByProductionQ1(movie common.Movie) bool {
 }
 
 func (f *ProductionFilter) filterByProductionQ2(movie common.Movie) bool {
-	return len(movie.ProductionCountries) == 1
+	return len(movie.ProductionCountries) == 1 && movie.Budget > 0
 }
 
 func (f *ProductionFilter) filterByProductionQ3(movie common.Movie) bool {
