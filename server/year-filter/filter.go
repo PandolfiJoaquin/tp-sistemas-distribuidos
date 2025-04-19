@@ -19,7 +19,7 @@ var queriesQueues = map[int]queuesNames{
 }
 
 type YearFilter struct {
-	middleware *common.Middleware
+	middleware  *common.Middleware
 	connections map[int]connection
 }
 
@@ -107,23 +107,23 @@ func (f *YearFilter) processQueryMessage(queryNum int, msg common.Message, filte
 	return nil
 }
 
-func (f *YearFilter) filterMessage(msg common.Message, filterFunc func(common.Movie) bool) (common.Batch, error) {
-	var batch common.Batch
+func (f *YearFilter) filterMessage(msg common.Message, filterFunc func(common.Movie) bool) (common.Batch[common.Movie], error) {
+	var batch common.Batch[common.Movie]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
-		return common.Batch{}, fmt.Errorf("error unmarshalling message: %w", err)
+		return common.Batch[common.Movie]{}, fmt.Errorf("error unmarshalling message: %w", err)
 	}
 
-	filteredMovies := batch.Movies
+	filteredMovies := batch.Data
 	if !batch.IsEof() {
-		filteredMovies = common.Filter(batch.Movies, filterFunc)
+		filteredMovies = common.Filter(batch.Data, filterFunc)
 		slog.Info("movies left after filtering by year", slog.Any("movies", filteredMovies))
 	}
 
-	batch.Movies = filteredMovies
+	batch.Data = filteredMovies
 	return batch, nil
 }
 
-func (f *YearFilter) sendBatch(queryNum int, batch common.Batch) error {
+func (f *YearFilter) sendBatch(queryNum int, batch common.Batch[common.Movie]) error {
 	response, err := json.Marshal(batch)
 	if err != nil {
 		return fmt.Errorf("error marshalling batch: %w", err)

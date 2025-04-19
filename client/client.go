@@ -143,7 +143,7 @@ func (c *Client) SendAllReviews() {
 	}
 }
 
-const TotalQueries = 1
+const TotalQueries = 2
 
 func (c *Client) RecvAnswers(wg *sync.WaitGroup) {
 	queriesReceived := make([]bool, 0) // Array to store when we get the complete query

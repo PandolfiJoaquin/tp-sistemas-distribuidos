@@ -10,7 +10,9 @@ import (
 )
 
 const toPreProcess = "to-preprocess"
-const filterMoviesQueue = "filter-year-q1"
+const filterMoviesQ1 = "filter-year-q1"
+const filterMoviesQ2 = "filter-production-q2"
+const filterMovieQ3Q4 = "filter-year-q3q4"
 const reviewsQueue = "reviews-to-join"
 
 type PreprocessorConfig struct {
@@ -23,8 +25,7 @@ type Preprocessor struct {
 	middleware    *common.Middleware
 	toProcessChan <-chan common.Message
 	reviewsChan   chan<- []byte
-	actorsChan    chan<- []byte
-	moviesChan    chan<- []byte
+	moviesChans   []chan<- []byte
 }
 
 func NewPreprocessor(rabbitUser, rabbitPass string) *Preprocessor {
@@ -59,10 +60,25 @@ func (p *Preprocessor) middlewareSetup() error {
 		return fmt.Errorf("error getting channel to send reviews: %s", err)
 	}
 
-	moviesToFilter, err := middleware.GetChanToSend(filterMoviesQueue)
+	moviesChans := make([]chan<- []byte, 0)
+	moviesToFilterQ1, err := middleware.GetChanToSend(filterMoviesQ1)
 	if err != nil {
-		return fmt.Errorf("error getting channel to receive movies: %s", err)
+		return fmt.Errorf("error getting channel to send movies: %s", err)
 	}
+
+	moviesToFilterQ2, err := middleware.GetChanToSend(filterMoviesQ2)
+	if err != nil {
+		return fmt.Errorf("error getting channel to send movies: %s", err)
+	}
+
+	moviesToFilterQ3Q4, err := middleware.GetChanToSend(filterMovieQ3Q4)
+	if err != nil {
+		return fmt.Errorf("error getting channel to send movies: %s", err)
+	}
+
+	moviesChans = append(moviesChans, moviesToFilterQ1)
+	moviesChans = append(moviesChans, moviesToFilterQ2)
+	moviesChans = append(moviesChans, moviesToFilterQ3Q4)
 
 	toProcess, err := middleware.GetChanToRecv(toPreProcess)
 	if err != nil {
@@ -72,7 +88,7 @@ func (p *Preprocessor) middlewareSetup() error {
 	p.middleware = middleware
 	p.toProcessChan = toProcess
 	p.reviewsChan = reviewsToJoin
-	p.moviesChan = moviesToFilter
+	p.moviesChans = moviesChans
 
 	return nil
 }
@@ -118,7 +134,7 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 	var (
 		header  common.Header
 		payload interface{}
-		outCh   chan<- []byte
+		outCh   []chan<- []byte
 	)
 
 	switch batch.Type {
@@ -134,14 +150,16 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 		}
 
 		if mb.IsEof() {
-			payload = common.MoviesBatch{Header: header}
+			payload = common.Batch[common.Movie]{Header: header}
 		} else {
 			payload = p.preprocessMovies(mb)
 		}
 
 		slog.Info("preprocessing Movies", slog.String("batch", string(batch.Body)))
 
-		outCh = p.moviesChan
+		for _, moviesChan := range p.moviesChans {
+			outCh = append(outCh, moviesChan)
+		}
 
 	case "reviews":
 		var rb models.RawReviewBatch
@@ -162,7 +180,7 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 
 		slog.Info("preprocessing reviews", slog.String("batch", string(batch.Body)))
 
-		outCh = p.reviewsChan
+		outCh = append(outCh, p.reviewsChan)
 
 	default:
 		return fmt.Errorf("unknown batch type %q", batch.Type)
@@ -172,12 +190,15 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 	if err != nil {
 		return fmt.Errorf("error marshalling %s payload: %w", batch.Type, err)
 	}
-	outCh <- resp
+
+	for _, ch := range outCh {
+		ch <- resp
+	}
 
 	return nil
 }
 
-func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.MoviesBatch {
+func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.Batch[common.Movie] {
 	movies := make([]common.Movie, 0)
 
 	for _, movie := range batch.Movies {
@@ -195,12 +216,12 @@ func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.Movie
 		})
 	}
 
-	res := common.MoviesBatch{
+	res := common.Batch[common.Movie]{
 		Header: common.Header{
 			Weight:      uint32(len(movies)),
 			TotalWeight: -1,
 		},
-		Movies: movies,
+		Data: movies,
 	}
 
 	return res

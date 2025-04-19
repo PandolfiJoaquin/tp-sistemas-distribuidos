@@ -23,13 +23,13 @@ type queuesNames struct {
 }
 
 var queriesQueues = map[int]queuesNames{
-	1: {previousQueue: "filter-production-q1", nextQueue: "q1-result"},
+	1: {previousQueue: "filter-production-q1", nextQueue: "q1-results"},
 	2: {previousQueue: "filter-production-q2", nextQueue: "q2-to-reduce"},
 	3: {previousQueue: "filter-production-q3q4", nextQueue: "movies-to-join"}, // TODO: change to shards
 }
 
 type ProductionFilter struct {
-	middleware *common.Middleware
+	middleware  *common.Middleware
 	connections map[int]connection
 }
 
@@ -43,7 +43,7 @@ func NewProductionFilter(rabbitUser, rabbitPass string) (*ProductionFilter, erro
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
-	
+
 	connections, err := initializeConnections(middleware)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing connections: %w", err)
@@ -51,7 +51,6 @@ func NewProductionFilter(rabbitUser, rabbitPass string) (*ProductionFilter, erro
 
 	return &ProductionFilter{middleware: middleware, connections: connections}, nil
 }
-
 
 func initializeConnection(middleware *common.Middleware, previousQueue, nextQueue string) (connection, error) {
 	previousChan, err := middleware.GetChanToRecv(previousQueue)
@@ -126,23 +125,23 @@ func (f *ProductionFilter) processQueryMessage(queryNum int, msg common.Message,
 	return nil
 }
 
-func (f *ProductionFilter) filterMessage(msg common.Message, filterFunc func(common.Movie) bool) (common.Batch, error) {
-	var batch common.Batch
+func (f *ProductionFilter) filterMessage(msg common.Message, filterFunc func(common.Movie) bool) (common.Batch[common.Movie], error) {
+	var batch common.Batch[common.Movie]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
-		return common.Batch{}, fmt.Errorf("error unmarshalling message: %w", err)
+		return common.Batch[common.Movie]{}, fmt.Errorf("error unmarshalling message: %w", err)
 	}
 
-	filteredMovies := batch.Movies
+	filteredMovies := batch.Data
 	if !batch.IsEof() {
-		filteredMovies = common.Filter(batch.Movies, filterFunc)
+		filteredMovies = common.Filter(batch.Data, filterFunc)
 		slog.Info("movies left after filtering by year", slog.Any("movies", filteredMovies))
 	}
 
-	batch.Movies = filteredMovies
+	batch.Data = filteredMovies
 	return batch, nil
 }
 
-func (f *ProductionFilter) sendBatch(queryNum int, batch common.Batch) error {
+func (f *ProductionFilter) sendBatch(queryNum int, batch common.Batch[common.Movie]) error {
 	response, err := json.Marshal(batch)
 	if err != nil {
 		return fmt.Errorf("error marshalling batch: %w", err)

@@ -271,7 +271,11 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				return
 			}
-		case _ = <-g.resultsQueues[3]:
+		case msg := <-g.resultsQueues[3]:
+			slog.Info("Received Q3 response: ", slog.String("result", string(msg.Body)))
+			if err := msg.Ack(); err != nil {
+				return
+			}
 			// TODO: Handle query 3 results
 		case _ = <-g.resultsQueues[4]:
 			// TODO: Handle query 4 results
