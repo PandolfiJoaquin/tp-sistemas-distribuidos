@@ -10,7 +10,8 @@ import (
 )
 
 const PREVIOUS_STEP = "filter-production-q1"
-const NEXT_STEP = "movies-to-join"
+// const NEXT_STEP = "movies-to-join"
+const NEXT_STEP = "q2-to-reduce"
 
 type ProductionFilter struct {
 	rabbitUser string
@@ -66,7 +67,7 @@ func (f *ProductionFilter) processMessages(moviesToFilterChan <-chan common.Mess
 
 		filteredMovies := batch.Movies
 		if !batch.IsEof() {
-			filteredMovies = common.Filter(batch.Movies, f.filterByProductionQ1)
+			filteredMovies = common.Filter(batch.Movies, f.filterByProductionQ2)
 			slog.Info("movies left after filtering by production", slog.Any("movies", filteredMovies))
 		}
 
@@ -89,4 +90,8 @@ func (f *ProductionFilter) filterByProductionQ1(movie common.Movie) bool {
 	esp := pkg.Country{Code: "ES", Name: "Spain"}
 	return slices.Contains(movie.ProductionCountries, arg) &&
 		slices.Contains(movie.ProductionCountries, esp)
+}
+
+func (f *ProductionFilter) filterByProductionQ2(movie common.Movie) bool {
+	return len(movie.ProductionCountries) == 1
 }

@@ -25,14 +25,47 @@ func (b *Batch) IsEof() bool {
 	return b.Header.TotalWeight > 0
 }
 
-type CoutriesBudgetMsg = map[pkg.Country]uint32
+type CountryBudget struct {
+	Country pkg.Country `json:"country"`
+	Budget  uint32      `json:"budget"`
+}
 
-type RatingAvg struct {
+type CoutriesBudgetMsg struct {
+	Header    Header          `json:"header"`
+	Countries []CountryBudget `json:"countries"`
+}
+
+func (b *CoutriesBudgetMsg) IsEof() bool { //TODO: se puede obviar si se compone con el Header y le pongo el metodo al header
+	return b.Header.TotalWeight > 0
+}
+
+type MovieAvgRating struct {
+	MovieID     string `json:"movie_id"`
 	RatingSum   uint32 `json:"rating_sum"`
 	RatingCount uint32 `json:"rating_count"`
 }
 
-type MoviesAvgRatingMsg = map[string]RatingAvg
+type MoviesAvgRatingMsg struct {
+	Header        Header           `json:"header"`
+	MoviesRatings []MovieAvgRating `json:"movies_ratings"`
+}
+
+func (b *MoviesAvgRatingMsg) IsEof() bool { //TODO: se puede obviar si se compone con el Header y le pongo el metodo al header
+	return b.Header.TotalWeight > 0
+}
+
+type BestAndWorstMovies struct {
+	BestMovie  string `json:"best_movie"`
+	WorstMovie string `json:"worst_movie"`
+}
+
+type Top5Countries struct {
+	FirstCountry  pkg.Country `json:"first_country"`
+	SecondCountry pkg.Country `json:"second_country"`
+	ThirdCountry  pkg.Country `json:"third_country"`
+	FourthCountry pkg.Country `json:"fourth_country"`
+	FifthCountry  pkg.Country `json:"fifth_country"`
+}
 
 var mockedMovies = []Movie{
 	{
@@ -41,6 +74,7 @@ var mockedMovies = []Movie{
 		Year:                2010,
 		Genre:               "Space",
 		ProductionCountries: []pkg.Country{{Code: "GB", Name: "England"}, {Code: "US", Name: "USA"}},
+		Budget:              100000000,
 	},
 	{
 		ID:                  "2",
@@ -48,6 +82,7 @@ var mockedMovies = []Movie{
 		Year:                2008,
 		Genre:               "Action",
 		ProductionCountries: []pkg.Country{{Code: "US", Name: "USA"}},
+		Budget:              280000000,
 	},
 	{
 		ID:                  "3",
@@ -55,6 +90,7 @@ var mockedMovies = []Movie{
 		Year:                2011,
 		Genre:               "Comedy",
 		ProductionCountries: []pkg.Country{{Code: "AR", Name: "Argentina"}},
+		Budget:              930000000,
 	},
 	{
 		ID:                  "4",
@@ -62,6 +98,7 @@ var mockedMovies = []Movie{
 		Year:                2009,
 		Genre:               "Drama",
 		ProductionCountries: []pkg.Country{{Code: "AR", Name: "Argentina"}, {Code: "ES", Name: "Spain"}},
+		Budget:              69200000,
 	},
 	{
 		ID:                  "5",
@@ -69,6 +106,7 @@ var mockedMovies = []Movie{
 		Year:                1980,
 		Genre:               "Drama",
 		ProductionCountries: []pkg.Country{{Code: "ES", Name: "Spain"}},
+		Budget:              34000000,
 	},
 }
 

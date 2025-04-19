@@ -201,8 +201,8 @@ func mockReviewsChan() (<-chan common.Message, error) {
 	go func() {
 		time.Sleep(3 * time.Second)
 		batch := ReviewsBatch{Reviews: []ReviewToJoin{
-			{ID: "1", MovieID: "1", Rating: 5},
-			{ID: "2", MovieID: "1", Rating: 4},
+			{ID: "1", MovieID: "4", Rating: 5},
+			{ID: "2", MovieID: "4", Rating: 4},
 			{ID: "3", MovieID: "5", Rating: 3},
 		},
 			Header: common.Header{Weight: uint32(1), TotalWeight: int32(-1)},
