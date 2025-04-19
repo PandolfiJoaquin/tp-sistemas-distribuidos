@@ -2,6 +2,11 @@ package models
 
 import "strconv"
 
+type TotalQueryResults struct {
+	QueryId int
+	Items   []QueryResult
+}
+
 type QueryResult interface {
 	QueryId() int
 	String() string

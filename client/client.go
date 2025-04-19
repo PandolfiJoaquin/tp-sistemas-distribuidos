@@ -102,16 +102,31 @@ func (c *Client) SendAllMovies() {
 	slog.Info("Sent all movies to server", slog.Int("total", reader.Total))
 }
 
+const TotalQueries = 1
+
 func (c *Client) RecvAnswers(wg *sync.WaitGroup) {
+	queriesReceived := make([]bool, 0) // Array to store when we get the complete query
 	defer wg.Done()
 	for {
+		if len(queriesReceived) == TotalQueries {
+			slog.Info("All queries received")
+			break
+		}
+
+		// TODO:  Handle EOF of different queries
 		results, err := communication.RecvQueryResults(c.conn)
 		if err != nil {
 			slog.Error("error receiving query results", slog.String("error", err.Error()))
 			return
 		}
 
-		for _, result := range results {
+		if communication.IsQueryEof(results) {
+			slog.Info("EOF received", slog.Int("queryID", results.QueryId))
+			queriesReceived = append(queriesReceived, true)
+			continue
+		}
+
+		for _, result := range results.Items {
 			slog.Info("Got query result", slog.String("result", result.String()))
 		}
 

@@ -44,6 +44,19 @@ func RecvMovies(conn net.Conn) (models.RawMovieBatch, error) {
 	return batch, nil
 }
 
+func SendQueryEof(conn net.Conn, queryID int) error {
+	results := models.Results{
+		QueryID: queryID,
+	}
+
+	err := sendResults(conn, results)
+	if err != nil {
+		return fmt.Errorf("error sending query response: %w", err)
+	}
+
+	return nil
+}
+
 func SendQueryResults(conn net.Conn, queryID int, payload []models.QueryResult) error {
 	itemsJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -77,24 +90,46 @@ func unmarshalSlice[T models.QueryResult](data []byte) ([]models.QueryResult, er
 	return res, nil
 }
 
-func RecvQueryResults(conn net.Conn) ([]models.QueryResult, error) {
+func RecvQueryResults(conn net.Conn) (models.TotalQueryResults, error) {
+	var totalResults models.TotalQueryResults
 	results, err := recvResults(conn)
 	if err != nil {
-		return nil, fmt.Errorf("error receiving query response: %w", err)
+		return totalResults, fmt.Errorf("error receiving query response: %w", err)
 	}
 
+	if results.Items == nil {
+		return models.TotalQueryResults{
+			QueryId: results.QueryID,
+			Items:   nil,
+		}, nil
+	}
+
+	var resultsArr []models.QueryResult
 	switch results.QueryID {
 	case 1:
-		return unmarshalSlice[models.Q1Movie](results.Items)
+		resultsArr, err = unmarshalSlice[models.Q1Movie](results.Items)
 	case 2:
-		return unmarshalSlice[models.Q2Country](results.Items)
+		resultsArr, err = unmarshalSlice[models.Q2Country](results.Items)
 	case 3:
-		return unmarshalSlice[models.Q3Movie](results.Items)
+		resultsArr, err = unmarshalSlice[models.Q3Movie](results.Items)
 	case 4:
-		return unmarshalSlice[models.Q4Actors](results.Items)
+		resultsArr, err = unmarshalSlice[models.Q4Actors](results.Items)
 	case 5:
-		return unmarshalSlice[models.Q5Avg](results.Items)
+		resultsArr, err = unmarshalSlice[models.Q5Avg](results.Items)
 	default:
-		return nil, fmt.Errorf("unknown query id: %d", results.QueryID)
+		return totalResults, fmt.Errorf("unknown query id: %d", results.QueryID)
 	}
+
+	if err != nil {
+		return totalResults, fmt.Errorf("error unmarshalling query response: %w", err)
+	}
+
+	totalResults.QueryId = results.QueryID
+	totalResults.Items = resultsArr
+	return totalResults, nil
+}
+
+func IsQueryEof(results models.TotalQueryResults) bool {
+	fmt.Println("IsQueryEof: ", len(results.Items) == 0)
+	return len(results.Items) == 0
 }
