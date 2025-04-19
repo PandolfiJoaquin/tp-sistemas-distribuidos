@@ -24,6 +24,15 @@ func main() {
 		return
 	}
 
-	filter := NewProductionFilter(rabbitUser, rabbitPass)
+	filter, err := NewProductionFilter(rabbitUser, rabbitPass)
+	if err != nil {
+		slog.Error("error creating production filter", slog.String("error", err.Error()))
+		return
+	}
+
 	filter.Start()
+
+	if err := filter.Stop(); err != nil {
+		slog.Error("error stopping production filter", slog.String("error", err.Error()))
+	}
 }

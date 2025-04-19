@@ -8,17 +8,17 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-const (
-	previousQueueQuery2 = "q2-to-reduce"
-	previousQueueQuery3 = "q3-to-reduce"
-	previousQueueQuery4 = "q4-to-reduce"
-	previousQueueQuery5 = "q5-to-reduce"
+type queuesNames struct {
+	previousQueue string
+	nextQueue     string
+}
 
-	nextQueueQuery2 = "q2-to-final-reduce"
-	nextQueueQuery3 = "q3-to-final-reduce"
-	nextQueueQuery4 = "q4-to-final-reduce"
-	nextQueueQuery5 = "q5-to-final-reduce"
-)
+var queriesQueues = map[int]queuesNames{
+	2: {previousQueue: "q2-to-reduce", nextQueue: "q2-to-final-reduce"},
+	3: {previousQueue: "q3-to-reduce", nextQueue: "q3-to-final-reduce"},
+	4: {previousQueue: "q4-to-reduce", nextQueue: "q4-to-final-reduce"},
+	5: {previousQueue: "q5-to-reduce", nextQueue: "q5-to-final-reduce"},
+}
 
 // ReviewXMovies represents a review joined with a movie
 type ReviewXMovies struct {
@@ -74,30 +74,14 @@ func initializeConnection(middleware *common.Middleware, previousQueue, nextQueu
 }
 
 func initializeConnections(middleware *common.Middleware) (map[int]connection, error) {
-	connectionQ2, err := initializeConnection(middleware, previousQueueQuery2, nextQueueQuery2)
-	if err != nil {
-		return nil, fmt.Errorf("error initializing connection for %s: %w", previousQueueQuery2, err)
+	connections := make(map[int]connection)
+	for queryNum, queuesNames := range queriesQueues {
+		connection, err := initializeConnection(middleware, queuesNames.previousQueue, queuesNames.nextQueue)
+		if err != nil {
+			return nil, fmt.Errorf("error initializing connection for %s: %w", queuesNames.previousQueue, err)
+		}
+		connections[queryNum] = connection
 	}
-	connectionQ3, err := initializeConnection(middleware, previousQueueQuery3, nextQueueQuery3)
-	if err != nil {
-		return nil, fmt.Errorf("error initializing connection for %s: %w", previousQueueQuery3, err)
-	}
-	connectionQ4, err := initializeConnection(middleware, previousQueueQuery4, nextQueueQuery4)
-	if err != nil {
-		return nil, fmt.Errorf("error initializing connection for %s: %w", previousQueueQuery4, err)
-	}
-	connectionQ5, err := initializeConnection(middleware, previousQueueQuery5, nextQueueQuery5)
-	if err != nil {
-		return nil, fmt.Errorf("error initializing connection for %s: %w", previousQueueQuery5, err)
-	}
-
-	connections := map[int]connection{
-		2: connectionQ2,
-		3: connectionQ3,
-		4: connectionQ4,
-		5: connectionQ5,
-	}
-
 	return connections, nil
 }
 
