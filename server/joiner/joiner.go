@@ -3,12 +3,12 @@ package main
 import (
 	"encoding/json"
 	"log/slog"
-	"time"
 	"tp-sistemas-distribuidos/server/common"
 )
 
 const reviewsToJoinQueue = "reviews-to-join"
 const moviesToJoinWithQueue = "movies-to-join"
+
 // const nextStep = "q1-results"
 const nextStep = "q3-to-reduce"
 const ON = 1
@@ -38,12 +38,6 @@ func (j *Joiner) Start() {
 	moviesChan, err := j.middleware.GetChanToRecv(moviesToJoinWithQueue)
 	if err != nil {
 		slog.Error("Error creating channel", slog.String("queue", moviesToJoinWithQueue), slog.String("error", err.Error()))
-		return
-	}
-
-	reviewsChan, err := j.middleware.GetChanToRecv(reviewsToJoinQueue)
-	if err != nil {
-		slog.Error("error creating channel", slog.String("queue", reviewsToJoinQueue), slog.String("error", err.Error()))
 		return
 	}
 
