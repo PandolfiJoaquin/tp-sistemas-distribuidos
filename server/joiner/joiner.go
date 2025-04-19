@@ -9,6 +9,7 @@ import (
 
 const reviewsToJoinQueue = "reviews-to-join"
 const moviesToJoinWithQueue = "movies-to-join"
+
 // const nextStep = "q1-results"
 const nextStep = "q3-to-reduce"
 const ON = 1
@@ -66,35 +67,26 @@ func (j *Joiner) Start() {
 		return
 	}
 
-	reviewsChan, err := mockReviewsChan() //j.middleware.GetChanToRecv(reviewsToJoinQueue)
-	if err != nil {
-		slog.Error("error creating channel", slog.String("queue", reviewsToJoinQueue), slog.String("error", err.Error()))
-		return
-	}
-
 	q3Chan, err := j.middleware.GetChanToSend(nextStep)
 	if err != nil {
 		slog.Error("error creating channel", slog.String("queue", nextStep), slog.String("error", err.Error()))
 		return
 	}
 
-	go j.start(moviesChan, reviewsChan, q3Chan)
+	go j.start(moviesChan, q3Chan)
 
 	forever := make(chan bool)
 	<-forever
 }
 
-func (j *Joiner) start(moviesChan, reviewsChan <-chan common.Message, nextStepChan chan<- []byte) {
+func (j *Joiner) start(_moviesChan <-chan common.Message, nextStepChan chan<- []byte) {
 	dummyChan := make(<-chan common.Message)
-	movies := []<-chan common.Message{dummyChan, moviesChan}
-	moviesStatus := ON
-	reviews := []<-chan common.Message{dummyChan, reviewsChan}
-	reviewsStatus := OFF
+	movies := _moviesChan
+	reviews := dummyChan
 
 	for {
-		slog.Info("Receiving messages", slog.Any("moviesStatus:", moviesStatus), slog.Any("reviewsStatus", reviewsStatus))
 		select {
-		case msg := <-movies[moviesStatus]:
+		case msg := <-movies:
 			var batch common.Batch
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
@@ -104,14 +96,20 @@ func (j *Joiner) start(moviesChan, reviewsChan <-chan common.Message, nextStepCh
 			j.saveBatch(batch)
 			if j.allMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
-				reviewsStatus = ON
+				var err error
+				reviews, err = mockReviewsChan() //j.middleware.GetChanToRecv(reviewsToJoinQueue)
+				if err != nil {
+					slog.Error("error creating channel", slog.String("queue", reviewsToJoinQueue), slog.String("error", err.Error()))
+					return
+				}
+
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
 			continue
 
-		case msg := <-reviews[reviewsStatus]:
+		case msg := <-reviews:
 			slog.Info("Received message from reviews")
 			var batch ReviewsBatch
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
