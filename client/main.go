@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	SERVER = "gateway:12345"
-	BATCH  = 30
+	server       = "gateway:12345"
+	MoviesBatch  = 30
+	ReviewsBatch = 300
 )
 
 func main() {
@@ -19,7 +20,7 @@ func main() {
 	}
 	slog.SetDefault(logger)
 
-	config := NewClientConfig(SERVER, BATCH)
+	config := NewClientConfig(server, MoviesBatch, ReviewsBatch)
 	client := NewClient(config)
 
 	slog.Info("client created successfully")

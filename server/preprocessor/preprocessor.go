@@ -9,8 +9,9 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-const nextQueue = "filter-year-q1"
-const previousQueue = "movies-to-preprocess"
+const toPreProcess = "to-preprocess"
+const filterMoviesQueue = "filter-year-q1"
+const reviewsQueue = "reviews-to-join"
 
 type PreprocessorConfig struct {
 	RabbitUser string
@@ -18,10 +19,12 @@ type PreprocessorConfig struct {
 }
 
 type Preprocessor struct {
-	config                 PreprocessorConfig
-	middleware             *common.Middleware
-	moviesToPreprocessChan <-chan common.Message
-	nextStepChan           chan<- []byte
+	config        PreprocessorConfig
+	middleware    *common.Middleware
+	toProcessChan <-chan common.Message
+	reviewsChan   chan<- []byte
+	actorsChan    chan<- []byte
+	moviesChan    chan<- []byte
 }
 
 func NewPreprocessor(rabbitUser, rabbitPass string) *Preprocessor {
@@ -51,19 +54,26 @@ func (p *Preprocessor) middlewareSetup() error {
 		return fmt.Errorf("error creating middleware: %s", err)
 	}
 
-	previousChan, err := middleware.GetChanToRecv(previousQueue)
+	reviewsToJoin, err := middleware.GetChanToSend(reviewsQueue)
+	if err != nil {
+		return fmt.Errorf("error getting channel to send reviews: %s", err)
+	}
+
+	moviesToFilter, err := middleware.GetChanToSend(filterMoviesQueue)
+	if err != nil {
+		return fmt.Errorf("error getting channel to receive movies: %s", err)
+	}
+
+	toProcess, err := middleware.GetChanToRecv(toPreProcess)
 	if err != nil {
 		return fmt.Errorf("error getting channel to receive: %s", err)
 	}
 
-	nextChan, err := middleware.GetChanToSend(nextQueue)
-	if err != nil {
-		return fmt.Errorf("error getting channel to send: %s", err)
-	}
-
 	p.middleware = middleware
-	p.moviesToPreprocessChan = previousChan
-	p.nextStepChan = nextChan
+	p.toProcessChan = toProcess
+	p.reviewsChan = reviewsToJoin
+	p.moviesChan = moviesToFilter
+
 	return nil
 }
 
@@ -77,46 +87,91 @@ func (p *Preprocessor) Start() {
 	go p.processMessages()
 	defer p.close()
 
+	// TODO: Handle shutdown gracefully
 	forever := make(chan bool)
 	<-forever
 }
 
 func (p *Preprocessor) processMessages() {
-	for msg := range p.moviesToPreprocessChan {
+	for msg := range p.toProcessChan {
+		var batch common.ToProcessMsg
 
-		var batch models.RawMovieBatch
 		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 			continue
 		}
 
-		preprocessBatch := common.Batch{
-			Header: common.Header{
-				Weight:      batch.Header.Weight,
-				TotalWeight: batch.Header.TotalWeight,
-			},
-		}
-
-		if !batch.IsEof() {
-			preprocessBatch = p.preprocessBatch(batch)
-		} else {
-			slog.Info("EOF received")
-		}
-
-		response, err := json.Marshal(preprocessBatch)
-		if err != nil {
-			slog.Error("error marshalling batch", slog.String("error", err.Error()))
+		if err := p.preprocessBatch(batch); err != nil {
+			slog.Error("error preprocessing batch", slog.String("error", err.Error()))
 			continue
-		}
-
-		p.nextStepChan <- response
-		if err := msg.Ack(); err != nil {
-			slog.Error("error acknowledging message", slog.String("error", err.Error()))
 		}
 	}
 }
 
-func (p *Preprocessor) preprocessBatch(batch models.RawMovieBatch) common.Batch {
+func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
+	var (
+		header  common.Header
+		payload interface{}
+		outCh   chan<- []byte
+	)
+
+	switch batch.Type {
+	case "movies":
+		var mb models.RawMovieBatch
+		if err := json.Unmarshal(batch.Body, &mb); err != nil {
+			return fmt.Errorf("error unmarshalling movies batch: %w", err)
+		}
+
+		header = common.Header{
+			Weight:      mb.Header.Weight,
+			TotalWeight: mb.Header.TotalWeight,
+		}
+
+		if mb.IsEof() {
+			payload = common.MoviesBatch{Header: header}
+		} else {
+			payload = p.preprocessMovies(mb)
+		}
+
+		slog.Info("preprocessing Movies", slog.String("batch", string(batch.Body)))
+
+		outCh = p.moviesChan
+
+	case "reviews":
+		var rb models.RawReviewBatch
+		if err := json.Unmarshal(batch.Body, &rb); err != nil {
+			return fmt.Errorf("error unmarshalling reviews batch: %w", err)
+		}
+
+		header = common.Header{
+			Weight:      rb.Header.Weight,
+			TotalWeight: rb.Header.TotalWeight,
+		}
+
+		if rb.IsEof() {
+			payload = common.ReviewsBatch{Header: header}
+		} else {
+			payload = p.preprocessReviews(rb)
+		}
+
+		slog.Info("preprocessing reviews", slog.String("batch", string(batch.Body)))
+
+		outCh = p.reviewsChan
+
+	default:
+		return fmt.Errorf("unknown batch type %q", batch.Type)
+	}
+
+	resp, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("error marshalling %s payload: %w", batch.Type, err)
+	}
+	outCh <- resp
+
+	return nil
+}
+
+func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.MoviesBatch {
 	movies := make([]common.Movie, 0)
 
 	for _, movie := range batch.Movies {
@@ -134,12 +189,38 @@ func (p *Preprocessor) preprocessBatch(batch models.RawMovieBatch) common.Batch 
 		})
 	}
 
-	res := common.Batch{
+	res := common.MoviesBatch{
 		Header: common.Header{
 			Weight:      uint32(len(movies)),
 			TotalWeight: -1,
 		},
 		Movies: movies,
+	}
+
+	return res
+}
+
+func (p *Preprocessor) preprocessReviews(batch models.RawReviewBatch) common.ReviewsBatch {
+	reviews := make([]common.ReviewToJoin, 0)
+
+	for _, review := range batch.Reviews {
+		id := review.UserID
+		movieID := review.MovieID
+		rating := review.Rating
+
+		reviews = append(reviews, common.ReviewToJoin{
+			ID:      id,
+			MovieID: movieID,
+			Rating:  rating,
+		})
+	}
+
+	res := common.ReviewsBatch{
+		Header: common.Header{
+			Weight:      uint32(len(reviews)),
+			TotalWeight: -1,
+		},
+		Reviews: reviews,
 	}
 
 	return res

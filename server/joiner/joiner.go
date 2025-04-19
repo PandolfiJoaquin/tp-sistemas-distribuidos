@@ -9,6 +9,7 @@ import (
 
 const reviewsToJoinQueue = "reviews-to-join"
 const moviesToJoinWithQueue = "movies-to-join"
+
 // const nextStep = "q1-results"
 const nextStep = "q3-to-reduce"
 const ON = 1
@@ -43,7 +44,7 @@ type Joiner struct {
 	rabbitUser     string
 	rabbitPass     string
 	middleware     *common.Middleware
-	moviesReceived []common.Batch
+	moviesReceived []common.MoviesBatch
 }
 
 func NewJoiner(rabbitUser, rabbitPass string) (*Joiner, error) {
@@ -54,7 +55,7 @@ func NewJoiner(rabbitUser, rabbitPass string) (*Joiner, error) {
 	}
 	return &Joiner{
 		middleware:     middleware,
-		moviesReceived: []common.Batch{},
+		moviesReceived: []common.MoviesBatch{},
 	}, nil
 }
 
@@ -95,7 +96,7 @@ func (j *Joiner) start(moviesChan, reviewsChan <-chan common.Message, nextStepCh
 		slog.Info("Receiving messages", slog.Any("moviesStatus:", moviesStatus), slog.Any("reviewsStatus", reviewsStatus))
 		select {
 		case msg := <-movies[moviesStatus]:
-			var batch common.Batch
+			var batch common.MoviesBatch
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
@@ -163,22 +164,22 @@ func (j *Joiner) joinReview(r ReviewToJoin) []ReviewXMovies {
 
 func (j *Joiner) getMovies() []common.Movie {
 	//TODO: movies shouldn't be stored in batches. when loading from disk this would change
-	return common.Flatten(common.Map(j.moviesReceived, func(batch common.Batch) []common.Movie { return batch.Movies }))
+	return common.Flatten(common.Map(j.moviesReceived, func(batch common.MoviesBatch) []common.Movie { return batch.Movies }))
 }
 
-func (j *Joiner) saveBatch(batch common.Batch) {
+func (j *Joiner) saveBatch(batch common.MoviesBatch) {
 	j.moviesReceived = append(j.moviesReceived, batch)
 }
 
 // allMoviesReceived checks if it has all necessary movies to start joining with reviews
 func (j *Joiner) allMoviesReceived() bool {
-	eofBatch := common.First(j.moviesReceived, func(b common.Batch) bool { return b.IsEof() })
+	eofBatch := common.First(j.moviesReceived, func(b common.MoviesBatch) bool { return b.IsEof() })
 	if eofBatch == nil {
 		return false
 	}
 
 	totalWeight := int(eofBatch.Header.TotalWeight)
-	weightsReceived := common.Map(j.moviesReceived, func(b common.Batch) uint32 { return b.Header.Weight })
+	weightsReceived := common.Map(j.moviesReceived, func(b common.MoviesBatch) uint32 { return b.Header.Weight })
 	totalWeightReceived := common.Sum(weightsReceived)
 
 	if totalWeightReceived > totalWeight {
