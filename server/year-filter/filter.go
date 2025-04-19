@@ -64,7 +64,7 @@ func (f *YearFilter) processMessages(previousChan <-chan common.Message, nextCha
 
 		filteredMovies := batch.Movies
 		if !batch.IsEof() {
-			filteredMovies = common.Filter(batch.Movies, f.yearFilterQ1)
+			filteredMovies = common.Filter(batch.Movies, f.year2000sFilter)
 			slog.Info("movies left after filtering by year", slog.Any("movies", filteredMovies))
 		}
 
@@ -82,6 +82,6 @@ func (f *YearFilter) processMessages(previousChan <-chan common.Message, nextCha
 	}
 }
 
-func (f *YearFilter) yearFilterQ1(movie common.Movie) bool {
+func (f *YearFilter) year2000sFilter(movie common.Movie) bool {
 	return movie.Year >= 2000 && movie.Year < 2010
 }

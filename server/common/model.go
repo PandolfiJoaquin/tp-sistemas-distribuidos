@@ -102,6 +102,14 @@ var mockedMovies = []Movie{
 	},
 	{
 		ID:                  "5",
+		Title:               "Relatos salvajes",
+		Year:                2009,
+		Genre:               "Comedy",
+		ProductionCountries: []pkg.Country{{Code: "AR", Name: "Argentina"}},
+		Budget:              27000000,
+	},
+	{
+		ID:                  "6",
 		Title:               "El padrino",
 		Year:                1980,
 		Genre:               "Drama",
