@@ -18,10 +18,10 @@ var previousQueuesForQueries = map[int]string{
 }
 
 var resultQueuesForQueries = map[int]string{
-	2: "q2-result",
-	3: "q3-result",
-	4: "q4-result",
-	5: "q5-result",
+	2: "q2-results",
+	3: "q3-results",
+	4: "q4-results",
+	5: "q5-results",
 }
 
 type FinalReducer struct {
@@ -177,6 +177,11 @@ func (r *FinalReducer) startReceivingQ3() {
 }
 
 func calculateTop5Countries(countries map[pkg.Country]uint32) common.Top5Countries {
+	if len(countries) == 0 {
+		slog.Warn("countries count is 0, returning empty top 5 countries")
+		return common.Top5Countries{}
+	}
+
 	type countryBudget struct {
 		country pkg.Country
 		budget  uint32

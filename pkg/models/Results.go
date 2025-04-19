@@ -30,13 +30,12 @@ func (q Q1Movie) String() string {
 }
 
 type Q2Country struct {
-	Country    string `json:"country"`
-	Investment uint32 `json:"budget"`
+	Country    Country `json:"country"`
 }
 
 // placeholder for Q2Country
 func (q Q2Country) String() string {
-	return "Query 2: " + q.Country + " | Investment: " + strconv.Itoa(int(q.Investment))
+	return "Query 2: " + q.Country.Name
 }
 
 type Q3Movie struct {

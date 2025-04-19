@@ -12,8 +12,8 @@ import (
 const PREVIOUS_STEP = "filter-production-q1"
 
 // const NEXT_STEP = "movies-to-join"
-// const NEXT_STEP = "q2-to-reduce"
-const NEXT_STEP = "q1-results"
+const NEXT_STEP = "q2-to-reduce"
+// const NEXT_STEP = "q1-results"
 
 type ProductionFilter struct {
 	rabbitUser string
@@ -68,7 +68,7 @@ func (f *ProductionFilter) processMessages(moviesToFilterChan <-chan common.Mess
 
 		filteredMovies := batch.Movies
 		if !batch.IsEof() {
-			filteredMovies = common.Filter(batch.Movies, f.filterByProductionQ1)
+			filteredMovies = common.Filter(batch.Movies, f.filterByProductionQ2)
 			slog.Info("movies left after filtering by production", slog.Any("movies", filteredMovies))
 		}
 

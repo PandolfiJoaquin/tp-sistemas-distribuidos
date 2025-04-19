@@ -15,7 +15,8 @@ import (
 )
 
 const PREVIOUS_STEP = "movies-to-preprocess"
-const NEXT_STEP = "q1-results"
+// const NEXT_STEP = "q1-results"
+const NEXT_STEP = "q2-results"
 
 type GatewayConfig struct {
 	RabbitUser string
@@ -34,7 +35,7 @@ func NewGatewayConfig(rabbitUser, rabbitPass, port string) GatewayConfig {
 type Gateway struct {
 	middleware     *common.Middleware
 	moviesToFilter chan<- []byte
-	q1Results      <-chan common.Message
+	q1Results      <-chan common.Message //TODO: agregar para todas las querys (fijarse en reducer)
 	config         GatewayConfig
 	listener       net.Listener
 	client         net.Conn
@@ -194,23 +195,47 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 			return
 
 		case msg := <-g.q1Results:
-			batch, err := g.consumeBatch(msg.Body)
-			if err != nil {
-				slog.Error("error consuming results", slog.String("error", err.Error()))
+			// batch, err := g.consumeBatch(msg.Body)
+			// if err != nil {
+			// 	slog.Error("error consuming results", slog.String("error", err.Error()))
+			// 	return
+			// }
+
+			// if len(batch.Movies) == 0 && batch.Header.TotalWeight == -1 {
+			// 	continue
+			// }
+
+			// err = g.processResult(batch, &done)
+			// if err != nil {
+			// 	if !g.running {
+			// 		slog.Error("error processing result", slog.String("error", err.Error()))
+			// 	}
+			// 	return
+			// }
+
+			var top5Countries common.Top5Countries
+			if err := json.Unmarshal(msg.Body, &top5Countries); err != nil {
+				slog.Error("error unmarshalling top 5 countries", slog.String("error", err.Error()))
 				return
 			}
 
-			if len(batch.Movies) == 0 && batch.Header.TotalWeight == -1 {
-				continue
+			slog.Info("Top 5 countries", slog.Any("top5Countries", top5Countries))
+
+			q2Result := []models.QueryResult{
+				models.Q2Country{Country: top5Countries.FirstCountry},
+				models.Q2Country{Country: top5Countries.SecondCountry},
+				models.Q2Country{Country: top5Countries.ThirdCountry},
+				models.Q2Country{Country: top5Countries.FourthCountry},
+				models.Q2Country{Country: top5Countries.FifthCountry},
 			}
 
-			err = g.processResult(batch, &done)
+			err := communication.SendQueryResults(g.client, 2, q2Result)
 			if err != nil {
-				if !g.running {
-					slog.Error("error processing result", slog.String("error", err.Error()))
-				}
+				slog.Error("error sending query results", slog.String("error", err.Error()))
 				return
 			}
+
+			done++
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
