@@ -60,7 +60,7 @@ func (f *ProductionFilter) Start() {
 
 func (f *ProductionFilter) processMessages(moviesToFilterChan <-chan common.Message, nextFilterChan chan<- []byte) {
 	for msg := range moviesToFilterChan {
-		var batch common.Batch
+		var batch common.MoviesBatch
 		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 			continue

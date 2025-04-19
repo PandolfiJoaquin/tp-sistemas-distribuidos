@@ -1,6 +1,9 @@
 package common
 
-import pkg "pkg/models"
+import (
+	"encoding/json"
+	pkg "pkg/models"
+)
 
 type Movie struct {
 	ID                  string        `json:"id"`
@@ -16,13 +19,29 @@ type Header struct {
 	TotalWeight int32  `json:"total_weight"` //-1 if its uknown for the moment
 }
 
-type Batch struct {
+type MoviesBatch struct {
 	Header Header  `json:"header"`
 	Movies []Movie `json:"movies"`
 }
 
-func (b *Batch) IsEof() bool {
+func (b *MoviesBatch) IsEof() bool {
 	return b.Header.TotalWeight > 0
+}
+
+type ReviewToJoin struct {
+	ID      string  `json:"id"`
+	MovieID string  `json:"movie_id"`
+	Rating  float32 `json:"rating"`
+}
+
+type ReviewsBatch struct {
+	Header  Header         `json:"header"`
+	Reviews []ReviewToJoin `json:"reviews"`
+}
+
+type ToProcessMsg struct {
+	Type string          `json:"type"`
+	Body json.RawMessage `json:"body"`
 }
 
 type CountryBudget struct {
@@ -118,12 +137,12 @@ var mockedMovies = []Movie{
 	},
 }
 
-var MockedBatch = Batch{
+var MockedBatch = MoviesBatch{
 	Header: Header{Weight: uint32(len(mockedMovies)), TotalWeight: int32(-1)},
 	Movies: mockedMovies,
 }
 
-var EOF = Batch{
+var EOF = MoviesBatch{
 	Header: Header{
 		TotalWeight: int32(len(MockedBatch.Movies)),
 	},

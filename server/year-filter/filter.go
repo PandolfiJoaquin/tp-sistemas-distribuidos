@@ -54,7 +54,7 @@ func (f *YearFilter) Start() {
 
 func (f *YearFilter) processMessages(previousChan <-chan common.Message, nextChan chan<- []byte) {
 	for msg := range previousChan {
-		var batch common.Batch
+		var batch common.MoviesBatch
 		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 			continue

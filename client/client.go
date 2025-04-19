@@ -9,17 +9,20 @@ import (
 	"tp-sistemas-distribuidos/client/utils"
 )
 
-const PATH = "archive/movies_metadata.csv"
+const MoviePath = "archive/movies_metadata.csv"
+const ReviewPath = "archive/ratings_small.csv"
 
 type ClientConfig struct {
-	ServerAddress string
-	MaxBatch      int
+	ServerAddress  string
+	MaxBatchMovie  int
+	MaxBatchReview int
 }
 
-func NewClientConfig(serverAddress string, maxBatch int) ClientConfig {
+func NewClientConfig(serverAddress string, maxBatchMovie, maxBatchReview int) ClientConfig {
 	return ClientConfig{
-		ServerAddress: serverAddress,
-		MaxBatch:      maxBatch,
+		ServerAddress:  serverAddress,
+		MaxBatchMovie:  maxBatchMovie,
+		MaxBatchReview: maxBatchReview,
 	}
 }
 
@@ -58,6 +61,7 @@ func (c *Client) Start() {
 	slog.Info("client connected to server", slog.String("serverAddress", c.config.ServerAddress))
 
 	c.SendAllMovies()
+	c.SendAllReviews()
 	wg.Add(1)
 	go c.RecvAnswers(wg)
 	wg.Wait()
@@ -80,7 +84,7 @@ func (c *Client) sendMovies(reader *utils.MoviesReader) error {
 }
 
 func (c *Client) SendAllMovies() {
-	reader, err := utils.NewMoviesReader(PATH, c.config.MaxBatch)
+	reader, err := utils.NewMoviesReader(MoviePath, c.config.MaxBatchMovie)
 	if err != nil {
 		slog.Error("error creating movies reader", slog.String("error", err.Error()))
 		return
@@ -94,12 +98,49 @@ func (c *Client) SendAllMovies() {
 		}
 	}
 
-	err = communication.SendEOF(c.conn, int32(reader.Total))
+	err = communication.SendMovieEof(c.conn, int32(reader.Total))
 	if err != nil {
 		slog.Error("error sending EOF", slog.String("error", err.Error()))
 		return
 	}
 	slog.Info("Sent all movies to server", slog.Int("total", reader.Total))
+}
+
+func (c *Client) sendReviews(reader *utils.ReviewReader) error {
+	reviews, err := reader.ReadReviews()
+	slog.Info("read reviews", slog.Int("count", len(reviews)))
+	if err != nil {
+		return fmt.Errorf("error sending reviews: %w", err)
+	}
+
+	err = communication.SendReviews(c.conn, reviews)
+	if err != nil {
+		return fmt.Errorf("error sending reviews: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) SendAllReviews() {
+	reader, err := utils.NewReviewReader(ReviewPath, c.config.MaxBatchReview)
+	if err != nil {
+		slog.Error("error creating reviews reader", slog.String("error", err.Error()))
+		return
+	}
+
+	for !reader.Finished {
+		err = c.sendReviews(reader)
+		if err != nil {
+			slog.Error("error sending reviews", slog.String("error", err.Error()))
+			return
+		}
+	}
+
+	err = communication.SendReviewEof(c.conn, int32(reader.Total))
+	if err != nil {
+		slog.Error("error sending EOF", slog.String("error", err.Error()))
+		return
+	}
 }
 
 const TotalQueries = 1
