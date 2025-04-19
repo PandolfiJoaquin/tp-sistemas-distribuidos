@@ -228,6 +228,8 @@ func (g *Gateway) consumeBatch(msg []byte) (common.Batch, error) {
 	return batch, nil
 }
 
+const TotalQueries = 1
+
 func (g *Gateway) processResult(batch common.Batch, done *int) error {
 	if batch.IsEof() {
 		slog.Info("EOF message received", slog.Any("headers", batch.Header))
@@ -236,7 +238,7 @@ func (g *Gateway) processResult(batch common.Batch, done *int) error {
 			return fmt.Errorf("error sending EOF: %w", err)
 		}
 		*done++
-		if *done == 1 {
+		if *done == TotalQueries { // all queries done
 			g.free <- true // signal that the connection is free for the next one
 		}
 	} else {
