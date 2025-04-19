@@ -76,6 +76,9 @@ func (mr *MoviesReader) ReadMovie() (*models.RawMovie, error) {
 
 	movie, err := parseMovie(record)
 	if err != nil {
+		if errors.Is(err, ErrInvalidMovie) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("error parsing movie: %v", err)
 	}
 
@@ -112,15 +115,20 @@ func (mr *MoviesReader) Close() {
 
 func (mr *MoviesReader) ReadMovies() ([]models.RawMovie, error) {
 	var movies []models.RawMovie
-	for i := 0; i < mr.batchSize; i++ {
+
+	for len(movies) < mr.batchSize {
 		movie, err := mr.ReadMovie()
 		if err != nil {
-			return nil, err
+			if errors.Is(err, ErrInvalidMovie) {
+				continue // drop invalid movies, don't count toward batch
+			}
+			return nil, err // actual error
 		}
 		if movie == nil {
-			break
+			break // EOF
 		}
 		movies = append(movies, *movie)
 	}
+
 	return movies, nil
 }

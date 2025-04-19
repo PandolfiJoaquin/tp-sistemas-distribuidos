@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"pkg/models"
 	"regexp"
@@ -261,8 +262,37 @@ const (
 	colVoteCount
 )
 
+var notNa = []int{
+	colID,
+	colTitle,
+	colGenres,
+	colReleaseDate,
+	colOverview,
+	colProductionCountries,
+	colSpokenLanguages,
+	colBudget,
+	colRevenue,
+}
+
+var ErrInvalidMovie = errors.New("invalid movie")
+
+// hasNaNValues checks whether required fields are empty or NaN
+func hasNaNValues(record []string) bool {
+	for _, idx := range notNa {
+		value := record[idx]
+		if value == "" || value == "NaN" {
+			return true
+		}
+	}
+	return false
+}
+
 // parseMovie builds a RawMovie from a CSV record slice.
 func parseMovie(record []string) (*models.RawMovie, error) {
+	if hasNaNValues(record) {
+		return nil, ErrInvalidMovie
+	}
+
 	adult, err := parseBool(record[colAdult], "adult")
 	if err != nil {
 		return nil, err
