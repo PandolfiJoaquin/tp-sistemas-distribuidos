@@ -98,13 +98,19 @@ func (p *Preprocessor) processMessages() {
 
 		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
-			continue
+			return
 		}
 
 		if err := p.preprocessBatch(batch); err != nil {
 			slog.Error("error preprocessing batch", slog.String("error", err.Error()))
-			continue
+			return
 		}
+
+		if err := msg.Ack(); err != nil {
+			slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			return
+		}
+
 	}
 }
 
