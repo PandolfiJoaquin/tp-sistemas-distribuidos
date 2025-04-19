@@ -123,21 +123,13 @@ func (p *Preprocessor) preprocessBatch(batch models.RawMovieBatch) common.Batch 
 		id := strconv.Itoa(int(movie.ID))
 		title := movie.Title
 		year := movie.ReleaseDate.Year()
-		genres := make([]string, len(movie.Genres))
-		for i, genre := range movie.Genres {
-			genres[i] = genre.Name
-		}
-		countries := make([]string, len(movie.ProductionCountries))
-		for i, country := range movie.ProductionCountries {
-			countries[i] = country.Code
-		}
 
 		movies = append(movies, common.Movie{
 			ID:                  id,
 			Title:               title,
 			Year:                year,
-			Genres:              genres,
-			ProductionCountries: countries,
+			Genres:              movie.Genres,
+			ProductionCountries: movie.ProductionCountries,
 		})
 	}
 

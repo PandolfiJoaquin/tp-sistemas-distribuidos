@@ -14,13 +14,13 @@ type QueryResult interface {
 
 type Q1Movie struct {
 	Title  string   `json:"title"`
-	Genres []string `json:"genres"`
+	Genres []Genre `json:"genres"`
 }
 
 func (q Q1Movie) String() string {
 	str := "Query 1: " + q.Title + " | Genres: ["
 	for i := 0; i < len(q.Genres); i++ {
-		str += q.Genres[i]
+		str += q.Genres[i].Name
 		if i < len(q.Genres)-1 {
 			str += ", "
 		}

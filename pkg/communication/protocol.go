@@ -130,6 +130,5 @@ func RecvQueryResults(conn net.Conn) (models.TotalQueryResults, error) {
 }
 
 func IsQueryEof(results models.TotalQueryResults) bool {
-	fmt.Println("IsQueryEof: ", len(results.Items) == 0)
 	return len(results.Items) == 0
 }

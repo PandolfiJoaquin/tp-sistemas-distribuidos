@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"log/slog"
 )
 
 // Splits a string into pairs based on commas, while respecting quoted sections.
@@ -290,6 +292,7 @@ func hasNaNValues(record []string) bool {
 // parseMovie builds a RawMovie from a CSV record slice.
 func parseMovie(record []string) (*models.RawMovie, error) {
 	if hasNaNValues(record) {
+		slog.Warn("invalid movie, dropping", slog.Any("record", record[colID]))
 		return nil, ErrInvalidMovie
 	}
 

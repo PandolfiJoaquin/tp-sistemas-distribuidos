@@ -64,6 +64,10 @@ type Language struct {
 	Name string `json:"name"`
 }
 
+func (c Country) Equals(other Country) bool {
+	return c.Code == other.Code && c.Name == other.Name
+}
+
 // MarshalJSON implementa json.Marshaler
 func (c Country) MarshalJSON() ([]byte, error) {
 	// Definimos una struct auxiliar con los campos que queremos serializar

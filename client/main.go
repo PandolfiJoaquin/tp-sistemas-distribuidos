@@ -8,7 +8,7 @@ import (
 
 const (
 	SERVER = "gateway:12345"
-	BATCH  = 1000
+	BATCH  = 30
 )
 
 func main() {
