@@ -2,7 +2,6 @@ package utils
 
 import (
 	"errors"
-	"fmt"
 	"pkg/models"
 )
 
@@ -22,8 +21,6 @@ var reviewsNotNa = []int{
 var ErrInvalidReview = errors.New("invalid review")
 
 func parseReview(record []string) (*models.RawReview, error) {
-	fmt.Printf("record: %v\n", record)
-	fmt.Printf("record length: %d\n", len(record))
 	if hasNaNValues(record, reviewsNotNa) {
 		return nil, ErrInvalidReview
 	}
