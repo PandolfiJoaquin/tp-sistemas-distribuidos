@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	cdipaoloSentiment "github.com/cdipaolo/sentiment"
 	"log/slog"
 	"tp-sistemas-distribuidos/server/common"
 )
@@ -14,6 +15,7 @@ const (
 
 type Analyzer struct {
 	middleware *common.Middleware
+	model      cdipaoloSentiment.Models
 }
 
 func NewAnalyzer(rabbitUser, rabbitPass string) (*Analyzer, error) {
@@ -22,7 +24,13 @@ func NewAnalyzer(rabbitUser, rabbitPass string) (*Analyzer, error) {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
 
-	return &Analyzer{middleware: middleware}, nil
+	model, err := cdipaoloSentiment.Restore()
+	if err != nil {
+		slog.Error("Error restoring sentiment analyzer cdipaoloSentiment", slog.String("error", err.Error()))
+		return nil, fmt.Errorf("error restoring sentiment analyzer cdipaoloSentiment: %w", err)
+	}
+
+	return &Analyzer{middleware: middleware, model: model}, nil
 }
 
 func (a *Analyzer) Start() {
@@ -87,22 +95,23 @@ func (a *Analyzer) Stop() error {
 }
 
 func (a *Analyzer) analyzeSentiment(batch common.Batch[common.Movie]) common.Batch[common.MovieWithSentiment] {
-	moviesWithSentiment := common.Map(batch.Data, analyzeSentimentOfMovie)
+	moviesWithSentiment := common.Map(batch.Data, a.analyzeSentimentOfMovie)
 	return common.Batch[common.MovieWithSentiment]{
 		Header: batch.Header,
 		Data:   moviesWithSentiment,
 	}
 }
 
-func analyzeSentimentOfMovie(movie common.Movie) common.MovieWithSentiment {
+func (a *Analyzer) analyzeSentimentOfMovie(movie common.Movie) common.MovieWithSentiment {
 	return common.MovieWithSentiment{
 		Movie:     movie,
-		Sentiment: calculateSentiment(movie),
+		Sentiment: a.calculateSentiment(movie),
 	}
 }
 
-func calculateSentiment(movie common.Movie) common.Sentiment {
-	sentiment := len(movie.Overview) % 2
+func (a *Analyzer) calculateSentiment(movie common.Movie) common.Sentiment {
+	sentiment := a.model.SentimentAnalysis(movie.Overview, cdipaoloSentiment.English).Score
+	slog.Info("Sentiment score", slog.String("movie_id", movie.ID), slog.Int("score", int(sentiment)))
 	if sentiment == 0 {
 		return common.Negative
 	}
