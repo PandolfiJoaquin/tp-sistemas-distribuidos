@@ -43,7 +43,7 @@ func parseReview(record []string) (*models.RawReview, error) {
 	return &models.RawReview{
 		UserID:    userID,
 		MovieID:   movieID,
-		Rating:    rating,
+		Rating:    float64(rating),
 		Timestamp: timestamp,
 	}, nil
 }

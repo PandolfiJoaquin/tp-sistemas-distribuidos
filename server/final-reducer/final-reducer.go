@@ -10,18 +10,16 @@ import (
 	pkg "pkg/models"
 )
 
-var previousQueuesForQueries = map[int]string{
-	2: "q2-to-final-reduce",
-	3: "q3-to-final-reduce",
-	4: "q4-to-final-reduce",
-	5: "q5-to-final-reduce",
+type queuesNames struct {
+	previousQueue string
+	nextQueue     string
 }
 
-var resultQueuesForQueries = map[int]string{
-	2: "q2-results",
-	3: "q3-results",
-	4: "q4-results",
-	5: "q5-results",
+var queriesQueues = map[int]queuesNames{
+	2: {previousQueue: "q2-to-final-reduce", nextQueue: "q2-results"},
+	3: {previousQueue: "q3-to-final-reduce", nextQueue: "q3-results"},
+	4: {previousQueue: "q4-to-final-reduce", nextQueue: "q4-results"},
+	5: {previousQueue: "q5-to-final-reduce", nextQueue: "q5-results"},
 }
 
 type FinalReducer struct {
@@ -54,24 +52,19 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string) (*FinalReducer
 }
 
 func initializeConnectionForQuery(queryNum int, middleware *common.Middleware) (connection, error) {
-	if _, ok := previousQueuesForQueries[queryNum]; !ok {
+	queuesNames := queriesQueues[queryNum]
+	if queuesNames.previousQueue == "" || queuesNames.nextQueue == "" {
 		return connection{}, fmt.Errorf("query number %d not found", queryNum)
 	}
-	if _, ok := resultQueuesForQueries[queryNum]; !ok {
-		return connection{}, fmt.Errorf("query number %d not found", queryNum)
+
+	previousChan, err := middleware.GetChanToRecv(queuesNames.previousQueue)
+	if err != nil {
+		return connection{}, fmt.Errorf("error getting channel %s to receive: %w", queuesNames.previousQueue, err)
 	}
 
-	previousQueue := previousQueuesForQueries[queryNum]
-	nextQueue := resultQueuesForQueries[queryNum]
-
-	previousChan, err := middleware.GetChanToRecv(previousQueue)
+	nextChan, err := middleware.GetChanToSend(queuesNames.nextQueue)
 	if err != nil {
-		return connection{}, fmt.Errorf("error getting channel %s to receive: %w", previousQueue, err)
-	}
-
-	nextChan, err := middleware.GetChanToSend(nextQueue)
-	if err != nil {
-		return connection{}, fmt.Errorf("error getting channel %s to send: %w", nextQueue, err)
+		return connection{}, fmt.Errorf("error getting channel %s to send: %w", queuesNames.nextQueue, err)
 	}
 
 	return connection{previousChan, nextChan}, nil

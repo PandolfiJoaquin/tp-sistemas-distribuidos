@@ -12,6 +12,7 @@ type Movie struct {
 	Genres              []pkg.Genre   `json:"genres"`
 	ProductionCountries []pkg.Country `json:"production_countries"`
 	Budget              uint64        `json:"budget"`
+	Overview            string        `json:"overview"`
 }
 
 type Header struct {
@@ -19,24 +20,19 @@ type Header struct {
 	TotalWeight int32  `json:"total_weight"` //-1 if its uknown for the moment
 }
 
-type MoviesBatch struct {
-	Header Header  `json:"header"`
-	Movies []Movie `json:"movies"`
+type Batch[T any] struct {
+	Header `json:"header"`
+	Data   []T `json:"data"`
 }
 
-func (b *MoviesBatch) IsEof() bool {
-	return b.Header.TotalWeight > 0
+func (h *Header) IsEof() bool {
+	return h.TotalWeight > 0
 }
 
-type ReviewToJoin struct {
+type Review struct {
 	ID      string  `json:"id"`
 	MovieID string  `json:"movie_id"`
-	Rating  float32 `json:"rating"`
-}
-
-type ReviewsBatch struct {
-	Header  Header         `json:"header"`
-	Reviews []ReviewToJoin `json:"reviews"`
+	Rating  float64 `json:"rating"`
 }
 
 type ToProcessMsg struct {
@@ -59,9 +55,9 @@ func (b *CoutriesBudgetMsg) IsEof() bool { //TODO: se puede obviar si se compone
 }
 
 type MovieAvgRating struct {
-	MovieID     string `json:"movie_id"`
-	RatingSum   uint32 `json:"rating_sum"`
-	RatingCount uint32 `json:"rating_count"`
+	MovieID     string  `json:"movie_id"`
+	RatingSum   float64 `json:"rating_sum"`
+	RatingCount uint32  `json:"rating_count"`
 }
 
 type MoviesAvgRatingMsg struct {
@@ -137,13 +133,44 @@ var mockedMovies = []Movie{
 	},
 }
 
-var MockedBatch = MoviesBatch{
+var MockedBatch = Batch[Movie]{
 	Header: Header{Weight: uint32(len(mockedMovies)), TotalWeight: int32(-1)},
-	Movies: mockedMovies,
+	Data:   mockedMovies,
 }
 
-var EOF = MoviesBatch{
+var EOF = Batch[Movie]{
 	Header: Header{
-		TotalWeight: int32(len(MockedBatch.Movies)),
+		TotalWeight: int32(len(MockedBatch.Data)),
 	},
+}
+
+// MovieReview represents a review joined with a movie
+type MovieReview struct {
+	MovieID string  `json:"movie_id"`
+	Title   string  `json:"title"`
+	Rating  float64 `json:"rating"`
+}
+
+type Actor struct {
+	ActorID string `json:"actor_id"`
+	Name    string `json:"name"`
+	MovieID string `json:"movie_id"`
+}
+
+type MovieActor struct { //si, es igual al de arriba
+	ActorID string `json:"actor_id"`
+	Name    string `json:"name"`
+	MovieID string `json:"movie_id"`
+}
+
+type Sentiment int
+
+const (
+	Positive Sentiment = iota
+	Negative
+)
+
+type MovieWithSentiment struct {
+	Movie
+	Sentiment Sentiment `json:"sentiment"`
 }

@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	logger, err := log.SetupLogger("production-filter", false, nil)
+	logger, err := log.SetupLogger("sentiment-analyzer", false, nil)
 	if err != nil {
 		fmt.Printf("error creating logger: %v", err)
 		return
@@ -23,15 +23,16 @@ func main() {
 		return
 	}
 
-	filter, err := NewProductionFilter(rabbitUser, rabbitPass)
+	analyzer, err := NewAnalyzer(rabbitUser, rabbitPass)
 	if err != nil {
-		slog.Error("error creating production filter", slog.String("error", err.Error()))
+		slog.Error("error creating sentiment analyzer", slog.String("error", err.Error()))
 		return
 	}
 
-	filter.Start()
+	analyzer.Start()
 
-	if err := filter.Stop(); err != nil {
-		slog.Error("error stopping production filter", slog.String("error", err.Error()))
+	if err := analyzer.Stop(); err != nil {
+		slog.Error("error stopping sentiment analyzer", slog.String("error", err.Error()))
+		return
 	}
 }

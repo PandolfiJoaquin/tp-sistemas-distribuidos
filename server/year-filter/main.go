@@ -23,6 +23,16 @@ func main() {
 		return
 	}
 
-	filter := NewYearFilter(rabbitUser, rabbitPass)
+	filter, err := NewYearFilter(rabbitUser, rabbitPass)
+	if err != nil {
+		slog.Error("error creating year filter", slog.String("error", err.Error()))
+		return
+	}
+
 	filter.Start()
+
+	if err := filter.Stop(); err != nil {
+		slog.Error("error stopping year filter", slog.String("error", err.Error()))
+		return
+	}
 }
