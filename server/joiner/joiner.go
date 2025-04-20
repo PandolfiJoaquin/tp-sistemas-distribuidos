@@ -47,13 +47,13 @@ func (j *Joiner) Start() {
 		return
 	}
 
-	go j.start(moviesChan, q3Chan)
+	go j.run(moviesChan, q3Chan)
 
 	forever := make(chan bool)
 	<-forever
 }
 
-func (j *Joiner) start(_moviesChan <-chan common.Message, nextStepChan chan<- []byte) {
+func (j *Joiner) run(_moviesChan <-chan common.Message, nextStepChan chan<- []byte) {
 	dummyChan := make(<-chan common.Message)
 	movies := _moviesChan
 	reviews := dummyChan
@@ -141,7 +141,7 @@ func (j *Joiner) saveBatch(batch common.Batch[common.Movie]) {
 	j.moviesReceived = append(j.moviesReceived, batch)
 }
 
-// allMoviesReceived checks if it has all necessary movies to start joining with reviews
+// allMoviesReceived checks if it has all necessary movies to run joining with reviews
 func (j *Joiner) allMoviesReceived() bool {
 	eofBatch := common.First(j.moviesReceived, func(b common.Batch[common.Movie]) bool { return b.IsEof() })
 	if eofBatch == nil {
