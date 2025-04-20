@@ -12,6 +12,7 @@ type Movie struct {
 	Genres              []pkg.Genre   `json:"genres"`
 	ProductionCountries []pkg.Country `json:"production_countries"`
 	Budget              uint64        `json:"budget"`
+	Overview            string        `json:"overview"`
 }
 
 type Header struct {
@@ -160,4 +161,16 @@ type MovieActor struct { //si, es igual al de arriba
 	ActorID string `json:"actor_id"`
 	Name    string `json:"name"`
 	MovieID string `json:"movie_id"`
+}
+
+type Sentiment int
+
+const (
+	Positive Sentiment = iota
+	Negative
+)
+
+type MovieWithSentiment struct {
+	Movie
+	Sentiment Sentiment `json:"sentiment"`
 }

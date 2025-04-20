@@ -61,6 +61,19 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
+  sentiment-analyzer:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+          NODE: sentiment-analyzer
+    container_name: sentiment-analyzer
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
   joiner:
     build:
       dockerfile: ./server/Dockerfile
