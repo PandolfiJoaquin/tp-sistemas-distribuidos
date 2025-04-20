@@ -90,13 +90,17 @@ func (r *FinalReducer) startReceivingQ2() {
 	for msg := range r.connection.ChanToRecv {
 		slog.Info("received message", slog.String("message", string(msg.Body)))
 
-		var batch common.CoutriesBudgetMsg
+		var batch common.Batch[common.CountryBudget]
 		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			}
 			continue
 		}
 
-		for _, countryBudget := range batch.Countries {
+		// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
+		for _, countryBudget := range batch.Data {
 			countries[countryBudget.Country] += countryBudget.Budget
 		}
 
@@ -111,7 +115,6 @@ func (r *FinalReducer) startReceivingQ2() {
 			response, err := json.Marshal(top5Countries)
 			if err != nil {
 				slog.Error("error marshalling response", slog.String("error", err.Error()))
-				continue //TODO: ack?
 			}
 			r.connection.ChanToSend <- response
 			slog.Info("sent query2 final response")
@@ -131,13 +134,13 @@ func (r *FinalReducer) startReceivingQ3() {
 	for msg := range r.connection.ChanToRecv {
 		slog.Info("received message", slog.String("message", string(msg.Body)))
 
-		var batch common.MoviesAvgRatingMsg
+		var batch common.Batch[common.MovieAvgRating]
 		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 			continue
 		}
 
-		for _, movieRating := range batch.MoviesRatings {
+		for _, movieRating := range batch.Data {
 			if previousRating, ok := movies[movieRating.MovieID]; !ok {
 				movies[movieRating.MovieID] = movieRating
 			} else {
@@ -156,7 +159,6 @@ func (r *FinalReducer) startReceivingQ3() {
 			response, err := json.Marshal(bestAndWorstMovies)
 			if err != nil {
 				slog.Error("error marshalling response", slog.String("error", err.Error()))
-				continue //TODO: ack?
 			}
 			r.connection.ChanToSend <- response
 			slog.Info("sent query3 final response")

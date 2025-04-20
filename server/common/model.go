@@ -44,28 +44,10 @@ type CountryBudget struct {
 	Budget  uint64      `json:"budget"`
 }
 
-type CoutriesBudgetMsg struct {
-	Header    Header          `json:"header"`
-	Countries []CountryBudget `json:"countries"`
-}
-
-func (b *CoutriesBudgetMsg) IsEof() bool { //TODO: se puede obviar si se compone con el Header y le pongo el metodo al header
-	return b.Header.TotalWeight > 0
-}
-
 type MovieAvgRating struct {
 	MovieID     string  `json:"movie_id"`
 	RatingSum   float64 `json:"rating_sum"`
 	RatingCount uint32  `json:"rating_count"`
-}
-
-type MoviesAvgRatingMsg struct {
-	Header        Header           `json:"header"`
-	MoviesRatings []MovieAvgRating `json:"movies_ratings"`
-}
-
-func (b *MoviesAvgRatingMsg) IsEof() bool { //TODO: se puede obviar si se compone con el Header y le pongo el metodo al header
-	return b.Header.TotalWeight > 0
 }
 
 type BestAndWorstMovies struct {

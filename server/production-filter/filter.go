@@ -10,13 +10,6 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-const PREVIOUS_STEP = "filter-production-q1"
-
-// const NEXT_STEP = "movies-to-join"
-const NEXT_STEP = "q2-to-reduce"
-
-// const NEXT_STEP = "q1-results"
-
 type queuesNames struct {
 	previousQueue string
 	nextQueue     string
@@ -89,7 +82,6 @@ func (f *ProductionFilter) start() {
 		case msg := <-f.connections[1].ChanToRecv:
 			if err := f.processQueryMessage(1, msg, f.filterByProductionQ1); err != nil {
 				slog.Error("error processing query message", slog.String("error", err.Error()))
-				continue // TODO: ack?
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -97,7 +89,6 @@ func (f *ProductionFilter) start() {
 		case msg := <-f.connections[2].ChanToRecv:
 			if err := f.processQueryMessage(2, msg, f.filterByProductionQ2); err != nil {
 				slog.Error("error processing query message", slog.String("error", err.Error()))
-				continue // TODO: ack?
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -105,7 +96,6 @@ func (f *ProductionFilter) start() {
 		case msg := <-f.connections[3].ChanToRecv:
 			if err := f.processQueryMessage(3, msg, f.filterByProductionQ3); err != nil {
 				slog.Error("error processing query message", slog.String("error", err.Error()))
-				continue // TODO: ack?
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))

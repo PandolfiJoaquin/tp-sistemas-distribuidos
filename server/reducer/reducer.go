@@ -80,7 +80,7 @@ func (r *Reducer) startReceiving() {
 		case msg := <-r.connections[2].ChanToRecv:
 			slog.Info("received message from query 2", slog.String("message", string(msg.Body)))
 			if err := r.processQuery2Message(msg); err != nil {
-				slog.Error("error processing query2 message", slog.String("error", err.Error())) //TODO: Ack?
+				slog.Error("error processing query2 message", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query2 message", slog.String("error", err.Error()))
@@ -89,7 +89,7 @@ func (r *Reducer) startReceiving() {
 		case msg := <-r.connections[3].ChanToRecv:
 			slog.Info("received message from query 3", slog.String("message", string(msg.Body)))
 			if err := r.processQuery3Message(msg); err != nil {
-				slog.Error("error processing query3 message", slog.String("error", err.Error())) //TODO: Ack?
+				slog.Error("error processing query3 message", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query3 message", slog.String("error", err.Error()))
@@ -142,12 +142,12 @@ func (r *Reducer) processQuery3Message(msg common.Message) error {
 	return nil
 }
 
-func (r *Reducer) reduceQ2(batch common.Batch[common.Movie]) (common.CoutriesBudgetMsg, error) {
+func (r *Reducer) reduceQ2(batch common.Batch[common.Movie]) (common.Batch[common.CountryBudget], error) {
 	// me llega un mensaje de peliculas y tengo que reducirlo a un map con cada entrada (pais, $$), me viene filtrado
 	countries := make(map[pkg.Country]uint64)
 	for _, movie := range batch.Data {
 		if len(movie.ProductionCountries) > 1 {
-			return common.CoutriesBudgetMsg{}, fmt.Errorf("movie has more than 1 production country for query 2, movie: %v", movie)
+			return common.Batch[common.CountryBudget]{}, fmt.Errorf("movie has more than 1 production country for query 2, movie: %v", movie)
 		}
 		countries[movie.ProductionCountries[0]] += movie.Budget
 	}
@@ -157,13 +157,13 @@ func (r *Reducer) reduceQ2(batch common.Batch[common.Movie]) (common.CoutriesBud
 		countriesList = append(countriesList, common.CountryBudget{Country: country, Budget: budget})
 	}
 
-	return common.CoutriesBudgetMsg{
-		Header:    batch.Header,
-		Countries: countriesList,
+	return common.Batch[common.CountryBudget]{
+		Header: batch.Header,
+		Data:   countriesList,
 	}, nil
 }
 
-func (r *Reducer) reduceQ3(batch common.Batch[common.MovieReview]) (common.MoviesAvgRatingMsg, error) {
+func (r *Reducer) reduceQ3(batch common.Batch[common.MovieReview]) (common.Batch[common.MovieAvgRating], error) {
 	// me llega un mensaje de peliculasXReviews y tengo que reducirlo a un map con cada entrada (peli, sum(ratings), cant_reviews), me viene filtrado
 	movieRatings := make(map[string]common.MovieAvgRating)
 	for _, movieRating := range batch.Data {
@@ -179,9 +179,9 @@ func (r *Reducer) reduceQ3(batch common.Batch[common.MovieReview]) (common.Movie
 		moviesRatingsList = append(moviesRatingsList, movieRating)
 	}
 
-	return common.MoviesAvgRatingMsg{
-		Header:        batch.Header,
-		MoviesRatings: moviesRatingsList,
+	return common.Batch[common.MovieAvgRating]{
+		Header: batch.Header,
+		Data:   moviesRatingsList,
 	}, nil
 }
 
