@@ -3,6 +3,7 @@ package common
 import (
 	"encoding/json"
 	pkg "pkg/models"
+	"time"
 )
 
 type Movie struct {
@@ -12,6 +13,8 @@ type Movie struct {
 	Genres              []pkg.Genre   `json:"genres"`
 	ProductionCountries []pkg.Country `json:"production_countries"`
 	Budget              uint64        `json:"budget"`
+	ReleaseDate         time.Time     `json:"release_date"`
+	Revenue             uint64        `json:"revenue,omitempty"`
 }
 
 type Header struct {
@@ -39,6 +42,18 @@ type ToProcessMsg struct {
 	Body json.RawMessage `json:"body"`
 }
 
+type Sentiment int
+
+const (
+	Positive Sentiment = iota
+	Negative
+)
+
+type MovieWithSentimentOverview struct {
+	Movie
+	Sentiment Sentiment `json:"sentiment"`
+}
+
 type CountryBudget struct {
 	Country pkg.Country `json:"country"`
 	Budget  uint64      `json:"budget"`
@@ -50,17 +65,42 @@ type MovieAvgRating struct {
 	RatingCount uint32  `json:"rating_count"`
 }
 
-type BestAndWorstMovies struct {
-	BestMovie  string `json:"best_movie"`
-	WorstMovie string `json:"worst_movie"`
+type ActorMoviesAmount struct {
+	ActorID      string `json:"actor_id"`
+	ActorName    string `json:"actor_name"`
+	MoviesAmount uint32 `json:"movies_amount"`
 }
 
-type Top5Countries struct {
+type ProfitRatioAccumulator struct {
+	ProfitRatioSum   float64 `json:"profit_ratio_sum"`
+	ProfitRatioCount uint32  `json:"profit_ratio_count"`
+}
+
+type SentimentProfitRatioAccumulator struct {
+	PositiveProfitRatio ProfitRatioAccumulator `json:"positive_profit_ratio"`
+	NegativeProfitRatio ProfitRatioAccumulator `json:"negative_profit_ratio"`
+}
+
+type Top5Countries struct { //TODO: cambiar a slice
 	FirstCountry  pkg.Country `json:"first_country"`
 	SecondCountry pkg.Country `json:"second_country"`
 	ThirdCountry  pkg.Country `json:"third_country"`
 	FourthCountry pkg.Country `json:"fourth_country"`
 	FifthCountry  pkg.Country `json:"fifth_country"`
+}
+
+type BestAndWorstMovies struct {
+	BestMovie  string `json:"best_movie"`
+	WorstMovie string `json:"worst_movie"`
+}
+
+type Top10Actors struct {
+	TopActors []ActorMoviesAmount `json:"top_actors"`
+}
+
+type SentimentProfitRatioAverage struct {
+	PositiveAvgProfitRatio float64 `json:"positive_avg_profit_ratio"`
+	NegativeAvgProfitRatio float64 `json:"negative_avg_profit_ratio"`
 }
 
 var mockedMovies = []Movie{
