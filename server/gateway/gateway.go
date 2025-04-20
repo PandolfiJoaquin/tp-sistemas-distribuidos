@@ -111,8 +111,9 @@ func (g *Gateway) listen() {
 			}
 			return
 		}
-		g.handleConnection(conn)
-		conn.Close()
+		g.client = conn
+		go g.handleConnection()
+		g.processMessages()
 	}
 }
 
@@ -182,8 +183,7 @@ func (g *Gateway) publishBatch(batch models.RawBatch, batchType string) error {
 	return nil
 }
 
-func (g *Gateway) handleConnection(conn net.Conn) {
-	g.client = conn
+func (g *Gateway) handleConnection() {
 	slog.Info("Client connected", slog.String("address", g.client.RemoteAddr().String()))
 	err := g.receiveMovies()
 	if err != nil {
@@ -233,18 +233,21 @@ func (g *Gateway) Start() {
 	g.ctx = ctx
 	defer cancel()
 
-	wg.Add(2)
+	wg.Add(1)
 	go g.signalHandler(wg)
-	go g.processMessages(wg)
 	g.listen()
 	wg.Wait()
 }
 
 var total_queries = 1
 
-func (g *Gateway) processMessages(wg *sync.WaitGroup) {
-	//TODO: TIDY UP
-	defer wg.Done()
+func (g *Gateway) processMessages() {
+	defer func(client net.Conn) {
+		err := client.Close()
+		if err != nil {
+
+		}
+	}(g.client)
 
 	for {
 		select {
@@ -272,12 +275,12 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 				return
 			}
 		case msg := <-g.resultsQueues[3]:
-			var batch common.BestAndWorstMovies
-			if err := json.Unmarshal(msg.Body, &batch); err != nil {
-				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+			err := g.handleResults3(msg)
+			if err != nil {
+				slog.Error("error handling result 3", slog.String("error", err.Error()))
 				return
 			}
-			slog.Info("Received Q3 response: ", slog.Any("batch", batch))
+
 			if err := msg.Ack(); err != nil {
 				return
 			}
@@ -351,6 +354,26 @@ func (g *Gateway) handleResults2(msg common.Message) error {
 	if err != nil {
 		return fmt.Errorf("error sending query results: %w", err)
 	}
+	return nil
+}
+
+func (g *Gateway) handleResults3(msg common.Message) error {
+	var bestAndWorstMovies common.BestAndWorstMovies
+	if err := json.Unmarshal(msg.Body, &bestAndWorstMovies); err != nil {
+		return fmt.Errorf("error unmarshalling best and worst movies: %w", err)
+	}
+
+	slog.Info("Best and worst movies", slog.Any("bestAndWorstMovies", bestAndWorstMovies))
+	q3Result := []models.QueryResult{
+		models.Q3Movie{Title: bestAndWorstMovies.BestMovie},
+		models.Q3Movie{Title: bestAndWorstMovies.WorstMovie},
+	}
+
+	err := communication.SendQueryResults(g.client, 3, q3Result)
+	if err != nil {
+		return fmt.Errorf("error sending query results: %w", err)
+	}
+
 	return nil
 }
 

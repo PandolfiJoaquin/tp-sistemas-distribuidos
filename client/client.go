@@ -10,7 +10,7 @@ import (
 )
 
 const MoviePath = "archive/movies_metadata.csv"
-const ReviewPath = "archive/ratings.csv"
+const ReviewPath = "archive/ratings_small.csv"
 
 type ClientConfig struct {
 	ServerAddress  string
@@ -117,6 +117,8 @@ func (c *Client) sendReviews(reader *utils.ReviewReader) error {
 	if err != nil {
 		return fmt.Errorf("error sending reviews: %w", err)
 	}
+
+	slog.Info("sent reviews", slog.Int("count", len(reviews)))
 
 	return nil
 }
