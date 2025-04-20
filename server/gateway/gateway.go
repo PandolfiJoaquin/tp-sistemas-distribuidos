@@ -14,9 +14,15 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-const PREVIOUS_STEP = "movies-to-preprocess"
-// const NEXT_STEP = "q1-results"
-const NEXT_STEP = "q2-results"
+const (
+	nextStep = "to-preprocess"
+
+	qres1 = "q1-results"
+	qres2 = "q2-results"
+	qres3 = "q3-results"
+	qres4 = "q4-results"
+	qres5 = "q5-results"
+)
 
 type GatewayConfig struct {
 	RabbitUser string
@@ -33,23 +39,22 @@ func NewGatewayConfig(rabbitUser, rabbitPass, port string) GatewayConfig {
 }
 
 type Gateway struct {
-	middleware     *common.Middleware
-	moviesToFilter chan<- []byte
-	q1Results      <-chan common.Message //TODO: agregar para todas las querys (fijarse en reducer)
-	config         GatewayConfig
-	listener       net.Listener
-	client         net.Conn
-	running        bool
-	ctx            context.Context
-	free           chan bool
+	middleware    *common.Middleware
+	resultsQueues map[int]<-chan common.Message
+	toPreprocess  chan<- []byte
+	config        GatewayConfig
+	listener      net.Listener
+	client        net.Conn
+	running       bool
+	ctx           context.Context
 }
 
 func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
 	config := NewGatewayConfig(rabbitUser, rabbitPass, port)
 	gateway := &Gateway{
-		config:  config,
-		running: true,
-		free:    make(chan bool),
+		config:        config,
+		running:       true,
+		resultsQueues: make(map[int]<-chan common.Message),
 	}
 
 	listener, err := net.Listen("tcp", ":"+port)
@@ -76,25 +81,28 @@ func (g *Gateway) middlewareSetup() error {
 	}
 	g.middleware = middleware
 
-	moviesToFilter, err := g.middleware.GetChanToSend(PREVIOUS_STEP)
+	processorChan, err := g.middleware.GetChanToSend(nextStep)
 	if err != nil {
-		slog.Error("error getting channel 'movies-to-preprocess'", slog.String("error", err.Error()))
+		slog.Error("error getting channel to send", slog.String("queue", nextStep), slog.String("error", err.Error()))
+		return err
 	}
 
-	g.moviesToFilter = moviesToFilter
-
-	q1Results, err := g.middleware.GetChanToRecv(NEXT_STEP)
-	if err != nil {
-		slog.Error("error getting channel 'q1-results'", slog.String("error", err.Error()))
+	for i := 1; i <= 5; i++ {
+		resultsChan, err := g.middleware.GetChanToRecv(fmt.Sprintf("q%d-results", i))
+		if err != nil {
+			slog.Error("error getting channel to receive", slog.String("queue", fmt.Sprintf("q%d-results", i)), slog.String("error", err.Error()))
+			return err
+		}
+		g.resultsQueues[i] = resultsChan
 	}
 
-	g.q1Results = q1Results
+	g.toPreprocess = processorChan
 
 	return nil
 }
 
 func (g *Gateway) listen() {
-	// Listener will only accept one connection at a time
+	// Listener will only accept one connection at a time //TODO: check to do one connection per queries
 	for g.running {
 		conn, err := g.listener.Accept()
 		if err != nil {
@@ -104,7 +112,6 @@ func (g *Gateway) listen() {
 			return
 		}
 		g.handleConnection(conn)
-		<-g.free // wait for the previous connection to finish
 		conn.Close()
 	}
 }
@@ -117,12 +124,10 @@ func (g *Gateway) receiveMovies() error {
 			return fmt.Errorf("error receiving movies: %w", err)
 		}
 
-		body, err := json.Marshal(movies)
+		err = g.publishBatch(movies, "movies")
 		if err != nil {
-			return fmt.Errorf("error marshalling movies: %w", err)
+			return fmt.Errorf("error publishing movies batch: %w", err)
 		}
-
-		g.moviesToFilter <- body
 
 		total += int(movies.Header.Weight)
 
@@ -134,6 +139,49 @@ func (g *Gateway) receiveMovies() error {
 	return nil
 }
 
+func (g *Gateway) receiveReviews() error {
+	total := 0
+	for {
+		reviews, err := communication.RecvReviews(g.client)
+		if err != nil {
+			return fmt.Errorf("error receiving reviews: %w", err)
+		}
+
+		err = g.publishBatch(reviews, "reviews")
+		if err != nil {
+			return fmt.Errorf("error publishing reviews batch: %w", err)
+		}
+
+		total += int(reviews.Header.Weight)
+
+		if reviews.IsEof() {
+			break
+		}
+	}
+	slog.Info("Total reviews received", slog.Int("total", total))
+	return nil
+}
+
+func (g *Gateway) publishBatch(batch models.RawBatch, batchType string) error {
+	bodyBytes, err := json.Marshal(batch)
+	if err != nil {
+		return fmt.Errorf("error marshalling batch: %w", err)
+	}
+
+	rawBatch := common.ToProcessMsg{
+		Type: batchType,
+		Body: bodyBytes,
+	}
+
+	batchToSend, err := json.Marshal(rawBatch)
+	if err != nil {
+		return fmt.Errorf("error marshalling raw batch: %w", err)
+	}
+
+	g.toPreprocess <- batchToSend
+	return nil
+}
+
 func (g *Gateway) handleConnection(conn net.Conn) {
 	g.client = conn
 	slog.Info("Client connected", slog.String("address", g.client.RemoteAddr().String()))
@@ -142,6 +190,13 @@ func (g *Gateway) handleConnection(conn net.Conn) {
 		slog.Error("error receiving movies", slog.String("error", err.Error()))
 		return
 	}
+
+	err = g.receiveReviews()
+	if err != nil {
+		slog.Error("error receiving reviews", slog.String("error", err.Error()))
+		return
+	}
+
 	// TODO: Handle Ratings and Actors
 }
 
@@ -185,91 +240,84 @@ func (g *Gateway) Start() {
 	wg.Wait()
 }
 
+var total_queries = 1
+
 func (g *Gateway) processMessages(wg *sync.WaitGroup) {
+	//TODO: TIDY UP
 	defer wg.Done()
-	done := 0
 
 	for {
 		select {
 		case <-g.ctx.Done():
 			return
 
-		case msg := <-g.q1Results:
-			// batch, err := g.consumeBatch(msg.Body)
-			// if err != nil {
-			// 	slog.Error("error consuming results", slog.String("error", err.Error()))
-			// 	return
-			// }
-
-			// if len(batch.Movies) == 0 && batch.Header.TotalWeight == -1 {
-			// 	continue
-			// }
-
-			// err = g.processResult(batch, &done)
-			// if err != nil {
-			// 	if !g.running {
-			// 		slog.Error("error processing result", slog.String("error", err.Error()))
-			// 	}
-			// 	return
-			// }
-
-			var top5Countries common.Top5Countries
-			if err := json.Unmarshal(msg.Body, &top5Countries); err != nil {
-				slog.Error("error unmarshalling top 5 countries", slog.String("error", err.Error()))
+		case msg := <-g.resultsQueues[1]:
+			if err := g.handleResult1(msg); err != nil {
+				slog.Error("error handling result 1", slog.String("error", err.Error()))
 				return
 			}
-
-			slog.Info("Top 5 countries", slog.Any("top5Countries", top5Countries))
-
-			q2Result := []models.QueryResult{
-				models.Q2Country{Country: top5Countries.FirstCountry},
-				models.Q2Country{Country: top5Countries.SecondCountry},
-				models.Q2Country{Country: top5Countries.ThirdCountry},
-				models.Q2Country{Country: top5Countries.FourthCountry},
-				models.Q2Country{Country: top5Countries.FifthCountry},
-			}
-
-			err := communication.SendQueryResults(g.client, 2, q2Result)
-			if err != nil {
-				slog.Error("error sending query results", slog.String("error", err.Error()))
-				return
-			}
-
-			done++
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				return
 			}
+		case msg := <-g.resultsQueues[2]:
+			if err := g.handleResults2(msg); err != nil {
+				slog.Error("error handling result 2", slog.String("error", err.Error()))
+				return
+			}
+
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				return
+			}
+		case msg := <-g.resultsQueues[3]:
+			var batch common.BestAndWorstMovies
+			if err := json.Unmarshal(msg.Body, &batch); err != nil {
+				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+				return
+			}
+			slog.Info("Received Q3 response: ", slog.Any("batch", batch))
+			if err := msg.Ack(); err != nil {
+				return
+			}
+			// TODO: Handle query 3 results
+		case _ = <-g.resultsQueues[4]:
+			// TODO: Handle query 4 results
+		case _ = <-g.resultsQueues[5]:
+			// TODO: Handle query 5 results
 		}
 	}
 }
 
-func (g *Gateway) consumeBatch(msg []byte) (common.Batch, error) {
-	var batch common.Batch
-	if err := json.Unmarshal(msg, &batch); err != nil {
-		return batch, fmt.Errorf("error unmarshalling result: %w", err)
+func (g *Gateway) handleResult1(msg common.Message) error {
+	batch, err := g.consumeBatch(msg.Body)
+	if err != nil {
+		return fmt.Errorf("error consuming results: %w", err)
 	}
-	return batch, nil
+
+	if len(batch.Data) == 0 && !batch.IsEof() {
+		return nil
+	}
+
+	err = g.processResult1(batch)
+	if err != nil {
+		return fmt.Errorf("error processing result: %w", err)
+	}
+
+	return nil
 }
 
-const TotalQueries = 1
-
-func (g *Gateway) processResult(batch common.Batch, done *int) error {
+func (g *Gateway) processResult1(batch common.Batch[common.Movie]) error {
 	if batch.IsEof() {
 		slog.Info("EOF message received", slog.Any("headers", batch.Header))
 		err := communication.SendQueryEof(g.client, 1)
 		if err != nil {
 			return fmt.Errorf("error sending EOF: %w", err)
 		}
-		*done++
-		if *done == TotalQueries { // all queries done
-			g.free <- true // signal that the connection is free for the next one
-		}
 	} else {
-		// TODO: Check for different query results. Query 1 for now
-		q1Movies := make([]models.QueryResult, len(batch.Movies))
-		for i, movie := range batch.Movies {
+		q1Movies := make([]models.QueryResult, len(batch.Data))
+		for i, movie := range batch.Data {
 			q1Movies[i] = models.Q1Movie{
 				Title:  movie.Title,
 				Genres: movie.Genres,
@@ -282,3 +330,36 @@ func (g *Gateway) processResult(batch common.Batch, done *int) error {
 	}
 	return nil
 }
+
+func (g *Gateway) handleResults2(msg common.Message) error {
+	var top5Countries common.Top5Countries
+	if err := json.Unmarshal(msg.Body, &top5Countries); err != nil {
+		return fmt.Errorf("error unmarshalling top 5 countries: %w", err)
+	}
+
+	slog.Info("Top 5 countries", slog.Any("top5Countries", top5Countries))
+
+	q2Result := []models.QueryResult{
+		models.Q2Country{Country: top5Countries.FirstCountry},
+		models.Q2Country{Country: top5Countries.SecondCountry},
+		models.Q2Country{Country: top5Countries.ThirdCountry},
+		models.Q2Country{Country: top5Countries.FourthCountry},
+		models.Q2Country{Country: top5Countries.FifthCountry},
+	}
+
+	err := communication.SendQueryResults(g.client, 2, q2Result)
+	if err != nil {
+		return fmt.Errorf("error sending query results: %w", err)
+	}
+	return nil
+}
+
+func (g *Gateway) consumeBatch(msg []byte) (common.Batch[common.Movie], error) {
+	var batch common.Batch[common.Movie]
+	if err := json.Unmarshal(msg, &batch); err != nil {
+		return batch, fmt.Errorf("error unmarshalling result: %w", err)
+	}
+	return batch, nil
+}
+
+const TotalQueries = 1

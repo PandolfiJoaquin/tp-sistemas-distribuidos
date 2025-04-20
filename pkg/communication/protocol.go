@@ -10,18 +10,19 @@ import (
 func SendMovies(conn net.Conn, movies []models.RawMovie) error {
 	batch := models.RawMovieBatch{
 		Header: models.Header{
-			Weight: uint32(len(movies)),
+			Weight:      uint32(len(movies)),
+			TotalWeight: -1,
 		},
 		Movies: movies,
 	}
 
-	if err := sendBatch(conn, batch); err != nil {
+	if err := sendBatch(conn, &batch); err != nil {
 		return err
 	}
 	return nil
 }
 
-func SendEOF(conn net.Conn, total int32) error {
+func SendMovieEof(conn net.Conn, total int32) error {
 	batch := models.RawMovieBatch{
 		Header: models.Header{
 			TotalWeight: total,
@@ -29,7 +30,7 @@ func SendEOF(conn net.Conn, total int32) error {
 		},
 	}
 
-	if err := sendBatch(conn, batch); err != nil {
+	if err := sendBatch(conn, &batch); err != nil {
 		return err
 	}
 
@@ -37,7 +38,45 @@ func SendEOF(conn net.Conn, total int32) error {
 }
 
 func RecvMovies(conn net.Conn) (models.RawMovieBatch, error) {
-	batch, err := recvBatch(conn)
+	batch, err := recvMovieBatch(conn)
+	if err != nil {
+		return batch, err
+	}
+	return batch, nil
+}
+
+func SendReviews(conn net.Conn, reviews []models.RawReview) error {
+	batch := models.RawReviewBatch{
+		Header: models.Header{
+			Weight:      uint32(len(reviews)),
+			TotalWeight: -1,
+		},
+		Reviews: reviews,
+	}
+
+	if err := sendBatch(conn, &batch); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SendReviewEof(conn net.Conn, total int32) error {
+	batch := models.RawReviewBatch{
+		Header: models.Header{
+			TotalWeight: total,
+			Weight:      0,
+		},
+	}
+
+	if err := sendBatch(conn, &batch); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func RecvReviews(conn net.Conn) (models.RawReviewBatch, error) {
+	batch, err := recvReviewBatch(conn)
 	if err != nil {
 		return batch, err
 	}

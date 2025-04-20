@@ -1,6 +1,9 @@
 package common
 
-import pkg "pkg/models"
+import (
+	"encoding/json"
+	pkg "pkg/models"
+)
 
 type Movie struct {
 	ID                  string        `json:"id"`
@@ -16,13 +19,24 @@ type Header struct {
 	TotalWeight int32  `json:"total_weight"` //-1 if its uknown for the moment
 }
 
-type Batch struct {
-	Header Header  `json:"header"`
-	Movies []Movie `json:"movies"`
+type Batch[T any] struct {
+	Header `json:"header"`
+	Data   []T `json:"data"`
 }
 
-func (b *Batch) IsEof() bool {
-	return b.Header.TotalWeight > 0
+func (h *Header) IsEof() bool {
+	return h.TotalWeight > 0
+}
+
+type Review struct {
+	ID      string  `json:"id"`
+	MovieID string  `json:"movie_id"`
+	Rating  float64 `json:"rating"`
+}
+
+type ToProcessMsg struct {
+	Type string          `json:"type"`
+	Body json.RawMessage `json:"body"`
 }
 
 type CountryBudget struct {
@@ -40,9 +54,9 @@ func (b *CoutriesBudgetMsg) IsEof() bool { //TODO: se puede obviar si se compone
 }
 
 type MovieAvgRating struct {
-	MovieID     string `json:"movie_id"`
-	RatingSum   uint32 `json:"rating_sum"`
-	RatingCount uint32 `json:"rating_count"`
+	MovieID     string  `json:"movie_id"`
+	RatingSum   float64 `json:"rating_sum"`
+	RatingCount uint32  `json:"rating_count"`
 }
 
 type MoviesAvgRatingMsg struct {
@@ -118,13 +132,32 @@ var mockedMovies = []Movie{
 	},
 }
 
-var MockedBatch = Batch{
+var MockedBatch = Batch[Movie]{
 	Header: Header{Weight: uint32(len(mockedMovies)), TotalWeight: int32(-1)},
-	Movies: mockedMovies,
+	Data:   mockedMovies,
 }
 
-var EOF = Batch{
+var EOF = Batch[Movie]{
 	Header: Header{
-		TotalWeight: int32(len(MockedBatch.Movies)),
+		TotalWeight: int32(len(MockedBatch.Data)),
 	},
+}
+
+// MovieReview represents a review joined with a movie
+type MovieReview struct {
+	MovieID string  `json:"movie_id"`
+	Title   string  `json:"title"`
+	Rating  float64 `json:"rating"`
+}
+
+type Actor struct {
+	ActorID string `json:"actor_id"`
+	Name    string `json:"name"`
+	MovieID string `json:"movie_id"`
+}
+
+type MovieActor struct { //si, es igual al de arriba
+	ActorID string `json:"actor_id"`
+	Name    string `json:"name"`
+	MovieID string `json:"movie_id"`
 }

@@ -8,33 +8,16 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-const (
-	previousQueueQuery2 = "q2-to-reduce"
-	previousQueueQuery3 = "q3-to-reduce"
-	previousQueueQuery4 = "q4-to-reduce"
-	previousQueueQuery5 = "q5-to-reduce"
-
-	nextQueueQuery2 = "q2-to-final-reduce"
-	nextQueueQuery3 = "q3-to-final-reduce"
-	nextQueueQuery4 = "q4-to-final-reduce"
-	nextQueueQuery5 = "q5-to-final-reduce"
-)
-
-// ReviewXMovies represents a review joined with a movie
-type ReviewXMovies struct {
-	MovieID string `json:"movie_id"`
-	Title   string `json:"title"`
-	Rating  uint32 `json:"rating"`
+type queuesNames struct {
+	previousQueue string
+	nextQueue     string
 }
 
-// ReviewsXMoviesBatch represents a batch of reviews joined with movies
-type ReviewsXMoviesBatch struct {
-	Header         common.Header   `json:"header"`
-	ReviewsXMovies []ReviewXMovies `json:"reviews_x_movies"`
-}
-
-func (b *ReviewsXMoviesBatch) IsEof() bool {
-	return b.Header.TotalWeight > 0
+var queriesQueues = map[int]queuesNames{
+	2: {previousQueue: "q2-to-reduce", nextQueue: "q2-to-final-reduce"},
+	3: {previousQueue: "q3-to-reduce", nextQueue: "q3-to-final-reduce"},
+	4: {previousQueue: "q4-to-reduce", nextQueue: "q4-to-final-reduce"},
+	5: {previousQueue: "q5-to-reduce", nextQueue: "q5-to-final-reduce"},
 }
 
 type Reducer struct {
@@ -74,30 +57,14 @@ func initializeConnection(middleware *common.Middleware, previousQueue, nextQueu
 }
 
 func initializeConnections(middleware *common.Middleware) (map[int]connection, error) {
-	connectionQ2, err := initializeConnection(middleware, previousQueueQuery2, nextQueueQuery2)
-	if err != nil {
-		return nil, fmt.Errorf("error initializing connection for %s: %w", previousQueueQuery2, err)
+	connections := make(map[int]connection)
+	for queryNum, queuesNames := range queriesQueues {
+		connection, err := initializeConnection(middleware, queuesNames.previousQueue, queuesNames.nextQueue)
+		if err != nil {
+			return nil, fmt.Errorf("error initializing connection for %s: %w", queuesNames.previousQueue, err)
+		}
+		connections[queryNum] = connection
 	}
-	connectionQ3, err := initializeConnection(middleware, previousQueueQuery3, nextQueueQuery3)
-	if err != nil {
-		return nil, fmt.Errorf("error initializing connection for %s: %w", previousQueueQuery3, err)
-	}
-	connectionQ4, err := initializeConnection(middleware, previousQueueQuery4, nextQueueQuery4)
-	if err != nil {
-		return nil, fmt.Errorf("error initializing connection for %s: %w", previousQueueQuery4, err)
-	}
-	connectionQ5, err := initializeConnection(middleware, previousQueueQuery5, nextQueueQuery5)
-	if err != nil {
-		return nil, fmt.Errorf("error initializing connection for %s: %w", previousQueueQuery5, err)
-	}
-
-	connections := map[int]connection{
-		2: connectionQ2,
-		3: connectionQ3,
-		4: connectionQ4,
-		5: connectionQ5,
-	}
-
 	return connections, nil
 }
 
@@ -140,7 +107,7 @@ func (r *Reducer) startReceiving() {
 }
 
 func (r *Reducer) processQuery2Message(msg common.Message) error {
-	var batch common.Batch
+	var batch common.Batch[common.Movie]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		return fmt.Errorf("error unmarshalling query 2 message: %w", err)
 	}
@@ -157,7 +124,7 @@ func (r *Reducer) processQuery2Message(msg common.Message) error {
 }
 
 func (r *Reducer) processQuery3Message(msg common.Message) error {
-	var batch ReviewsXMoviesBatch
+	var batch common.Batch[common.MovieReview]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		return fmt.Errorf("error unmarshalling query 3 message: %w", err)
 	}
@@ -175,10 +142,10 @@ func (r *Reducer) processQuery3Message(msg common.Message) error {
 	return nil
 }
 
-func (r *Reducer) reduceQ2(batch common.Batch) (common.CoutriesBudgetMsg, error) {
+func (r *Reducer) reduceQ2(batch common.Batch[common.Movie]) (common.CoutriesBudgetMsg, error) {
 	// me llega un mensaje de peliculas y tengo que reducirlo a un map con cada entrada (pais, $$), me viene filtrado
 	countries := make(map[pkg.Country]uint64)
-	for _, movie := range batch.Movies {
+	for _, movie := range batch.Data {
 		if len(movie.ProductionCountries) > 1 {
 			return common.CoutriesBudgetMsg{}, fmt.Errorf("movie has more than 1 production country for query 2, movie: %v", movie)
 		}
@@ -196,10 +163,10 @@ func (r *Reducer) reduceQ2(batch common.Batch) (common.CoutriesBudgetMsg, error)
 	}, nil
 }
 
-func (r *Reducer) reduceQ3(batch ReviewsXMoviesBatch) (common.MoviesAvgRatingMsg, error) {
+func (r *Reducer) reduceQ3(batch common.Batch[common.MovieReview]) (common.MoviesAvgRatingMsg, error) {
 	// me llega un mensaje de peliculasXReviews y tengo que reducirlo a un map con cada entrada (peli, sum(ratings), cant_reviews), me viene filtrado
 	movieRatings := make(map[string]common.MovieAvgRating)
-	for _, movieRating := range batch.ReviewsXMovies {
+	for _, movieRating := range batch.Data {
 		if previousRating, ok := movieRatings[movieRating.MovieID]; !ok {
 			movieRatings[movieRating.MovieID] = common.MovieAvgRating{MovieID: movieRating.MovieID, RatingSum: movieRating.Rating, RatingCount: 1}
 		} else {
@@ -217,17 +184,6 @@ func (r *Reducer) reduceQ3(batch ReviewsXMoviesBatch) (common.MoviesAvgRatingMsg
 		MoviesRatings: moviesRatingsList,
 	}, nil
 }
-
-// func (r *Reducer) reduceAndSendQ4(batch common.Batch) error {
-// 	// me llega un mensaje de peliculasXactores y tengo que reducirlo a un map con cada entrada (actor, cant_pelis), me viene filtrado
-// 	return nil
-// }
-
-// func (r *Reducer) reduceAndSendQ5(batch common.Batch) error {
-// 	// me llega un mensaje de peliculas+overview y tengo que reducirlo a un struct con 2 campos, positivo y negativo,
-// 	// dentro de cada uno tengo sum(tasa(ingreso/presupuesto)) y cant_pelis, me viene filtrado
-// 	return nil
-// }
 
 func (r *Reducer) Stop() error {
 	return r.middleware.Close()
