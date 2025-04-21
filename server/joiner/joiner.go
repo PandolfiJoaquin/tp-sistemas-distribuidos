@@ -34,7 +34,7 @@ func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
 
 func (j *Joiner) Start() {
 	// moviesChan, err := j.middleware.GetChanWithTopicToRecv(joinersTopic, fmt.Sprintf(moviesToJoinWithTopic, j.joinerId))
-	moviesChan, err := j.middleware.GetChanToRecv("movies-to-join-1")
+	moviesChan, err := j.middleware.GetChanToRecv(fmt.Sprintf(moviesToJoinWithTopic, j.joinerId))
 	if err != nil {
 		slog.Error("Error creating channel", slog.String("queue", fmt.Sprintf(moviesToJoinWithTopic, j.joinerId)), slog.String("error", err.Error()))
 		return

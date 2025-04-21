@@ -94,7 +94,7 @@ func initializeShardsConnections(middleware *common.Middleware, previousQueue st
 	nextChan := make(map[int]chan<- []byte)
 	for i := 1; i <= shards; i++ {
 		// nextChan[i], err = middleware.GetChanWithTopicToSend(joinersTopic, fmt.Sprintf(nextShardsQueuesQuery3, i))
-		nextChan[i], err = middleware.GetChanToSend("movies-to-join-1")
+		nextChan[i], err = middleware.GetChanToSend(fmt.Sprintf(nextShardsQueuesQuery3, i))
 		if err != nil {
 			return shardConnection{}, fmt.Errorf("error getting channel %s to receive: %w", fmt.Sprintf(nextShardsQueuesQuery3, i), err)
 		}
