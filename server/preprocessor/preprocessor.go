@@ -160,9 +160,6 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 
 		slog.Info("preprocessing movies ", slog.String("batch size: ", strconv.Itoa(int(mb.Header.Weight))))
 
-		for _, moviesChan := range p.moviesChans {
-			outCh = append(outCh, moviesChan)
-		}
 		outCh = append(outCh, p.moviesChans...)
 
 	case "reviews":
