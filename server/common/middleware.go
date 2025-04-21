@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"log/slog"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -80,6 +81,69 @@ func (m *Middleware) GetChanToRecv(name string) (<-chan Message, error) {
 
 	amqpChan, err := m.ch.Consume(
 		queue.Name,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to register a consumer: %s", err)
+	}
+
+	inboxChan := make(chan Message)
+	go func() {
+		for msg := range amqpChan {
+			inboxChan <- Message{msg.Body, msg}
+		}
+	}()
+
+	return inboxChan, nil
+}
+
+func (m* Middleware) GetChanWithTopicToSend(exchange, topic string) (chan<- []byte, error) {
+	if err := m.ch.ExchangeDeclare(exchange, "topic", false, false, false, false, nil); err != nil {
+		return nil, fmt.Errorf("error declaring exchange: %s", err)
+	}
+
+	q, err := m.ch.QueueDeclare("", false, false, false, false, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error declaring queue: %s", err)
+	}
+
+	if err := m.ch.QueueBind(q.Name, topic, exchange, false, nil); err != nil {
+		return nil, fmt.Errorf("error binding queue: %s", err)
+	}
+
+	chanToSend := make(chan []byte)
+	go func() {
+		for msg := range chanToSend {
+			if err := m.Send(exchange, msg); err != nil {
+				slog.Error("error sending message", slog.String("error", err.Error()))
+			}
+		}
+	}()
+	return chanToSend, nil
+}
+
+func (m* Middleware) GetChanWithTopicToRecv(exchange, topic string) (<-chan Message, error) {
+	if err := m.ch.ExchangeDeclare(exchange, "topic", false, false, false, false, nil); err != nil {
+		return nil, fmt.Errorf("error declaring exchange: %s", err)
+	}
+
+	q, err := m.ch.QueueDeclare("", false, false, false, false, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error declaring queue: %s", err)
+	}
+
+	if err := m.ch.QueueBind(q.Name, topic, exchange, false, nil); err != nil {
+		return nil, fmt.Errorf("error binding queue: %s", err)
+	}
+
+	amqpChan, err := m.ch.Consume(
+		q.Name,
 		"",
 		false,
 		false,

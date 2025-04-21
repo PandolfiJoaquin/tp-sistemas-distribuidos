@@ -1,5 +1,7 @@
 package common
 
+import "crypto/sha256"
+
 func Filter[T any](slice []T, predicate func(T) bool) []T {
 	var result []T
 	for _, item := range slice {
@@ -41,4 +43,9 @@ func Flatten[T any](slices [][]T) []T {
 		result = append(result, slice...)
 	}
 	return result
+}
+
+func GetShard(movieId string, shards int) int {
+	hash := sha256.Sum256([]byte(movieId))
+	return (int(hash[0]) % shards) + 1
 }

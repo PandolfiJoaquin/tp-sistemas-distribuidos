@@ -233,6 +233,7 @@ func (r *Reducer) reduceQ3(batch common.Batch[common.MovieReview]) (common.Batch
 		if currentRating, ok := movieRatings[movieRating.MovieID]; !ok {
 			movieRatings[movieRating.MovieID] = common.MovieAvgRating{
 				MovieID:     movieRating.MovieID,
+				Title:       movieRating.Title,
 				RatingSum:   movieRating.Rating,
 				RatingCount: 1,
 			}

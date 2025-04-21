@@ -30,21 +30,23 @@ func (q Q1Movie) String() string {
 }
 
 type Q2Country struct {
-	Country    Country `json:"country"`
+	Country Country `json:"country"`
+	Budget  uint64  `json:"budget"`
 }
 
 // placeholder for Q2Country
 func (q Q2Country) String() string {
-	return "Query 2: " + q.Country.Name
+	return "Query 2: " + q.Country.Name + " | Budget: " + strconv.FormatUint(q.Budget, 10)
 }
 
 type Q3Movie struct {
+	ID    string `json:"id"`
 	Title string `json:"title"`
 }
 
 // placeholder for Q3Movie
 func (q Q3Movie) String() string {
-	return "Query 3: " + q.Title
+	return "Query 3: " + q.ID + " | Title: " + q.Title
 }
 
 type Q4Actors struct {
@@ -58,12 +60,13 @@ func (q Q4Actors) String() string {
 }
 
 type Q5Avg struct {
-	Avg float32 `json:"avg"`
+	PositiveAvgProfitRatio float64 `json:"positive_avg_profit_ratio"`
+    NegativeAvgProfitRatio float64 `json:"negative_avg_profit_ratio"`
 }
 
 // placeholder for Q5Avg
 func (q Q5Avg) String() string {
-	return "Query 5: Average Rating: " + strconv.FormatFloat(float64(q.Avg), 'f', 2, 32)
+	return "Query 5: Positive Avg Profit Ratio: " + strconv.FormatFloat(q.PositiveAvgProfitRatio, 'f', 2, 32) + " | Negative Avg Profit Ratio: " + strconv.FormatFloat(q.NegativeAvgProfitRatio, 'f', 2, 32)
 }
 
 func (q Q1Movie) QueryId() int   { return 1 }

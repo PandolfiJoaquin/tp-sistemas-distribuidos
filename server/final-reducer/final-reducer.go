@@ -167,7 +167,7 @@ func (r *FinalReducer) startReceivingQ3() {
 				slog.Error("error marshalling response", slog.String("error", err.Error()))
 			}
 			r.connection.ChanToSend <- response
-			slog.Info("sent query3 final response")
+			slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.ID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.ID))
 		}
 
 		if err := msg.Ack(); err != nil {
@@ -273,18 +273,13 @@ func calculateTop5Countries(countries map[pkg.Country]uint64) common.Top5Countri
 		return common.Top5Countries{}
 	}
 
-	type countryBudget struct {
-		country pkg.Country
-		budget  uint64
-	}
-
-	counts := make([]countryBudget, 0, len(countries))
+	counts := make([]common.CountryBudget, 0, len(countries))
 	for country, budget := range countries {
-		counts = append(counts, countryBudget{country: country, budget: budget})
+		counts = append(counts, common.CountryBudget{Country: country, Budget: budget})
 	}
 
 	sort.Slice(counts, func(i, j int) bool {
-		return counts[i].budget > counts[j].budget
+		return counts[i].Budget > counts[j].Budget
 	})
 
 	if len(counts) < 5 {
@@ -295,13 +290,7 @@ func calculateTop5Countries(countries map[pkg.Country]uint64) common.Top5Countri
 		}
 	}
 
-	return common.Top5Countries{
-		FirstCountry:  counts[0].country,
-		SecondCountry: counts[1].country,
-		ThirdCountry:  counts[2].country,
-		FourthCountry: counts[3].country,
-		FifthCountry:  counts[4].country,
-	}
+	return common.Top5Countries{Countries: counts[:5]}
 }
 
 func calculateBestAndWorstMovie(movies map[string]common.MovieAvgRating) common.BestAndWorstMovies {
@@ -320,10 +309,14 @@ func calculateBestAndWorstMovie(movies map[string]common.MovieAvgRating) common.
 			worstRatingAvg = ratingAvg
 		}
 	}
+
 	if bestMovie == "" || worstMovie == "" {
 		slog.Warn("best or worst movie is empty")
 	}
-	return common.BestAndWorstMovies{BestMovie: bestMovie, WorstMovie: worstMovie}
+
+	bestMovieWithTitle := common.MovieWithTitle{ID: bestMovie, Title: movies[bestMovie].Title}
+	worstMovieWithTitle := common.MovieWithTitle{ID: worstMovie, Title: movies[worstMovie].Title}
+	return common.BestAndWorstMovies{BestMovie: bestMovieWithTitle, WorstMovie: worstMovieWithTitle}
 }
 
 func calculateTop10Actors(actors map[string]common.ActorMoviesAmount) common.Top10Actors {
@@ -336,11 +329,11 @@ func calculateTop10Actors(actors map[string]common.ActorMoviesAmount) common.Top
 	for _, actor := range actors {
 		actorsSlice = append(actorsSlice, actor)
 	}
-	
+
 	sort.Slice(actorsSlice, func(i, j int) bool {
 		return actorsSlice[i].MoviesAmount > actorsSlice[j].MoviesAmount
 	})
-	
+
 	if len(actorsSlice) < 10 {
 		slog.Warn("actors count is less than 10, repeating last actor")
 		for len(actorsSlice) < 10 {
