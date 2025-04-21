@@ -229,7 +229,7 @@ func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.Batch
 		})
 	}
 
-	res := makeBatchMsg[common.Movie](uint32(len(movies)), movies)
+	res := makeBatchMsg[common.Movie](batch.Header.Weight, movies)
 
 	return res
 }
@@ -249,7 +249,7 @@ func (p *Preprocessor) preprocessReviews(batch models.RawReviewBatch) common.Bat
 		})
 	}
 
-	res := makeBatchMsg[common.Review](uint32(len(reviews)), reviews)
+	res := makeBatchMsg[common.Review](batch.Header.Weight, reviews)
 
 	return res
 }
@@ -274,7 +274,7 @@ func (p *Preprocessor) preprocessCredits(batch models.RawCreditBatch) common.Bat
 		})
 	}
 
-	res := makeBatchMsg[common.Credit](uint32(len(credits)), credits)
+	res := makeBatchMsg[common.Credit](batch.Header.Weight, credits)
 
 	return res
 }
