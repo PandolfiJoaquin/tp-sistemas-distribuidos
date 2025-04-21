@@ -213,9 +213,12 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup) {
 		}
 
 		if communication.IsQueryEof(results) {
-			//slog.Info("EOF received", slog.Int("queryID", results.QueryId))
 			queriesReceived = append(queriesReceived, true)
 			continue
+		}
+
+		if results.QueryId != 1 {
+			queriesReceived = append(queriesReceived, false)
 		}
 
 		for _, result := range results.Items {
