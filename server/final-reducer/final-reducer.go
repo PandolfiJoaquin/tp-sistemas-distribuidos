@@ -243,6 +243,10 @@ func (r *FinalReducer) startReceivingQ5() {
 			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount
 			sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioSum
 			sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioCount
+
+			if sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum > 10000 {
+				slog.Debug("ALOT positive sentiment profit ratio", slog.Any("count", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount), slog.Any("sum", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum))
+			}
 		}
 
 		currentWeight += batch.Header.Weight
@@ -258,7 +262,7 @@ func (r *FinalReducer) startReceivingQ5() {
 				slog.Error("error marshalling response", slog.String("error", err.Error()))
 			}
 			r.connection.ChanToSend <- response
-			slog.Info("sent query5 final response")
+			slog.Info("sent query5 final response", slog.Float64("positive avg profit ratio", sentimentProfitRatioAverage.PositiveAvgProfitRatio), slog.Float64("negative avg profit ratio", sentimentProfitRatioAverage.NegativeAvgProfitRatio))
 		}
 
 		if err := msg.Ack(); err != nil {
