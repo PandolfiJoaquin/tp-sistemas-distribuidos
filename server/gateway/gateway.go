@@ -282,20 +282,21 @@ func (g *Gateway) processMessages() {
 			}
 
 			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				return
 			}
-			// TODO: Handle query 3 results
 		case _ = <-g.resultsQueues[4]:
 			// TODO: Handle query 4 results
 		case msg := <-g.resultsQueues[5]:
-			var sentimentProfitRatio common.SentimentProfitRatioAverage
-			if err := json.Unmarshal(msg.Body, &sentimentProfitRatio); err != nil {
-				slog.Error("error unmarshalling sentiment profit ratio", slog.String("error", err.Error()))
+			if err := g.handleResult5(msg); err != nil {
+				slog.Error("error handling result 5", slog.String("error", err.Error()))
 				return
 			}
-			slog.Info("received query 5 results", slog.Any("sentiment profit ratio", sentimentProfitRatio))
 
-			// TODO: Handle query 5 results
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				return
+			}
 		}
 	}
 }
@@ -381,6 +382,29 @@ func (g *Gateway) handleResults3(msg common.Message) error {
 	}
 
 	err := communication.SendQueryResults(g.client, 3, q3Result)
+	if err != nil {
+		return fmt.Errorf("error sending query results: %w", err)
+	}
+
+	return nil
+}
+
+func (g *Gateway) handleResult5(msg common.Message) error {
+	var sentimentProfitRatio common.SentimentProfitRatioAverage
+	if err := json.Unmarshal(msg.Body, &sentimentProfitRatio); err != nil {
+		return fmt.Errorf("error unmarshalling sentiment profit ratio: %w", err)
+	}
+
+	slog.Info("received query 5 results", slog.Any("sentiment profit ratio", sentimentProfitRatio))
+
+	q5Result := []models.QueryResult{
+		models.Q5Avg{
+			PositiveAvgProfitRatio: sentimentProfitRatio.PositiveAvgProfitRatio,
+			NegativeAvgProfitRatio: sentimentProfitRatio.NegativeAvgProfitRatio,
+		},
+	}
+
+	err := communication.SendQueryResults(g.client, 5, q5Result)
 	if err != nil {
 		return fmt.Errorf("error sending query results: %w", err)
 	}
