@@ -163,6 +163,7 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 		}
 
 		outCh = append(outCh, p.moviesChans...)
+
 	case "reviews":
 		var rb models.RawReviewBatch
 		if err := json.Unmarshal(batch.Body, &rb); err != nil {
