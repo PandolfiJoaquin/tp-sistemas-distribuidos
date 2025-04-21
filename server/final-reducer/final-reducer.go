@@ -77,6 +77,12 @@ func (r *FinalReducer) Start() {
 	} else if r.queryNum == 3 {
 		slog.Info("starting final reducer for query 3")
 		go r.startReceivingQ3()
+	} else if r.queryNum == 4 {
+		slog.Info("starting final reducer for query 4")
+		go r.startReceivingQ4()
+	} else if r.queryNum == 5 {
+		slog.Info("starting final reducer for query 5")
+		go r.startReceivingQ5()
 	}
 
 	forever := make(chan bool)
@@ -88,15 +94,18 @@ func (r *FinalReducer) startReceivingQ2() {
 	currentWeight := uint32(0)
 	eofWeight := int32(0)
 	for msg := range r.connection.ChanToRecv {
-		slog.Info("received message", slog.String("message", string(msg.Body)))
 
-		var batch common.CoutriesBudgetMsg
+		var batch common.Batch[common.CountryBudget]
 		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			}
 			continue
 		}
 
-		for _, countryBudget := range batch.Countries {
+		// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
+		for _, countryBudget := range batch.Data {
 			countries[countryBudget.Country] += countryBudget.Budget
 		}
 
@@ -111,7 +120,6 @@ func (r *FinalReducer) startReceivingQ2() {
 			response, err := json.Marshal(top5Countries)
 			if err != nil {
 				slog.Error("error marshalling response", slog.String("error", err.Error()))
-				continue //TODO: ack?
 			}
 			r.connection.ChanToSend <- response
 			slog.Info("sent query2 final response")
@@ -129,19 +137,20 @@ func (r *FinalReducer) startReceivingQ3() {
 	currentWeight := uint32(0)
 	eofWeight := int32(0)
 	for msg := range r.connection.ChanToRecv {
-		slog.Info("received message", slog.String("message", string(msg.Body)))
 
-		var batch common.MoviesAvgRatingMsg
+		var batch common.Batch[common.MovieAvgRating]
 		if err := json.Unmarshal(msg.Body, &batch); err != nil {
 			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 			continue
 		}
 
-		for _, movieRating := range batch.MoviesRatings {
-			if previousRating, ok := movies[movieRating.MovieID]; !ok {
+		for _, movieRating := range batch.Data {
+			if currentRating, ok := movies[movieRating.MovieID]; !ok {
 				movies[movieRating.MovieID] = movieRating
 			} else {
-				movies[movieRating.MovieID] = common.MovieAvgRating{MovieID: movieRating.MovieID, RatingSum: previousRating.RatingSum + movieRating.RatingSum, RatingCount: previousRating.RatingCount + movieRating.RatingCount}
+				currentRating.RatingSum += movieRating.RatingSum
+				currentRating.RatingCount += movieRating.RatingCount
+				movies[movieRating.MovieID] = currentRating
 			}
 		}
 
@@ -156,10 +165,9 @@ func (r *FinalReducer) startReceivingQ3() {
 			response, err := json.Marshal(bestAndWorstMovies)
 			if err != nil {
 				slog.Error("error marshalling response", slog.String("error", err.Error()))
-				continue //TODO: ack?
 			}
 			r.connection.ChanToSend <- response
-			slog.Info("sent query3 final response")
+			slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.ID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.ID))
 		}
 
 		if err := msg.Ack(); err != nil {
@@ -169,24 +177,109 @@ func (r *FinalReducer) startReceivingQ3() {
 	}
 }
 
+func (r *FinalReducer) startReceivingQ4() {
+	actorMovies := make(map[string]common.ActorMoviesAmount)
+	currentWeight := uint32(0)
+	eofWeight := int32(0)
+	for msg := range r.connection.ChanToRecv {
+		var batch common.Batch[common.ActorMoviesAmount]
+		if err := json.Unmarshal(msg.Body, &batch); err != nil {
+			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			}
+			continue
+		}
+
+		// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
+		for _, actorMoviesAmount := range batch.Data {
+			if currentMoviesAmount, ok := actorMovies[actorMoviesAmount.ActorID]; !ok {
+				actorMovies[actorMoviesAmount.ActorID] = actorMoviesAmount
+			} else {
+				currentMoviesAmount.MoviesAmount += actorMoviesAmount.MoviesAmount
+				actorMovies[actorMoviesAmount.ActorID] = currentMoviesAmount
+			}
+		}
+
+		currentWeight += batch.Header.Weight
+
+		if batch.IsEof() {
+			eofWeight = int32(batch.Header.TotalWeight)
+		}
+
+		if int32(currentWeight) == eofWeight && eofWeight != 0 {
+			top10Actors := calculateTop10Actors(actorMovies)
+			response, err := json.Marshal(top10Actors)
+			if err != nil {
+				slog.Error("error marshalling response", slog.String("error", err.Error()))
+			}
+			r.connection.ChanToSend <- response
+			slog.Info("sent query4 final response")
+		}
+
+		if err := msg.Ack(); err != nil {
+			slog.Error("error acknowledging message", slog.String("error", err.Error()))
+		}
+	}
+}
+
+func (r *FinalReducer) startReceivingQ5() {
+	sentimentProfitRatios := common.SentimentProfitRatioAccumulator{}
+	currentWeight := uint32(0)
+	eofWeight := int32(0)
+	for msg := range r.connection.ChanToRecv {
+		var batch common.Batch[common.SentimentProfitRatioAccumulator]
+		if err := json.Unmarshal(msg.Body, &batch); err != nil {
+			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			}
+			continue
+		}
+
+		// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
+		for _, sentimentProfitRatio := range batch.Data {
+			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum
+			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount
+			sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioSum
+			sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioCount
+		}
+
+		currentWeight += batch.Header.Weight
+
+		if batch.IsEof() {
+			eofWeight = int32(batch.Header.TotalWeight)
+		}
+
+		if int32(currentWeight) == eofWeight && eofWeight != 0 {
+			sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
+			response, err := json.Marshal(sentimentProfitRatioAverage)
+			if err != nil {
+				slog.Error("error marshalling response", slog.String("error", err.Error()))
+			}
+			r.connection.ChanToSend <- response
+			slog.Info("sent query5 final response")
+		}
+
+		if err := msg.Ack(); err != nil {
+			slog.Error("error acknowledging message", slog.String("error", err.Error()))
+		}
+	}
+}
+
 func calculateTop5Countries(countries map[pkg.Country]uint64) common.Top5Countries {
 	if len(countries) == 0 {
 		slog.Warn("countries count is 0, returning empty top 5 countries")
 		return common.Top5Countries{}
 	}
 
-	type countryBudget struct {
-		country pkg.Country
-		budget  uint64
-	}
-
-	counts := make([]countryBudget, 0, len(countries))
+	counts := make([]common.CountryBudget, 0, len(countries))
 	for country, budget := range countries {
-		counts = append(counts, countryBudget{country: country, budget: budget})
+		counts = append(counts, common.CountryBudget{Country: country, Budget: budget})
 	}
 
 	sort.Slice(counts, func(i, j int) bool {
-		return counts[i].budget > counts[j].budget
+		return counts[i].Budget > counts[j].Budget
 	})
 
 	if len(counts) < 5 {
@@ -197,13 +290,7 @@ func calculateTop5Countries(countries map[pkg.Country]uint64) common.Top5Countri
 		}
 	}
 
-	return common.Top5Countries{
-		FirstCountry:  counts[0].country,
-		SecondCountry: counts[1].country,
-		ThirdCountry:  counts[2].country,
-		FourthCountry: counts[3].country,
-		FifthCountry:  counts[4].country,
-	}
+	return common.Top5Countries{Countries: counts[:5]}
 }
 
 func calculateBestAndWorstMovie(movies map[string]common.MovieAvgRating) common.BestAndWorstMovies {
@@ -222,7 +309,60 @@ func calculateBestAndWorstMovie(movies map[string]common.MovieAvgRating) common.
 			worstRatingAvg = ratingAvg
 		}
 	}
-	return common.BestAndWorstMovies{BestMovie: bestMovie, WorstMovie: worstMovie}
+
+	if bestMovie == "" || worstMovie == "" {
+		slog.Warn("best or worst movie is empty")
+	}
+
+	bestMovieWithTitle := common.MovieWithTitle{ID: bestMovie, Title: movies[bestMovie].Title}
+	worstMovieWithTitle := common.MovieWithTitle{ID: worstMovie, Title: movies[worstMovie].Title}
+	return common.BestAndWorstMovies{BestMovie: bestMovieWithTitle, WorstMovie: worstMovieWithTitle}
+}
+
+func calculateTop10Actors(actors map[string]common.ActorMoviesAmount) common.Top10Actors {
+	if len(actors) == 0 {
+		slog.Warn("actors count is 0, returning empty top 10 actors")
+		return common.Top10Actors{}
+	}
+
+	actorsSlice := make([]common.ActorMoviesAmount, 0, len(actors))
+	for _, actor := range actors {
+		actorsSlice = append(actorsSlice, actor)
+	}
+
+	sort.Slice(actorsSlice, func(i, j int) bool {
+		return actorsSlice[i].MoviesAmount > actorsSlice[j].MoviesAmount
+	})
+
+	if len(actorsSlice) < 10 {
+		slog.Warn("actors count is less than 10, repeating last actor")
+		for len(actorsSlice) < 10 {
+			last := actorsSlice[len(actorsSlice)-1]
+			actorsSlice = append(actorsSlice, last)
+		}
+	}
+	return common.Top10Actors{TopActors: actorsSlice[:10]}
+}
+
+func calculateSentimentProfitRatioAverage(sentimentProfitRatios common.SentimentProfitRatioAccumulator) common.SentimentProfitRatioAverage {
+	positiveAvg := -1.0
+	if sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount > 0 {
+		positiveAvg = sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum / float64(sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount)
+	} else {
+		slog.Warn("positive profit ratio count is 0, returning -1")
+	}
+
+	negativeAvg := -1.0
+	if sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount > 0 {
+		negativeAvg = sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum / float64(sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount)
+	} else {
+		slog.Warn("negative profit ratio count is 0, returning -1")
+	}
+
+	return common.SentimentProfitRatioAverage{
+		PositiveAvgProfitRatio: positiveAvg,
+		NegativeAvgProfitRatio: negativeAvg,
+	}
 }
 
 func (r *FinalReducer) Stop() error {

@@ -12,6 +12,7 @@ type Movie struct {
 	Genres              []pkg.Genre   `json:"genres"`
 	ProductionCountries []pkg.Country `json:"production_countries"`
 	Budget              uint64        `json:"budget"`
+	Revenue             uint64        `json:"revenue,omitempty"`
 	Overview            string        `json:"overview"`
 }
 
@@ -45,46 +46,67 @@ type ToProcessMsg struct {
 	Body json.RawMessage `json:"body"`
 }
 
+type Sentiment int
+
+const (
+	Positive Sentiment = iota
+	Negative
+)
+
+type MovieWithSentimentOverview struct {
+	Movie
+	Sentiment Sentiment `json:"sentiment"`
+}
+
 type CountryBudget struct {
 	Country pkg.Country `json:"country"`
 	Budget  uint64      `json:"budget"`
 }
 
-type CoutriesBudgetMsg struct {
-	Header    Header          `json:"header"`
-	Countries []CountryBudget `json:"countries"`
-}
-
-func (b *CoutriesBudgetMsg) IsEof() bool { //TODO: se puede obviar si se compone con el Header y le pongo el metodo al header
-	return b.Header.TotalWeight > 0
-}
-
 type MovieAvgRating struct {
 	MovieID     string  `json:"movie_id"`
+	Title       string  `json:"title"`
 	RatingSum   float64 `json:"rating_sum"`
 	RatingCount uint32  `json:"rating_count"`
 }
 
-type MoviesAvgRatingMsg struct {
-	Header        Header           `json:"header"`
-	MoviesRatings []MovieAvgRating `json:"movies_ratings"`
+type ActorMoviesAmount struct {
+	ActorID      string `json:"actor_id"`
+	ActorName    string `json:"actor_name"`
+	MoviesAmount uint32 `json:"movies_amount"`
 }
 
-func (b *MoviesAvgRatingMsg) IsEof() bool { //TODO: se puede obviar si se compone con el Header y le pongo el metodo al header
-	return b.Header.TotalWeight > 0
+type ProfitRatioAccumulator struct {
+	ProfitRatioSum   float64 `json:"profit_ratio_sum"`
+	ProfitRatioCount uint32  `json:"profit_ratio_count"`
 }
 
-type BestAndWorstMovies struct {
-	BestMovie  string `json:"best_movie"`
-	WorstMovie string `json:"worst_movie"`
+type SentimentProfitRatioAccumulator struct {
+	PositiveProfitRatio ProfitRatioAccumulator `json:"positive_profit_ratio"`
+	NegativeProfitRatio ProfitRatioAccumulator `json:"negative_profit_ratio"`
 }
 
 type Top5Countries struct {
-	FirstCountry  pkg.Country `json:"first_country"`
-	SecondCountry pkg.Country `json:"second_country"`
-	ThirdCountry  pkg.Country `json:"third_country"`
-	FourthCountry pkg.Country `json:"fourth_country"`
-	FifthCountry  pkg.Country `json:"fifth_country"`
+	Countries []CountryBudget `json:"countries"`
+}
+
+type MovieWithTitle struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+type BestAndWorstMovies struct {
+	BestMovie  MovieWithTitle `json:"best_movie"`
+	WorstMovie MovieWithTitle `json:"worst_movie"`
+}
+
+type Top10Actors struct {
+	TopActors []ActorMoviesAmount `json:"top_actors"`
+}
+
+type SentimentProfitRatioAverage struct {
+	PositiveAvgProfitRatio float64 `json:"positive_avg_profit_ratio"`
+	NegativeAvgProfitRatio float64 `json:"negative_avg_profit_ratio"`
 }
 
 var mockedMovies = []Movie{
@@ -166,13 +188,6 @@ type MovieActor struct { //si, es igual al de arriba
 	Name    string `json:"name"`
 	MovieID string `json:"movie_id"`
 }
-
-type Sentiment int
-
-const (
-	Positive Sentiment = iota
-	Negative
-)
 
 type MovieWithSentiment struct {
 	Movie

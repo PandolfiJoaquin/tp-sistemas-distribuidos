@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"pkg/log"
 )
 
@@ -17,13 +18,20 @@ func main() {
 
 	rabbitUser := os.Getenv("RABBITMQ_DEFAULT_USER")
 	rabbitPass := os.Getenv("RABBITMQ_DEFAULT_PASS")
+	joinerId := os.Getenv("JOINER_ID")
 
-	if rabbitUser == "" || rabbitPass == "" {
-		slog.Error("environment validation failed", slog.String("error", "RABBITMQ_DEFAULT_USER and RABBITMQ_DEFAULT_PASS must be set"))
+	if rabbitUser == "" || rabbitPass == "" || joinerId == "" {
+		slog.Error("environment validation failed", slog.String("error", "RABBITMQ_DEFAULT_USER and RABBITMQ_DEFAULT_PASS and JOINER_ID must be set"))
 		return
 	}
 
-	joiner, err := NewJoiner(rabbitUser, rabbitPass)
+	joinerIdInt, err := strconv.Atoi(joinerId)
+	if err != nil {
+		slog.Error("error converting JOINER_ID env var to int", slog.String("error", err.Error()))
+		return
+	}
+
+	joiner, err := NewJoiner(joinerIdInt, rabbitUser, rabbitPass)
 	if err != nil {
 		slog.Error("error creating joiner", slog.String("error", err.Error()))
 		return

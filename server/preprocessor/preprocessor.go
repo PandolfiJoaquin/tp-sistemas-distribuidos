@@ -228,6 +228,7 @@ func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.Batch
 			ProductionCountries: movie.ProductionCountries,
 			Budget:              movie.Budget,
 			Overview:            movie.Overview,
+			Revenue:             movie.Revenue,
 		})
 	}
 

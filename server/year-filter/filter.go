@@ -79,7 +79,6 @@ func (f *YearFilter) start() {
 		case msg := <-f.connections[1].ChanToRecv:
 			if err := f.processQueryMessage(1, msg, f.year2000sFilter); err != nil {
 				slog.Error("error processing q1 message", slog.String("error", err.Error()))
-				continue //TODO: Ack?
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging q1 message", slog.String("error", err.Error()))
@@ -87,7 +86,6 @@ func (f *YearFilter) start() {
 		case msg := <-f.connections[3].ChanToRecv:
 			if err := f.processQueryMessage(3, msg, f.yearAfter2000sFilter); err != nil {
 				slog.Error("error processing q3/q4 message", slog.String("error", err.Error()))
-				continue //TODO: Ack?
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging q3/q4 message", slog.String("error", err.Error()))

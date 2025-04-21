@@ -2,42 +2,41 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"tp-sistemas-distribuidos/server/common"
 )
 
 const reviewsToJoinQueue = "reviews-to-join"
-const moviesToJoinWithQueue = "movies-to-join"
+const joinersTopic = "joiner-shards"
+const moviesToJoinWithTopic = "movies-to-join-%d"
 
-// const nextStep = "q1-results"
 const nextStep = "q3-to-reduce"
-const ON = 1
-const OFF = 0
 
 type Joiner struct {
-	rabbitUser     string
-	rabbitPass     string
+	joinerId       int
 	middleware     *common.Middleware
 	moviesReceived []common.Batch[common.Movie]
 }
 
-func NewJoiner(rabbitUser, rabbitPass string) (*Joiner, error) {
+func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
 	if err != nil {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
 		return nil, err
 	}
 	return &Joiner{
+		joinerId:       joinerId,
 		middleware:     middleware,
 		moviesReceived: []common.Batch[common.Movie]{},
 	}, nil
 }
 
 func (j *Joiner) Start() {
-
-	moviesChan, err := j.middleware.GetChanToRecv(moviesToJoinWithQueue)
+	// moviesChan, err := j.middleware.GetChanWithTopicToRecv(joinersTopic, fmt.Sprintf(moviesToJoinWithTopic, j.joinerId))
+	moviesChan, err := j.middleware.GetChanToRecv(fmt.Sprintf(moviesToJoinWithTopic, j.joinerId))
 	if err != nil {
-		slog.Error("Error creating channel", slog.String("queue", moviesToJoinWithQueue), slog.String("error", err.Error()))
+		slog.Error("Error creating channel", slog.String("queue", fmt.Sprintf(moviesToJoinWithTopic, j.joinerId)), slog.String("error", err.Error()))
 		return
 	}
 
