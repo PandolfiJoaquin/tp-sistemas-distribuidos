@@ -159,6 +159,9 @@ func (r *FinalReducer) startReceivingQ3() {
 		if batch.IsEof() {
 			eofWeight = batch.Header.TotalWeight
 		}
+		if int32(currentWeight) > eofWeight {
+			slog.Error("current weight is greater than eof weight", slog.Any("current weight", int32(currentWeight)), slog.Any("eof weight", eofWeight))
+		}
 
 		if int32(currentWeight) == eofWeight {
 			bestAndWorstMovies := calculateBestAndWorstMovie(movies)

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"pkg/log"
+	"strconv"
 )
 
 func main() {
@@ -17,12 +18,17 @@ func main() {
 
 	rabbitUser := os.Getenv("RABBITMQ_DEFAULT_USER")
 	rabbitPass := os.Getenv("RABBITMQ_DEFAULT_PASS")
-
+	joinerShards := os.Getenv("JOINER_SHARDS")
 	if rabbitUser == "" || rabbitPass == "" {
 		slog.Error("environment validation failed", slog.String("error", "RABBITMQ_DEFAULT_USER and RABBITMQ_DEFAULT_PASS must be set"))
 		return
 	}
 
-	preprocessor := NewPreprocessor(rabbitUser, rabbitPass)
+	shards, err := strconv.Atoi(joinerShards)
+	if err != nil {
+		slog.Error("error converting JOINER_SHARDS env var to int", slog.String("error", err.Error()))
+	}
+
+	preprocessor := NewPreprocessor(rabbitUser, rabbitPass, shards)
 	preprocessor.Start()
 }

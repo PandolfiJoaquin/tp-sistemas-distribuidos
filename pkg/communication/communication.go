@@ -26,7 +26,7 @@ func RecvAll(conn net.Conn, size int) ([]byte, error) {
 }
 
 func SendAll(conn net.Conn, message []byte) error {
-	/// Send all the bytes to the connection to avoid partial writes
+	/// send all the bytes to the connection to avoid partial writes
 	written := 0
 	for written < len(message) {
 		n, err := conn.Write(message)

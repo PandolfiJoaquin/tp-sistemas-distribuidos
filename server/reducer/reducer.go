@@ -162,7 +162,9 @@ func (r *Reducer) processQuery3Message(msg common.Message) error {
 	if err != nil {
 		return fmt.Errorf("error marshalling response: %w", err)
 	}
-
+	if reduced.IsEof() {
+		slog.Info("EOF received for q3 in reducer")
+	}
 	r.connections[3].ChanToSend <- response
 	return nil
 }
