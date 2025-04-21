@@ -47,6 +47,7 @@ type Gateway struct {
 	client        net.Conn
 	running       bool
 	ctx           context.Context
+	done          uint8
 }
 
 func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
@@ -163,6 +164,29 @@ func (g *Gateway) receiveReviews() error {
 	return nil
 }
 
+func (g *Gateway) receiveCredits() error {
+	total := 0
+	for {
+		credits, err := communication.RecvCredits(g.client)
+		if err != nil {
+			return fmt.Errorf("error receiving credits: %w", err)
+		}
+
+		err = g.publishBatch(credits, "credits")
+		if err != nil {
+			return fmt.Errorf("error publishing credits batch: %w", err)
+		}
+
+		total += int(credits.Header.Weight)
+
+		if credits.IsEof() {
+			break
+		}
+	}
+	slog.Info("Total credits received", slog.Int("total", total))
+	return nil
+}
+
 func (g *Gateway) publishBatch(batch models.RawBatch, batchType string) error {
 	bodyBytes, err := json.Marshal(batch)
 	if err != nil {
@@ -197,7 +221,11 @@ func (g *Gateway) handleConnection() {
 		return
 	}
 
-	// TODO: Handle Ratings and Actors
+	err = g.receiveCredits()
+	if err != nil {
+		slog.Error("error receiving credits", slog.String("error", err.Error()))
+		return
+	}
 }
 
 func (g *Gateway) signalHandler(wg *sync.WaitGroup) {
@@ -239,7 +267,7 @@ func (g *Gateway) Start() {
 	wg.Wait()
 }
 
-var total_queries = 1
+const TotalQueries uint8 = 5
 
 func (g *Gateway) processMessages() {
 	defer func(client net.Conn) {
@@ -250,6 +278,10 @@ func (g *Gateway) processMessages() {
 	}(g.client)
 
 	for {
+		if g.done == TotalQueries {
+			slog.Info("All queries processed for client", slog.String("address", g.client.RemoteAddr().String()))
+			break
+		}
 		select {
 		case <-g.ctx.Done():
 			return
@@ -326,6 +358,7 @@ func (g *Gateway) processResult1(batch common.Batch[common.Movie]) error {
 		if err != nil {
 			return fmt.Errorf("error sending EOF: %w", err)
 		}
+		g.done++
 	} else {
 		q1Movies := make([]models.QueryResult, len(batch.Data))
 		for i, movie := range batch.Data {
@@ -366,6 +399,8 @@ func (g *Gateway) handleResults2(msg common.Message) error {
 	if err != nil {
 		return fmt.Errorf("error sending query results: %w", err)
 	}
+
+	g.done++
 	return nil
 }
 
@@ -386,6 +421,7 @@ func (g *Gateway) handleResults3(msg common.Message) error {
 		return fmt.Errorf("error sending query results: %w", err)
 	}
 
+	g.done++
 	return nil
 }
 
@@ -408,7 +444,7 @@ func (g *Gateway) handleResult5(msg common.Message) error {
 	if err != nil {
 		return fmt.Errorf("error sending query results: %w", err)
 	}
-
+	g.done++
 	return nil
 }
 
@@ -419,5 +455,3 @@ func (g *Gateway) consumeBatch(msg []byte) (common.Batch[common.Movie], error) {
 	}
 	return batch, nil
 }
-
-const TotalQueries = 1

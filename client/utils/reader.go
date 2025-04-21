@@ -81,6 +81,7 @@ func (mr *MoviesReader) ReadMovie() (*models.RawMovie, error) {
 		if errors.Is(err, ErrInvalidMovie) {
 			return nil, err
 		}
+		fmt.Printf("Broken record: %v\n", record)
 		return nil, fmt.Errorf("error parsing movie: %v", err)
 	}
 
@@ -111,7 +112,10 @@ func joinRecords(r *csv.Reader, current []string, expectedFields int) ([]string,
 
 func (mr *MoviesReader) Close() {
 	if mr.file != nil {
-		mr.file.Close()
+		err := mr.file.Close()
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -228,4 +232,117 @@ func (rr *ReviewReader) ReadReviews() ([]models.RawReview, error) {
 	}
 
 	return reviews, nil
+}
+
+func (rr *ReviewReader) Close() {
+	if rr.file != nil {
+		err := rr.file.Close()
+		if err != nil {
+			return
+		}
+	}
+}
+
+type CreditsReader struct {
+	Finished  bool
+	Reader    *csv.Reader
+	file      *os.File
+	batchSize int
+	fields    []string
+	Total     int
+}
+
+func NewCreditsReader(path string, batchSize int) (*CreditsReader, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("error opening file: %v", err)
+	}
+
+	csvReader := csv.NewReader(file)
+	if csvReader == nil {
+		return nil, fmt.Errorf("error creating CSV reader")
+	}
+
+	csvReader.LazyQuotes = true
+	csvReader.FieldsPerRecord = -1 // Allow variable number of fields
+
+	fields, err := csvReader.Read() // Read the header line
+	if err != nil {
+		return nil, fmt.Errorf("error reading header line: %v", err)
+	}
+
+	reader := &CreditsReader{
+		Reader:    csvReader,
+		file:      file,
+		batchSize: batchSize,
+		fields:    fields,
+	}
+
+	return reader, nil
+}
+
+func (cr *CreditsReader) ReadCredit() (*models.RawCredits, error) {
+	expectedFields := len(cr.fields)
+
+	if cr.Finished {
+		return nil, nil
+	}
+
+	record, err := cr.Reader.Read()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			cr.Finished = true
+			return nil, nil
+		} else {
+			return nil, err
+		}
+	}
+
+	// If we read a record but its field count is off, try to join with more rows.
+	if len(record) != expectedFields {
+		record, err = joinRecords(cr.Reader, record, expectedFields)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	credit, err := parseCredits(record)
+	if err != nil {
+		if errors.Is(err, ErrInvalidCredit) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("error parsing credit: %v", err)
+	}
+
+	cr.Total++
+	return credit, nil
+}
+
+func (cr *CreditsReader) ReadCredits() ([]models.RawCredits, error) {
+	var credits []models.RawCredits
+
+	for len(credits) < cr.batchSize {
+		credit, err := cr.ReadCredit()
+		if err != nil {
+			if errors.Is(err, ErrInvalidCredit) {
+				continue // drop invalid credits, don't count toward batch
+			}
+			return nil, err // actual error
+		}
+		if credit == nil {
+			break // EOF
+		}
+		credits = append(credits, *credit)
+	}
+
+	return credits, nil
+}
+
+func (cr *CreditsReader) Close() {
+	if cr.file != nil {
+		err := cr.file.Close()
+		if err != nil {
+			return
+		}
+	}
 }

@@ -22,6 +22,7 @@ func SendMovies(conn net.Conn, movies []models.RawMovie) error {
 	return nil
 }
 
+// TODO: Merge eofs into one (with RawBatch)
 func SendMovieEof(conn net.Conn, total int32) error {
 	batch := models.RawMovieBatch{
 		Header: models.Header{
@@ -77,6 +78,44 @@ func SendReviewEof(conn net.Conn, total int32) error {
 
 func RecvReviews(conn net.Conn) (models.RawReviewBatch, error) {
 	batch, err := recvReviewBatch(conn)
+	if err != nil {
+		return batch, err
+	}
+	return batch, nil
+}
+
+func SendCredits(conn net.Conn, credits []models.RawCredits) error {
+	batch := models.RawCreditBatch{
+		Header: models.Header{
+			Weight:      uint32(len(credits)),
+			TotalWeight: -1,
+		},
+		Credits: credits,
+	}
+
+	if err := sendBatch(conn, batch); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SendCreditsEof(conn net.Conn, total int32) error {
+	batch := models.RawCreditBatch{
+		Header: models.Header{
+			TotalWeight: total,
+			Weight:      0,
+		},
+	}
+
+	if err := sendBatch(conn, batch); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func RecvCredits(conn net.Conn) (models.RawCreditBatch, error) {
+	batch, err := recvCreditBatch(conn)
 	if err != nil {
 		return batch, err
 	}

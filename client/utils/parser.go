@@ -9,6 +9,16 @@ import (
 	"time"
 )
 
+var hexEscape = regexp.MustCompile(`\\x([0-9A-Fa-f]{2})`)
+
+func isEscaped(s string, i int) bool {
+	count := 0
+	for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
+		count++
+	}
+	return count%2 == 1
+}
+
 // Splits a string into pairs based on commas, while respecting quoted sections.
 func splitPairs(input string) ([]string, error) {
 	var pairs []string
@@ -16,9 +26,9 @@ func splitPairs(input string) ([]string, error) {
 	inQuote := false
 	var quoteChar rune // will hold either ' or "
 
-	for _, r := range input {
+	for i, r := range input {
 		// Check if the current rune is a quote (either ' or ")
-		if r == '\'' || r == '"' {
+		if (r == '\'' || r == '"') && !isEscaped(input, i) {
 			if inQuote {
 				// We're inside a quoted section; only toggle off if we see the same kind of quote.
 				if r == quoteChar {
@@ -56,21 +66,25 @@ func splitPairs(input string) ([]string, error) {
 	return pairs, nil
 }
 
-// fixJSONObject fixes a JSON object by ensuring it is properly formatted. The "bad" format comes from python dictionaries. Thus we can take some liberties when formatting.
-func fixJSONObject(input string) (string, error) {
+// FixJSONObject fixes a JSON object by ensuring it is properly formatted. The "bad" format comes from python dictionaries. Thus we can take some liberties when formatting.
+func FixJSONObject(input string) (string, error) {
 	input = strings.TrimSpace(input)
 	if len(input) < 2 || input[0] != '{' || input[len(input)-1] != '}' {
 		return "", fmt.Errorf("input is not a valid JSON object: %q", input)
 	}
+	input = hexEscape.ReplaceAllString(input, `\u00$1`)
 	content := strings.TrimSpace(input[1 : len(input)-1])
 	if content == "" {
 		return "{}", nil
 	}
 
+	//fmt.Printf("raw json: %v\n", content)
+
 	pairs, err := splitPairs(content)
 	if err != nil {
 		return "", fmt.Errorf("error splitting pairs: %v", err)
 	}
+	//fmt.Printf("pairs: %v\n", pairs)
 
 	var entries []string
 	for _, pair := range pairs {
@@ -88,6 +102,7 @@ func fixJSONObject(input string) (string, error) {
 		var valueFixed string
 		if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
 			inner := value[1 : len(value)-1]
+			//inner = hexEscape.ReplaceAllString(inner, `\u00$1`)
 			valueFixed = strconv.Quote(inner)
 		} else if strings.ToLower(value) == "none" {
 			valueFixed = "null"
@@ -99,10 +114,11 @@ func fixJSONObject(input string) (string, error) {
 	}
 
 	goodJSON := "{" + strings.Join(entries, ", ") + "}"
+	//fmt.Printf("fixed json: %s\n", goodJSON)
 	return goodJSON, nil
 }
 
-// Fixes a JSON array by ensuring it is properly formatted. See fixJSONObject for details.
+// Fixes a JSON array by ensuring it is properly formatted. See FixJSONObject for details.
 func fixJSONArray(input string) (string, error) {
 	input = strings.TrimSpace(input)
 	if len(input) < 2 || input[0] != '[' || input[len(input)-1] != ']' {
@@ -118,7 +134,7 @@ func fixJSONArray(input string) (string, error) {
 
 	var fixedObjects []string
 	for _, obj := range matches {
-		fixed, err := fixJSONObject(obj)
+		fixed, err := FixJSONObject(obj)
 		if err != nil {
 			return "", fmt.Errorf("error fixing object %q: %v", obj, err)
 		}
@@ -126,7 +142,9 @@ func fixJSONArray(input string) (string, error) {
 	}
 
 	// Reassemble the objects into a proper JSON array.
-	return "[" + strings.Join(fixedObjects, ", ") + "]", nil
+	res := "[" + strings.Join(fixedObjects, ", ") + "]"
+	//fmt.Printf("fixed json array: %s\n", res)
+	return res, nil
 }
 
 // ParseJSONToObject parses a JSON object into a struct of type T.
@@ -135,7 +153,7 @@ func ParseJSONToObject[T any](input string) (*T, error) {
 		return nil, nil
 	}
 
-	fixed, err := fixJSONObject(input)
+	fixed, err := FixJSONObject(input)
 	if err != nil {
 		return nil, fmt.Errorf("error fixing JSON object: %v", err)
 	}
@@ -145,7 +163,6 @@ func ParseJSONToObject[T any](input string) (*T, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling JSON: %v", err)
 	}
-
 	return &result, nil
 }
 

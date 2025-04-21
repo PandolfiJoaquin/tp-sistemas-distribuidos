@@ -16,6 +16,9 @@ const filterMovieQ3Q4 = "filter-year-q3q4"
 const AnalyzerQueue = "sentiment-analyzer"
 const reviewsQueue = "reviews-to-join"
 
+// TODO: credits queue
+//const CreditsQueue =
+
 type PreprocessorConfig struct {
 	RabbitUser string
 	RabbitPass string
@@ -139,7 +142,6 @@ func (p *Preprocessor) processMessages() {
 
 func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 	var (
-		header  common.Header
 		payload any
 		outCh   []chan<- []byte
 	)
@@ -150,17 +152,13 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 		if err := json.Unmarshal(batch.Body, &mb); err != nil {
 			return fmt.Errorf("error unmarshalling movies batch: %w", err)
 		}
-
-		header = common.Header{
-			Weight:      mb.Header.Weight,
-			TotalWeight: mb.Header.TotalWeight,
-		}
-
 		if mb.IsEof() {
-			payload = common.Batch[common.Movie]{Header: header}
+			payload = makeEOFBatch[common.Movie](mb.Header.TotalWeight)
 		} else {
 			payload = p.preprocessMovies(mb)
 		}
+
+		slog.Info("preprocessing movies ", slog.String("batch size: ", strconv.Itoa(int(mb.Header.Weight))))
 
 		outCh = append(outCh, p.moviesChans...)
 
@@ -170,20 +168,30 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 			return fmt.Errorf("error unmarshalling reviews batch: %w", err)
 		}
 
-		header = common.Header{
-			Weight:      rb.Header.Weight,
-			TotalWeight: rb.Header.TotalWeight,
-		}
-
 		if rb.IsEof() {
-			payload = common.Batch[common.Review]{Header: header}
+			payload = makeEOFBatch[common.Review](rb.Header.TotalWeight)
 		} else {
 			payload = p.preprocessReviews(rb)
 		}
 
-		slog.Info("preprocessing reviews", slog.String("batch len", strconv.Itoa(len(rb.Reviews))))
+		slog.Info("preprocessing reviews", slog.String("batch size: ", strconv.Itoa(int(rb.Header.Weight))))
 
 		outCh = append(outCh, p.reviewsChan)
+
+	case "credits":
+		var cb models.RawCreditBatch
+		if err := json.Unmarshal(batch.Body, &cb); err != nil {
+			return fmt.Errorf("error unmarshalling credits batch: %w", err)
+		}
+
+		slog.Info("preprocessing credits", slog.String("batch size: ", strconv.Itoa(int(cb.Header.Weight))))
+		if cb.IsEof() {
+			payload = makeEOFBatch[common.Credit](cb.Header.TotalWeight)
+		} else {
+			payload = p.preprocessCredits(cb)
+		}
+
+		// TODO: Add the channel to send credits
 
 	default:
 		return fmt.Errorf("unknown batch type %q", batch.Type)
@@ -221,13 +229,7 @@ func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.Batch
 		})
 	}
 
-	res := common.Batch[common.Movie]{
-		Header: common.Header{
-			Weight:      batch.Header.Weight,
-			TotalWeight: batch.Header.TotalWeight,
-		},
-		Data: movies,
-	}
+	res := makeBatchMsg[common.Movie](batch.Header.Weight, movies)
 
 	return res
 }
@@ -247,13 +249,52 @@ func (p *Preprocessor) preprocessReviews(batch models.RawReviewBatch) common.Bat
 		})
 	}
 
-	res := common.Batch[common.Review]{
-		Header: common.Header{
-			Weight:      uint32(len(reviews)),
-			TotalWeight: -1,
-		},
-		Data: reviews,
-	}
+	res := makeBatchMsg[common.Review](batch.Header.Weight, reviews)
 
 	return res
+}
+
+func (p *Preprocessor) preprocessCredits(batch models.RawCreditBatch) common.Batch[common.Credit] {
+	credits := make([]common.Credit, 0)
+
+	for _, credit := range batch.Credits {
+		movieID := credit.MovieId
+		actors := make([]common.Actor, 0)
+
+		for _, actor := range credit.Cast {
+			actors = append(actors, common.Actor{
+				ActorID: strconv.Itoa(actor.ID),
+				Name:    actor.Name,
+			})
+		}
+
+		credits = append(credits, common.Credit{
+			MovieId: movieID,
+			Actors:  actors,
+		})
+	}
+
+	res := makeBatchMsg[common.Credit](batch.Header.Weight, credits)
+
+	return res
+}
+
+func makeEOFBatch[T any](totalWeight int32) common.Batch[T] {
+	return common.Batch[T]{
+		Header: common.Header{
+			Weight:      0,
+			TotalWeight: totalWeight,
+		},
+		Data: []T{},
+	}
+}
+
+func makeBatchMsg[T any](weight uint32, data []T) common.Batch[T] {
+	return common.Batch[T]{
+		Header: common.Header{
+			Weight:      weight,
+			TotalWeight: -1,
+		},
+		Data: data,
+	}
 }
