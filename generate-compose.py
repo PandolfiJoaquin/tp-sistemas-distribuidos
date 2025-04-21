@@ -120,6 +120,7 @@ def create_compose(client_amnt, joiners_amnt):
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM={i}
+      - JOINER_SHARDS={joiners_amnt}
     depends_on:
         rabbitmq:
           condition: service_healthy

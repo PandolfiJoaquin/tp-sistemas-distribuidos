@@ -7,9 +7,14 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-const reviewsToJoinQueue = "reviews-to-join"
-const joinersTopic = "joiner-shards"
-const moviesToJoinWithTopic = "movies-to-join-%d"
+const (
+	reviewsToJoinQueue = "reviews-to-join"
+	joinersTopic       = "joiner-shards"
+	moviesExchange     = "movies-exchange"
+	moviestopic        = "movies-to-join-%d"
+	reviewsExchange    = "reviews-exchange"
+	reviewsTopic       = "reviews-to-join-%d"
+)
 
 const nextStep = "q3-to-reduce"
 
@@ -33,10 +38,16 @@ func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
 }
 
 func (j *Joiner) Start() {
-	// moviesChan, err := j.middleware.GetChanWithTopicToRecv(joinersTopic, fmt.Sprintf(moviesToJoinWithTopic, j.joinerId))
-	moviesChan, err := j.middleware.GetChanToRecv(fmt.Sprintf(moviesToJoinWithTopic, j.joinerId))
+	moviesChan, err := j.middleware.GetChanWithTopicToRecv(moviesExchange, fmt.Sprintf(moviestopic, j.joinerId))
+	//moviesChan, err := j.middleware.GetChanToRecv(fmt.Sprintf(moviesToJoinWithTopic, j.joinerId))
 	if err != nil {
-		slog.Error("Error creating channel", slog.String("queue", fmt.Sprintf(moviesToJoinWithTopic, j.joinerId)), slog.String("error", err.Error()))
+		slog.Error("Error creating channel", slog.String("queue", moviesExchange), slog.String("error", err.Error()))
+		return
+	}
+
+	reviewsChan, err := j.middleware.GetChanWithTopicToRecv(reviewsExchange, fmt.Sprintf(reviewsTopic, j.joinerId))
+	if err != nil {
+		slog.Error("Error creating channel", slog.String("queue", reviewsExchange), slog.String("error", err.Error()))
 		return
 	}
 
@@ -46,17 +57,17 @@ func (j *Joiner) Start() {
 		return
 	}
 
-	go j.run(moviesChan, q3Chan)
+	go j.run(moviesChan, reviewsChan, q3Chan)
 
 	forever := make(chan bool)
 	<-forever
 }
 
-func (j *Joiner) run(_moviesChan <-chan common.Message, nextStepChan chan<- []byte) {
+func (j *Joiner) run(_moviesChan <-chan common.Message, reviewsChan <-chan common.Message, nextStepChan chan<- []byte) {
 	dummyChan := make(<-chan common.Message)
 	movies := _moviesChan
 	reviews := dummyChan
-
+	weightPassed := 0
 	for {
 		select {
 		case msg := <-movies:
@@ -69,13 +80,7 @@ func (j *Joiner) run(_moviesChan <-chan common.Message, nextStepChan chan<- []by
 			j.saveBatch(batch)
 			if j.allMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
-				var err error
-				reviews, err = j.middleware.GetChanToRecv(reviewsToJoinQueue)
-				if err != nil {
-					slog.Error("error creating channel", slog.String("queue", reviewsToJoinQueue), slog.String("error", err.Error()))
-					return
-				}
-
+				reviews = reviewsChan
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -89,6 +94,8 @@ func (j *Joiner) run(_moviesChan <-chan common.Message, nextStepChan chan<- []by
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
+			weightPassed += int(batch.Weight)
+			slog.Info("weightPassedAfterEof: ", slog.Int("weight", weightPassed))
 
 			reviewXMovies := j.join(batch.Data)
 			reviewsXMoviesBatch := common.Batch[common.MovieReview]{

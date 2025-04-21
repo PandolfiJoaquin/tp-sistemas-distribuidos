@@ -11,13 +11,13 @@ import (
 )
 
 const (
-	previousQueueQuery1    = "filter-production-q1"
-	previousQueueQuery2    = "filter-production-q2"
-	previousQueueQuery3    = "filter-production-q3q4"
-	nextQueueQuery1        = "q1-results"
-	nextQueueQuery2        = "q2-to-reduce"
-	nextShardsQueuesQuery3 = "movies-to-join-%d"
-	joinersTopic           = "joiner-shards"
+	previousQueueQuery1 = "filter-production-q1"
+	previousQueueQuery2 = "filter-production-q2"
+	previousQueueQuery3 = "filter-production-q3q4"
+	nextQueueQuery1     = "q1-results"
+	nextQueueQuery2     = "q2-to-reduce"
+	topic               = "movies-to-join-%d"
+	moviesExchange      = "movies-exchange"
 )
 
 type ProductionFilter struct {
@@ -46,14 +46,14 @@ func NewProductionFilter(rabbitUser, rabbitPass string, shards int) (*Production
 
 	// connections, err := initializeConnections(middleware, queriesQueues)
 	// if err != nil {
-		// return nil, fmt.Errorf("error initializing connections: %w", err)
+	// return nil, fmt.Errorf("error initializing connections: %w", err)
 	// }
 
 	query1Connection, err := initializeConnection(middleware, previousQueueQuery1, nextQueueQuery1)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing query 1 connection: %w", err)
 	}
-	
+
 	query2Connection, err := initializeConnection(middleware, previousQueueQuery2, nextQueueQuery2)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing query 2 connection: %w", err)
@@ -93,10 +93,10 @@ func initializeShardsConnections(middleware *common.Middleware, previousQueue st
 
 	nextChan := make(map[int]chan<- []byte)
 	for i := 1; i <= shards; i++ {
-		// nextChan[i], err = middleware.GetChanWithTopicToSend(joinersTopic, fmt.Sprintf(nextShardsQueuesQuery3, i))
-		nextChan[i], err = middleware.GetChanToSend(fmt.Sprintf(nextShardsQueuesQuery3, i))
+		nextChan[i], err = middleware.GetChanWithTopicToSend(moviesExchange, fmt.Sprintf(topic, i))
+		//nextChan[i], err = middleware.GetChanToSend(fmt.Sprintf(topic, i))
 		if err != nil {
-			return shardConnection{}, fmt.Errorf("error getting channel %s to receive: %w", fmt.Sprintf(nextShardsQueuesQuery3, i), err)
+			return shardConnection{}, fmt.Errorf("error getting channel %s to receive: %w", fmt.Sprintf(topic, i), err)
 		}
 	}
 

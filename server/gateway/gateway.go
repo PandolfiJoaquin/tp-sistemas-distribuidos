@@ -267,7 +267,7 @@ func (g *Gateway) Start() {
 	wg.Wait()
 }
 
-const TotalQueries uint8 = 5
+const TotalQueries uint8 = 7
 
 func (g *Gateway) processMessages() {
 	defer func(client net.Conn) {
