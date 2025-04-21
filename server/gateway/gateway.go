@@ -287,7 +287,14 @@ func (g *Gateway) processMessages() {
 			// TODO: Handle query 3 results
 		case _ = <-g.resultsQueues[4]:
 			// TODO: Handle query 4 results
-		case _ = <-g.resultsQueues[5]:
+		case msg := <-g.resultsQueues[5]:
+			var sentimentProfitRatio common.SentimentProfitRatioAverage
+			if err := json.Unmarshal(msg.Body, &sentimentProfitRatio); err != nil {
+				slog.Error("error unmarshalling sentiment profit ratio", slog.String("error", err.Error()))
+				return
+			}
+			slog.Info("received query 5 results", slog.Any("sentiment profit ratio", sentimentProfitRatio))
+
 			// TODO: Handle query 5 results
 		}
 	}
@@ -340,14 +347,18 @@ func (g *Gateway) handleResults2(msg common.Message) error {
 		return fmt.Errorf("error unmarshalling top 5 countries: %w", err)
 	}
 
+	if len(top5Countries.Countries) != 5 {
+		return fmt.Errorf("expected 5 countries, got %d", len(top5Countries.Countries))
+	}
+
 	slog.Info("Top 5 countries", slog.Any("top5Countries", top5Countries))
 
 	q2Result := []models.QueryResult{
-		models.Q2Country{Country: top5Countries.FirstCountry},
-		models.Q2Country{Country: top5Countries.SecondCountry},
-		models.Q2Country{Country: top5Countries.ThirdCountry},
-		models.Q2Country{Country: top5Countries.FourthCountry},
-		models.Q2Country{Country: top5Countries.FifthCountry},
+		models.Q2Country{Country: top5Countries.Countries[0].Country, Budget: top5Countries.Countries[0].Budget},
+		models.Q2Country{Country: top5Countries.Countries[1].Country, Budget: top5Countries.Countries[1].Budget},
+		models.Q2Country{Country: top5Countries.Countries[2].Country, Budget: top5Countries.Countries[2].Budget},
+		models.Q2Country{Country: top5Countries.Countries[3].Country, Budget: top5Countries.Countries[3].Budget},
+		models.Q2Country{Country: top5Countries.Countries[4].Country, Budget: top5Countries.Countries[4].Budget},
 	}
 
 	err := communication.SendQueryResults(g.client, 2, q2Result)
@@ -365,8 +376,8 @@ func (g *Gateway) handleResults3(msg common.Message) error {
 
 	slog.Info("Best and worst movies", slog.Any("bestAndWorstMovies", bestAndWorstMovies))
 	q3Result := []models.QueryResult{
-		models.Q3Movie{Title: bestAndWorstMovies.BestMovie},
-		models.Q3Movie{Title: bestAndWorstMovies.WorstMovie},
+		models.Q3Movie{ID: bestAndWorstMovies.BestMovie.ID, Title: bestAndWorstMovies.BestMovie.Title},
+		models.Q3Movie{ID: bestAndWorstMovies.WorstMovie.ID, Title: bestAndWorstMovies.WorstMovie.Title},
 	}
 
 	err := communication.SendQueryResults(g.client, 3, q3Result)

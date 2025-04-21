@@ -30,21 +30,23 @@ func (q Q1Movie) String() string {
 }
 
 type Q2Country struct {
-	Country    Country `json:"country"`
+	Country Country `json:"country"`
+	Budget  uint64  `json:"budget"`
 }
 
 // placeholder for Q2Country
 func (q Q2Country) String() string {
-	return "Query 2: " + q.Country.Name
+	return "Query 2: " + q.Country.Name + " | Budget: " + strconv.FormatUint(q.Budget, 10)
 }
 
 type Q3Movie struct {
+	ID    string `json:"id"`
 	Title string `json:"title"`
 }
 
 // placeholder for Q3Movie
 func (q Q3Movie) String() string {
-	return "Query 3: " + q.Title
+	return "Query 3: " + q.ID + " | Title: " + q.Title
 }
 
 type Q4Actors struct {

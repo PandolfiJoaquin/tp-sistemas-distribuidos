@@ -60,6 +60,7 @@ type CountryBudget struct {
 
 type MovieAvgRating struct {
 	MovieID     string  `json:"movie_id"`
+	Title       string  `json:"title"`
 	RatingSum   float64 `json:"rating_sum"`
 	RatingCount uint32  `json:"rating_count"`
 }
@@ -80,17 +81,18 @@ type SentimentProfitRatioAccumulator struct {
 	NegativeProfitRatio ProfitRatioAccumulator `json:"negative_profit_ratio"`
 }
 
-type Top5Countries struct { //TODO: cambiar a slice
-	FirstCountry  pkg.Country `json:"first_country"`
-	SecondCountry pkg.Country `json:"second_country"`
-	ThirdCountry  pkg.Country `json:"third_country"`
-	FourthCountry pkg.Country `json:"fourth_country"`
-	FifthCountry  pkg.Country `json:"fifth_country"`
+type Top5Countries struct {
+	Countries []CountryBudget `json:"countries"`
+}
+
+type MovieWithTitle struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 type BestAndWorstMovies struct {
-	BestMovie  string `json:"best_movie"`
-	WorstMovie string `json:"worst_movie"`
+	BestMovie  MovieWithTitle `json:"best_movie"`
+	WorstMovie MovieWithTitle `json:"worst_movie"`
 }
 
 type Top10Actors struct {
