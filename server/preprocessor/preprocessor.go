@@ -140,7 +140,7 @@ func (p *Preprocessor) processMessages() {
 func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 	var (
 		header  common.Header
-		payload interface{}
+		payload any
 		outCh   []chan<- []byte
 	)
 
@@ -162,12 +162,7 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 			payload = p.preprocessMovies(mb)
 		}
 
-		// slog.Info("preprocessing Movies", slog.String("batch", string(batch.Body)))
-
-		for _, moviesChan := range p.moviesChans {
-			outCh = append(outCh, moviesChan)
-		}
-
+		outCh = append(outCh, p.moviesChans...)
 	case "reviews":
 		var rb models.RawReviewBatch
 		if err := json.Unmarshal(batch.Body, &rb); err != nil {
@@ -227,8 +222,8 @@ func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.Batch
 
 	res := common.Batch[common.Movie]{
 		Header: common.Header{
-			Weight:      uint32(len(movies)),
-			TotalWeight: -1,
+			Weight:      batch.Header.Weight,
+			TotalWeight: batch.Header.TotalWeight,
 		},
 		Data: movies,
 	}

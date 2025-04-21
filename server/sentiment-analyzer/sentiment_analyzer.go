@@ -111,7 +111,6 @@ func (a *Analyzer) analyzeSentimentOfMovie(movie common.Movie) common.MovieWithS
 
 func (a *Analyzer) calculateSentiment(movie common.Movie) common.Sentiment {
 	sentiment := a.model.SentimentAnalysis(movie.Overview, cdipaoloSentiment.English).Score
-	slog.Info("Sentiment score", slog.String("movie_id", movie.ID), slog.Int("score", int(sentiment)), slog.Any("revenue", movie.Revenue), slog.Any("budget", movie.Budget))
 	if sentiment == 0 {
 		return common.Negative
 	}

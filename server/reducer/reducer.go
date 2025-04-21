@@ -288,7 +288,6 @@ func (r *Reducer) reduceQ5(batch common.Batch[common.MovieWithSentimentOverview]
 	negativeProfitRatio := common.ProfitRatioAccumulator{}
 	for _, movieWithSentiment := range batch.Data {
 		if movieWithSentiment.Revenue == 0 || movieWithSentiment.Budget == 0 {
-			slog.Warn("movie has no revenue or budget, skipping", slog.String("movie_id", movieWithSentiment.ID))
 			continue
 		}
 
@@ -299,6 +298,10 @@ func (r *Reducer) reduceQ5(batch common.Batch[common.MovieWithSentimentOverview]
 		} else {
 			negativeProfitRatio.ProfitRatioSum += profitRatio
 			negativeProfitRatio.ProfitRatioCount++
+		}
+
+		if profitRatio > 10000 {
+			slog.Debug("ALOT profit ratio", slog.String("movie_id", movieWithSentiment.ID), slog.Any("revenue", movieWithSentiment.Revenue), slog.Any("budget", movieWithSentiment.Budget), slog.Float64("profit_ratio", profitRatio))
 		}
 
 	}
