@@ -13,6 +13,7 @@ const toPreProcess = "to-preprocess"
 const filterMoviesQ1 = "filter-year-q1"
 const filterMoviesQ2 = "filter-production-q2"
 const filterMovieQ3Q4 = "filter-year-q3q4"
+const AnalyzerQueue = "sentiment-analyzer"
 const reviewsQueue = "reviews-to-join"
 
 type PreprocessorConfig struct {
@@ -76,9 +77,15 @@ func (p *Preprocessor) middlewareSetup() error {
 		return fmt.Errorf("error getting channel to send movies: %s", err)
 	}
 
+	moviesToAnalyze, err := middleware.GetChanToSend(AnalyzerQueue)
+	if err != nil {
+		return fmt.Errorf("error getting channel to send movies: %s", err)
+	}
+
 	moviesChans = append(moviesChans, moviesToFilterQ1)
 	moviesChans = append(moviesChans, moviesToFilterQ2)
 	moviesChans = append(moviesChans, moviesToFilterQ3Q4)
+	moviesChans = append(moviesChans, moviesToAnalyze)
 
 	toProcess, err := middleware.GetChanToRecv(toPreProcess)
 	if err != nil {
@@ -213,8 +220,7 @@ func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.Batch
 			Genres:              movie.Genres,
 			ProductionCountries: movie.ProductionCountries,
 			Budget:              movie.Budget,
-			Revenue:             movie.Revenue,
-			ReleaseDate:         movie.ReleaseDate,
+			Overview:            movie.Overview,
 		})
 	}
 

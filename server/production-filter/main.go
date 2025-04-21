@@ -7,7 +7,6 @@ import (
 	"pkg/log"
 )
 
-
 func main() {
 	logger, err := log.SetupLogger("production-filter", false, nil)
 	if err != nil {

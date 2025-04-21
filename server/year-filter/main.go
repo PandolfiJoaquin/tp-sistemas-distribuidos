@@ -30,7 +30,7 @@ func main() {
 	}
 
 	filter.Start()
-	
+
 	if err := filter.Stop(); err != nil {
 		slog.Error("error stopping year filter", slog.String("error", err.Error()))
 		return
