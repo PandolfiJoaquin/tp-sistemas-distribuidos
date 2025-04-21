@@ -68,18 +68,19 @@ func (c *Client) Start() {
 
 	slog.Info("client connected to server", slog.String("serverAddress", c.config.ServerAddress))
 
+	wg.Add(1)
+	go c.RecvAnswers(wg)
+
 	c.SendAllMovies()
 	c.SendAllReviews()
 	c.SendAllCredits()
-	wg.Add(1)
-	go c.RecvAnswers(wg)
+
 	wg.Wait()
 
 }
 
 func (c *Client) sendMovies(reader *utils.MoviesReader) error {
 	movies, err := reader.ReadMovies()
-	slog.Info("read movies", slog.Int("count", len(movies)))
 	if err != nil {
 		return fmt.Errorf("error sending movies: %w", err)
 	}
@@ -118,7 +119,6 @@ func (c *Client) SendAllMovies() {
 
 func (c *Client) sendReviews(reader *utils.ReviewReader) error {
 	reviews, err := reader.ReadReviews()
-	slog.Info("read reviews", slog.Int("count", len(reviews)))
 	if err != nil {
 		return fmt.Errorf("error sending reviews: %w", err)
 	}
@@ -127,8 +127,6 @@ func (c *Client) sendReviews(reader *utils.ReviewReader) error {
 	if err != nil {
 		return fmt.Errorf("error sending reviews: %w", err)
 	}
-
-	slog.Info("sent reviews", slog.Int("count", len(reviews)))
 
 	return nil
 }
@@ -153,6 +151,7 @@ func (c *Client) SendAllReviews() {
 		slog.Error("error sending EOF", slog.String("error", err.Error()))
 		return
 	}
+	slog.Info("Sent all reviews to server", slog.Int("total", reader.Total))
 }
 
 func (c *Client) sendCredits(reader *utils.CreditsReader) error {
@@ -165,8 +164,6 @@ func (c *Client) sendCredits(reader *utils.CreditsReader) error {
 	if err != nil {
 		return fmt.Errorf("error sending credits: %w", err)
 	}
-
-	slog.Info("sent credits", slog.Int("count", len(credits)))
 
 	return nil
 }
@@ -187,11 +184,11 @@ func (c *Client) SendAllCredits() {
 	}
 
 	err = communication.SendCreditsEof(c.conn, int32(reader.Total))
-	slog.Info("sent credits", slog.Int("total", reader.Total))
 	if err != nil {
 		slog.Error("error sending EOF", slog.String("error", err.Error()))
 		return
 	}
+	slog.Info("sent credits", slog.Int("total", reader.Total))
 }
 
 const TotalQueries = 5
