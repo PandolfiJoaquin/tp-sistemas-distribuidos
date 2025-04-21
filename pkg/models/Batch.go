@@ -29,6 +29,15 @@ func (b RawReviewBatch) IsEof() bool {
 	return b.Header.TotalWeight > 0
 }
 
+type RawCreditBatch struct {
+	Header  Header       `json:"header"`
+	Credits []RawCredits `json:"credits_raw,omitempty"`
+}
+
+func (b RawCreditBatch) IsEof() bool {
+	return b.Header.TotalWeight > 0
+}
+
 type Results struct {
 	QueryID int             `json:"query_id"`
 	Items   json.RawMessage `json:"items"`

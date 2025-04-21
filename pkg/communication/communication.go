@@ -107,6 +107,29 @@ func recvReviewBatch(conn net.Conn) (models.RawReviewBatch, error) {
 	return batch, nil
 }
 
+func recvCreditBatch(conn net.Conn) (models.RawCreditBatch, error) {
+	var batch models.RawCreditBatch
+
+	sizeBuf, err := RecvAll(conn, SIZE)
+	if err != nil {
+		return batch, fmt.Errorf("error reading size: %w", err)
+	}
+
+	size := binary.BigEndian.Uint32(sizeBuf)
+
+	// Read the actual message
+	dataBuf, err := RecvAll(conn, int(size))
+	if err != nil {
+		return batch, fmt.Errorf("error reading data: %w", err)
+	}
+
+	if err := json.Unmarshal(dataBuf, &batch); err != nil {
+		return batch, fmt.Errorf("error unmarshalling batch: %w", err)
+	}
+
+	return batch, nil
+}
+
 func sendResults(conn net.Conn, results models.Results) error {
 	data, err := json.Marshal(results)
 	if err != nil {

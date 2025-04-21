@@ -163,6 +163,29 @@ func (g *Gateway) receiveReviews() error {
 	return nil
 }
 
+func (g *Gateway) receiveCredits() error {
+	total := 0
+	for {
+		credits, err := communication.RecvCredits(g.client)
+		if err != nil {
+			return fmt.Errorf("error receiving credits: %w", err)
+		}
+
+		err = g.publishBatch(credits, "credits")
+		if err != nil {
+			return fmt.Errorf("error publishing credits batch: %w", err)
+		}
+
+		total += int(credits.Header.Weight)
+
+		if credits.IsEof() {
+			break
+		}
+	}
+	slog.Info("Total credits received", slog.Int("total", total))
+	return nil
+}
+
 func (g *Gateway) publishBatch(batch models.RawBatch, batchType string) error {
 	bodyBytes, err := json.Marshal(batch)
 	if err != nil {
@@ -197,7 +220,11 @@ func (g *Gateway) handleConnection() {
 		return
 	}
 
-	// TODO: Handle Ratings and Actors
+	err = g.receiveCredits()
+	if err != nil {
+		slog.Error("error receiving credits", slog.String("error", err.Error()))
+		return
+	}
 }
 
 func (g *Gateway) signalHandler(wg *sync.WaitGroup) {
@@ -238,8 +265,6 @@ func (g *Gateway) Start() {
 	g.listen()
 	wg.Wait()
 }
-
-var total_queries = 1
 
 func (g *Gateway) processMessages() {
 	defer func(client net.Conn) {
@@ -384,5 +409,3 @@ func (g *Gateway) consumeBatch(msg []byte) (common.Batch[common.Movie], error) {
 	}
 	return batch, nil
 }
-
-const TotalQueries = 1

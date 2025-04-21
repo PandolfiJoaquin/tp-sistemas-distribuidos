@@ -11,18 +11,21 @@ import (
 
 const MoviePath = "archive/movies_metadata.csv"
 const ReviewPath = "archive/ratings_small.csv"
+const CreditsPath = "archive/credits.csv"
 
 type ClientConfig struct {
 	ServerAddress  string
 	MaxBatchMovie  int
 	MaxBatchReview int
+	MaxBatchCredit int
 }
 
-func NewClientConfig(serverAddress string, maxBatchMovie, maxBatchReview int) ClientConfig {
+func NewClientConfig(serverAddress string, maxBatchMovie, maxBatchReview, maxBatchCredits int) ClientConfig {
 	return ClientConfig{
 		ServerAddress:  serverAddress,
 		MaxBatchMovie:  maxBatchMovie,
 		MaxBatchReview: maxBatchReview,
+		MaxBatchCredit: maxBatchCredits,
 	}
 }
 
@@ -56,12 +59,18 @@ func (c *Client) Start() {
 		return
 	}
 
-	defer c.conn.Close()
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			slog.Error("error closing connection", slog.String("error", err.Error()))
+		}
+	}(c.conn)
 
 	slog.Info("client connected to server", slog.String("serverAddress", c.config.ServerAddress))
 
 	c.SendAllMovies()
 	c.SendAllReviews()
+	c.SendAllCredits()
 	wg.Add(1)
 	go c.RecvAnswers(wg)
 	wg.Wait()
@@ -85,6 +94,7 @@ func (c *Client) sendMovies(reader *utils.MoviesReader) error {
 
 func (c *Client) SendAllMovies() {
 	reader, err := utils.NewMoviesReader(MoviePath, c.config.MaxBatchMovie)
+	defer reader.Close()
 	if err != nil {
 		slog.Error("error creating movies reader", slog.String("error", err.Error()))
 		return
@@ -145,7 +155,46 @@ func (c *Client) SendAllReviews() {
 	}
 }
 
-const TotalQueries = 2
+func (c *Client) sendCredits(reader *utils.CreditsReader) error {
+	credits, err := reader.ReadCredits()
+	if err != nil {
+		return fmt.Errorf("error sending credits: %w", err)
+	}
+
+	err = communication.SendCredits(c.conn, credits)
+	if err != nil {
+		return fmt.Errorf("error sending credits: %w", err)
+	}
+
+	slog.Info("sent credits", slog.Int("count", len(credits)))
+
+	return nil
+}
+
+func (c *Client) SendAllCredits() {
+	reader, err := utils.NewCreditsReader(CreditsPath, c.config.MaxBatchCredit)
+	if err != nil {
+		slog.Error("error creating credits reader", slog.String("error", err.Error()))
+		return
+	}
+
+	for !reader.Finished {
+		err = c.sendCredits(reader)
+		if err != nil {
+			slog.Error("error sending credits", slog.String("error", err.Error()))
+			return
+		}
+	}
+
+	err = communication.SendCreditsEof(c.conn, int32(reader.Total))
+	slog.Info("sent credits", slog.Int("total", reader.Total))
+	if err != nil {
+		slog.Error("error sending EOF", slog.String("error", err.Error()))
+		return
+	}
+}
+
+const TotalQueries = 5
 
 func (c *Client) RecvAnswers(wg *sync.WaitGroup) {
 	queriesReceived := make([]bool, 0) // Array to store when we get the complete query
@@ -164,7 +213,7 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup) {
 		}
 
 		if communication.IsQueryEof(results) {
-			slog.Info("EOF received", slog.Int("queryID", results.QueryId))
+			//slog.Info("EOF received", slog.Int("queryID", results.QueryId))
 			queriesReceived = append(queriesReceived, true)
 			continue
 		}

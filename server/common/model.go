@@ -35,6 +35,11 @@ type Review struct {
 	Rating  float64 `json:"rating"`
 }
 
+type Credit struct {
+	Actors  []Actor `json:"actors"`
+	MovieId string  `json:"movie_id"`
+}
+
 type ToProcessMsg struct {
 	Type string          `json:"type"`
 	Body json.RawMessage `json:"body"`
@@ -154,7 +159,6 @@ type MovieReview struct {
 type Actor struct {
 	ActorID string `json:"actor_id"`
 	Name    string `json:"name"`
-	MovieID string `json:"movie_id"`
 }
 
 type MovieActor struct { //si, es igual al de arriba
