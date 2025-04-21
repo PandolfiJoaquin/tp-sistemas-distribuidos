@@ -162,7 +162,7 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 			payload = p.preprocessMovies(mb)
 		}
 
-		slog.Info("preprocessing Movies", slog.String("batch", string(batch.Body)))
+		// slog.Info("preprocessing Movies", slog.String("batch", string(batch.Body)))
 
 		for _, moviesChan := range p.moviesChans {
 			outCh = append(outCh, moviesChan)
@@ -185,7 +185,7 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 			payload = p.preprocessReviews(rb)
 		}
 
-		slog.Info("preprocessing reviews", slog.String("batch", string(batch.Body)))
+		slog.Info("preprocessing reviews", slog.String("batch len", strconv.Itoa(len(rb.Reviews))))
 
 		outCh = append(outCh, p.reviewsChan)
 
