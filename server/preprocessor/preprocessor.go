@@ -29,8 +29,7 @@ type Preprocessor struct {
 	middleware    *common.Middleware
 	toProcessChan <-chan common.Message
 	reviewsChan   chan<- []byte
-
-	moviesChans []chan<- []byte
+	moviesChans   []chan<- []byte
 }
 
 func NewPreprocessor(rabbitUser, rabbitPass string) *Preprocessor {
@@ -143,7 +142,7 @@ func (p *Preprocessor) processMessages() {
 
 func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 	var (
-		payload interface{}
+		payload any
 		outCh   []chan<- []byte
 	)
 
@@ -164,6 +163,7 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 		for _, moviesChan := range p.moviesChans {
 			outCh = append(outCh, moviesChan)
 		}
+		outCh = append(outCh, p.moviesChans...)
 
 	case "reviews":
 		var rb models.RawReviewBatch

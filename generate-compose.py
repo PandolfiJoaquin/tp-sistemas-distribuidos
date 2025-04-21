@@ -2,7 +2,7 @@ import sys
 
 QUERY_AMNT = 5
 
-YAML_FILE = "docker-compose-dev.yaml"
+YAML_FILE = "docker-compose.yaml"
 
 SKELETON = """
 name: tp-dist
