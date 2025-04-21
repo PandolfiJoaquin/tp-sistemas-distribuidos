@@ -167,7 +167,7 @@ func (r *FinalReducer) startReceivingQ3() {
 				slog.Error("error marshalling response", slog.String("error", err.Error()))
 			}
 			r.connection.ChanToSend <- response
-			slog.Info("sent query3 final response")
+			slog.Info("sent query3 final response", slog.String("best movie", bestAndWorstMovies.BestMovie), slog.String("worst movie", bestAndWorstMovies.WorstMovie))
 		}
 
 		if err := msg.Ack(); err != nil {

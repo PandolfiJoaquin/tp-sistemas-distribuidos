@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"log/slog"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -102,12 +103,12 @@ func (m *Middleware) GetChanToRecv(name string) (<-chan Message, error) {
 	return inboxChan, nil
 }
 
-func (m* Middleware) GetChanWithTopicToSend(exchange, queue, topic string) (chan<- []byte, error) {
+func (m* Middleware) GetChanWithTopicToSend(exchange, topic string) (chan<- []byte, error) {
 	if err := m.ch.ExchangeDeclare(exchange, "topic", false, false, false, false, nil); err != nil {
 		return nil, fmt.Errorf("error declaring exchange: %s", err)
 	}
 
-	q, err := m.ch.QueueDeclare(queue, false, false, false, false, nil)
+	q, err := m.ch.QueueDeclare("", false, false, false, false, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error declaring queue: %s", err)
 	}
@@ -120,20 +121,19 @@ func (m* Middleware) GetChanWithTopicToSend(exchange, queue, topic string) (chan
 	go func() {
 		for msg := range chanToSend {
 			if err := m.Send(exchange, msg); err != nil {
-				fmt.Printf("Error sending message: %s", err)
+				slog.Error("error sending message", slog.String("error", err.Error()))
 			}
 		}
 	}()
 	return chanToSend, nil
 }
 
-func (m* Middleware) GetChanWithTopicToRecv(exchange, queue, topic string) (<-chan Message, error) {
-	err := m.ch.ExchangeDeclare(exchange, "topic", false, false, false, false, nil)
-	if err != nil {
+func (m* Middleware) GetChanWithTopicToRecv(exchange, topic string) (<-chan Message, error) {
+	if err := m.ch.ExchangeDeclare(exchange, "topic", false, false, false, false, nil); err != nil {
 		return nil, fmt.Errorf("error declaring exchange: %s", err)
 	}
 
-	q, err := m.ch.QueueDeclare(queue, false, false, false, false, nil)
+	q, err := m.ch.QueueDeclare("", false, false, false, false, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error declaring queue: %s", err)
 	}

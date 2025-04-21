@@ -47,5 +47,5 @@ func Flatten[T any](slices [][]T) []T {
 
 func GetShard(movieId string, shards int) int {
 	hash := sha256.Sum256([]byte(movieId))
-	return int(hash[0]) % shards
+	return (int(hash[0]) % shards) + 1
 }
