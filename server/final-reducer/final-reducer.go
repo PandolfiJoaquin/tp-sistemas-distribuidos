@@ -23,9 +23,10 @@ var queriesQueues = map[int]queuesNames{
 }
 
 type FinalReducer struct {
-	middleware *common.Middleware
-	connection connection
-	queryNum   int
+	middleware  *common.Middleware
+	connection  connection
+	queryNum    int
+	amtOfShards int
 }
 
 type connection struct {
@@ -33,7 +34,7 @@ type connection struct {
 	ChanToSend chan<- []byte
 }
 
-func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string) (*FinalReducer, error) {
+func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards int) (*FinalReducer, error) {
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
@@ -45,9 +46,10 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string) (*FinalReducer
 	}
 
 	return &FinalReducer{
-		middleware: middleware,
-		connection: connection,
-		queryNum:   queryNum,
+		middleware:  middleware,
+		connection:  connection,
+		queryNum:    queryNum,
+		amtOfShards: amtOfShards,
 	}, nil
 }
 
@@ -157,9 +159,15 @@ func (r *FinalReducer) startReceivingQ3() {
 		currentWeight += batch.Header.Weight
 
 		if batch.IsEof() {
-			eofWeight = batch.Header.TotalWeight
+			if eofWeight != 0 {
+				if err := msg.Ack(); err != nil {
+					return
+				}
+				continue
+			}
+			eofWeight = batch.Header.TotalWeight * int32(r.amtOfShards)
 		}
-		if int32(currentWeight) > eofWeight {
+		if int32(currentWeight) > eofWeight && eofWeight != 0 {
 			slog.Error("current weight is greater than eof weight", slog.Any("current weight", int32(currentWeight)), slog.Any("eof weight", eofWeight))
 		}
 
@@ -171,6 +179,7 @@ func (r *FinalReducer) startReceivingQ3() {
 			}
 			r.connection.ChanToSend <- response
 			slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.ID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.ID))
+
 		}
 
 		if err := msg.Ack(); err != nil {

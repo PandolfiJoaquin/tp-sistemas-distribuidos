@@ -196,7 +196,6 @@ func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
 			p.pesoTotalQuePaso += int(reviews.Weight)
 			reviewsDivided := divideReviews(reviews, p.shards)
 
-			//slog.Info("dividing reviews", slog.Int("shards", p.shards), slog.String("divided length: ", strconv.Itoa(len(reviewsDivided.Data))))
 			for i, reviewsShard := range reviewsDivided {
 				slog.Info("Sending reviews")
 				bytesReview, err := json.Marshal(reviewsShard)
@@ -346,10 +345,8 @@ func divideReviews(batch common.Batch[common.Review], numberOfShards int) []comm
 		slog.Error("error dividing reviews")
 	}
 	return common.Map(reviewsShards, func(reviews []common.Review) common.Batch[common.Review] {
-		header := batch.Header
-		header.Weight = uint32(len(reviews))
 		return common.Batch[common.Review]{
-			Header: header,
+			Header: batch.Header,
 			Data:   reviews,
 		}
 	})
