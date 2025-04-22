@@ -8,15 +8,16 @@ import (
 )
 
 const (
-	reviewsToJoinQueue = "reviews-to-join"
-	joinersTopic       = "joiner-shards"
-	moviesExchange     = "movies-exchange"
-	moviestopic        = "movies-to-join-%d"
-	reviewsExchange    = "reviews-exchange"
-	reviewsTopic       = "reviews-to-join-%d"
+	moviesExchange  = "movies-exchange"
+	moviestopic     = "movies-to-join-%d"
+	reviewsExchange = "reviews-exchange"
+	reviewsTopic    = "reviews-to-join-%d"
+	creditExchange  = "credits-exchange"
+	creditTopic     = "credits-to-join-%d"
 )
 
-const nextStep = "q3-to-reduce"
+const q3ToReduceQueue = "q3-to-reduce"
+const q5ToReduceQueue = "q5-to-reduce"
 
 type Joiner struct {
 	joinerId       int
@@ -51,23 +52,38 @@ func (j *Joiner) Start() {
 		return
 	}
 
-	q3Chan, err := j.middleware.GetChanToSend(nextStep)
+	creditChan, err := j.middleware.GetChanWithTopicToRecv(creditExchange, fmt.Sprintf(creditTopic, j.joinerId))
 	if err != nil {
-		slog.Error("error creating channel", slog.String("queue", nextStep), slog.String("error", err.Error()))
+		slog.Error("Error creating channel", slog.String("queue", creditExchange), slog.String("error", err.Error()))
 		return
 	}
 
-	go j.run(moviesChan, reviewsChan, q3Chan)
+	q3ToReduce, err := j.middleware.GetChanToSend(q3ToReduceQueue)
+	if err != nil {
+		slog.Error("error creating channel", slog.String("queue", q3ToReduceQueue), slog.String("error", err.Error()))
+		return
+	}
+
+	q5ToReduce, err := j.middleware.GetChanToSend(q5ToReduceQueue)
+	if err != nil {
+		slog.Error("error creating channel", slog.String("queue", q5ToReduceQueue), slog.String("error", err.Error()))
+		return
+	}
+
+	go j.run(moviesChan, reviewsChan, creditChan, q3ToReduce, q5ToReduce)
 
 	forever := make(chan bool)
 	<-forever
 }
 
-func (j *Joiner) run(_moviesChan <-chan common.Message, reviewsChan <-chan common.Message, nextStepChan chan<- []byte) {
+func (j *Joiner) run(
+	_moviesChan, _reviewsChan, _creditChan <-chan common.Message,
+	q3ToReduce, q5ToReduce chan<- []byte,
+) {
 	dummyChan := make(<-chan common.Message)
 	movies := _moviesChan
 	reviews := dummyChan
-	weightPassed := 0
+	credits := dummyChan
 	for {
 		select {
 		case msg := <-movies:
@@ -80,7 +96,8 @@ func (j *Joiner) run(_moviesChan <-chan common.Message, reviewsChan <-chan commo
 			j.saveBatch(batch)
 			if j.allMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
-				reviews = reviewsChan
+				reviews = _reviewsChan
+				credits = _creditChan
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -94,8 +111,6 @@ func (j *Joiner) run(_moviesChan <-chan common.Message, reviewsChan <-chan commo
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			weightPassed += int(batch.Weight)
-			slog.Info("weightPassedAfterEof: ", slog.Int("weight", weightPassed))
 
 			reviewXMovies := j.join(batch.Data)
 			reviewsXMoviesBatch := common.Batch[common.MovieReview]{
@@ -109,13 +124,40 @@ func (j *Joiner) run(_moviesChan <-chan common.Message, reviewsChan <-chan commo
 				continue
 			}
 			slog.Info("Sending msgs: ", slog.Any("response", reviewsXMoviesBatch))
-			nextStepChan <- response
+			q3ToReduce <- response
+
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			}
+			continue
+		case msg := <-credits:
+			slog.Info("Received message from credits")
+			var batch common.Batch[common.Credit]
+			if err := json.Unmarshal(msg.Body, &batch); err != nil {
+				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+				continue
+			}
+
+			actors := j.filter(batch.Data)
+			actorsBatch := common.Batch[common.Credit]{
+				Header: batch.Header,
+				Data:   actors,
+			}
+
+			response, err := json.Marshal(actorsBatch)
+			if err != nil {
+				slog.Error("error marshalling batch", slog.String("error", err.Error()))
+				continue
+			}
+			slog.Info("Sending msgs: ", slog.Any("response", actorsBatch))
+			q5ToReduce <- response
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
 			continue
 		}
+
 	}
 }
 
@@ -172,4 +214,17 @@ func (j *Joiner) Close() error {
 		return err
 	}
 	return nil
+}
+
+func (j *Joiner) filter(data []common.Credit) []common.Credit {
+	movies := j.getMovies()
+	movieIds := common.Map(movies, func(m common.Movie) string { return m.ID })
+	ids := make(map[string]bool)
+	for _, id := range movieIds {
+		ids[id] = true
+	}
+	actors := common.Filter(data, func(c common.Credit) bool {
+		return ids[c.MovieId]
+	})
+	return actors
 }
