@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os/signal"
 	pkg "pkg/models"
+	"syscall"
 	"tp-sistemas-distribuidos/server/common"
 )
 
@@ -69,14 +72,21 @@ func initializeConnections(middleware *common.Middleware) (map[int]connection, e
 }
 
 func (r *Reducer) Start() {
-	go r.startReceiving()
-	forever := make(chan bool)
-	<-forever
+	defer r.close()
+
+	// Sigterm , sigint
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	r.startReceiving(ctx)
 }
 
-func (r *Reducer) startReceiving() {
+func (r *Reducer) startReceiving(ctx context.Context) {
 	for {
 		select {
+		case <-ctx.Done():
+			slog.Info("received termination signal, stopping")
+			return
 		case msg := <-r.connections[2].ChanToRecv:
 			if err := r.processQuery2Message(msg); err != nil {
 				slog.Error("error processing query2 message", slog.String("error", err.Error()))
@@ -321,6 +331,9 @@ func (r *Reducer) reduceQ5(batch common.Batch[common.MovieWithSentimentOverview]
 	}, nil
 }
 
-func (r *Reducer) Stop() error {
-	return r.middleware.Close()
+func (r *Reducer) close() {
+	if err := r.middleware.Close(); err != nil {
+		slog.Error("error closing middleware", slog.String("error", err.Error()))
+	}
+	slog.Info("reducer stopped")
 }

@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os/signal"
+	"syscall"
 	"tp-sistemas-distribuidos/server/common"
 )
 
@@ -39,6 +42,12 @@ func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
 }
 
 func (j *Joiner) Start() {
+	defer j.stop()
+
+	// Sigterm , sigint
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
 	moviesChan, err := j.middleware.GetChanWithTopicToRecv(moviesExchange, fmt.Sprintf(moviestopic, j.joinerId))
 	//moviesChan, err := j.middleware.GetChanToRecv(fmt.Sprintf(moviesToJoinWithTopic, j.joinerId))
 	if err != nil {
@@ -70,13 +79,11 @@ func (j *Joiner) Start() {
 		return
 	}
 
-	go j.run(moviesChan, reviewsChan, creditChan, q3ToReduce, q4ToReduce)
-
-	forever := make(chan bool)
-	<-forever
+	j.run(ctx, moviesChan, reviewsChan, creditChan, q3ToReduce, q4ToReduce)
 }
 
 func (j *Joiner) run(
+	ctx context.Context,
 	_moviesChan, _reviewsChan, _creditChan <-chan common.Message,
 	q3ToReduce, q4ToReduce chan<- []byte,
 ) {
@@ -86,6 +93,9 @@ func (j *Joiner) run(
 	credits := dummyChan
 	for {
 		select {
+		case <-ctx.Done():
+			slog.Info("received termination signal, stopping joiner")
+			return
 		case msg := <-movies:
 			var batch common.Batch[common.Movie]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
@@ -208,12 +218,11 @@ func (j *Joiner) allMoviesReceived() bool {
 
 }
 
-func (j *Joiner) Close() error {
+func (j *Joiner) stop() {
 	if err := j.middleware.Close(); err != nil {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
-		return err
 	}
-	return nil
+	slog.Info("joiner stopped")
 }
 
 func (j *Joiner) filter(data []common.Credit) []common.Credit {
