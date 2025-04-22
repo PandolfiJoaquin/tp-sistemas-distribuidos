@@ -170,7 +170,7 @@ func (r *Reducer) processQuery3Message(msg common.Message) error {
 }
 
 func (r *Reducer) processQuery4Message(msg common.Message) error {
-	var batch common.Batch[common.MovieActor]
+	var batch common.Batch[common.Credit]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		return fmt.Errorf("error unmarshalling query 4 message: %w", err)
 	}
@@ -257,19 +257,21 @@ func (r *Reducer) reduceQ3(batch common.Batch[common.MovieReview]) (common.Batch
 	}, nil
 }
 
-func (r *Reducer) reduceQ4(batch common.Batch[common.MovieActor]) (common.Batch[common.ActorMoviesAmount], error) {
-	// me llega un mensaje de MovieActor y tengo que reducirlo a un map con cada entrada (actor, sum(pelis)), me viene filtrado
+func (r *Reducer) reduceQ4(batch common.Batch[common.Credit]) (common.Batch[common.ActorMoviesAmount], error) {
+	// me llega un mensaje de Credit y tengo que reducirlo a un map con cada entrada (actor, sum(pelis)), me viene filtrado
 	actorMovies := make(map[string]common.ActorMoviesAmount)
-	for _, movieActor := range batch.Data {
-		if currentMoviesAmount, ok := actorMovies[movieActor.ActorID]; !ok {
-			actorMovies[movieActor.ActorID] = common.ActorMoviesAmount{
-				ActorID:      movieActor.ActorID,
-				ActorName:    movieActor.Name,
-				MoviesAmount: 1,
+	for _, credit := range batch.Data {
+		for _, actor := range credit.Actors {
+			if currentMoviesAmount, ok := actorMovies[actor.ActorID]; !ok {
+				actorMovies[actor.ActorID] = common.ActorMoviesAmount{
+					ActorID:      actor.ActorID,
+					ActorName:    actor.Name,
+					MoviesAmount: 1,
+				}
+			} else {
+				currentMoviesAmount.MoviesAmount += 1
+				actorMovies[actor.ActorID] = currentMoviesAmount
 			}
-		} else {
-			currentMoviesAmount.MoviesAmount += 1
-			actorMovies[movieActor.ActorID] = currentMoviesAmount
 		}
 	}
 
