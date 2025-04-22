@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os/signal"
 	"sort"
+	"syscall"
 	"tp-sistemas-distribuidos/server/common"
 
 	pkg "pkg/models"
@@ -73,219 +76,245 @@ func initializeConnectionForQuery(queryNum int, middleware *common.Middleware) (
 }
 
 func (r *FinalReducer) Start() {
+	// Sigterm , sigint
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
 	if r.queryNum == 2 {
 		slog.Info("starting final reducer for query 2")
-		go r.startReceivingQ2()
+		r.startReceivingQ2(ctx)
 	} else if r.queryNum == 3 {
 		slog.Info("starting final reducer for query 3")
-		go r.startReceivingQ3()
+		r.startReceivingQ3(ctx)
 	} else if r.queryNum == 4 {
 		slog.Info("starting final reducer for query 4")
-		go r.startReceivingQ4()
+		r.startReceivingQ4(ctx)
 	} else if r.queryNum == 5 {
 		slog.Info("starting final reducer for query 5")
-		go r.startReceivingQ5()
+		r.startReceivingQ5(ctx)
+	} else {
+		slog.Error("query number not found", slog.Int("query number", r.queryNum))
+		return
 	}
 
-	forever := make(chan bool)
-	<-forever
+	slog.Info("final reducer finalized")
 }
 
-func (r *FinalReducer) startReceivingQ2() {
+func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 	countries := make(map[pkg.Country]uint64)
 	currentWeight := uint32(0)
 	eofWeight := int32(0)
-	for msg := range r.connection.ChanToRecv {
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("received termination signal, stopping final reducer for query 2")
+			return
+		case msg := <-r.connection.ChanToRecv:
+			var batch common.Batch[common.CountryBudget]
+			if err := json.Unmarshal(msg.Body, &batch); err != nil {
+				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+				if err := msg.Ack(); err != nil {
+					slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				}
+				continue
+			}
 
-		var batch common.Batch[common.CountryBudget]
-		if err := json.Unmarshal(msg.Body, &batch); err != nil {
-			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+			// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
+			for _, countryBudget := range batch.Data {
+				countries[countryBudget.Country] += countryBudget.Budget
+			}
+
+			currentWeight += batch.Header.Weight
+
+			if batch.IsEof() {
+				eofWeight = int32(batch.Header.TotalWeight)
+			}
+
+			if int32(currentWeight) == eofWeight && eofWeight != 0 {
+				top5Countries := calculateTop5Countries(countries)
+				response, err := json.Marshal(top5Countries)
+				if err != nil {
+					slog.Error("error marshalling response", slog.String("error", err.Error()))
+				}
+				r.connection.ChanToSend <- response
+				slog.Info("sent query2 final response")
+			}
+
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
-			continue
 		}
-
-		// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
-		for _, countryBudget := range batch.Data {
-			countries[countryBudget.Country] += countryBudget.Budget
-		}
-
-		currentWeight += batch.Header.Weight
-
-		if batch.IsEof() {
-			eofWeight = int32(batch.Header.TotalWeight)
-		}
-
-		if int32(currentWeight) == eofWeight && eofWeight != 0 {
-			top5Countries := calculateTop5Countries(countries)
-			response, err := json.Marshal(top5Countries)
-			if err != nil {
-				slog.Error("error marshalling response", slog.String("error", err.Error()))
-			}
-			r.connection.ChanToSend <- response
-			slog.Info("sent query2 final response")
-		}
-
-		if err := msg.Ack(); err != nil {
-			slog.Error("error acknowledging message", slog.String("error", err.Error()))
-		}
-
 	}
 }
 
-func (r *FinalReducer) startReceivingQ3() {
+func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 	movies := make(map[string]common.MovieAvgRating)
 	currentWeight := uint32(0)
 	eofWeight := int32(0)
-	for msg := range r.connection.ChanToRecv {
-
-		var batch common.Batch[common.MovieAvgRating]
-		if err := json.Unmarshal(msg.Body, &batch); err != nil {
-			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
-			continue
-		}
-
-		for _, movieRating := range batch.Data {
-			if currentRating, ok := movies[movieRating.MovieID]; !ok {
-				movies[movieRating.MovieID] = movieRating
-			} else {
-				currentRating.RatingSum += movieRating.RatingSum
-				currentRating.RatingCount += movieRating.RatingCount
-				movies[movieRating.MovieID] = currentRating
-			}
-		}
-
-		currentWeight += batch.Header.Weight
-
-		if batch.IsEof() {
-			if eofWeight != 0 {
-				if err := msg.Ack(); err != nil {
-					return
-				}
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("received termination signal, stopping final reducer for query 3")
+			return
+		case msg := <-r.connection.ChanToRecv:
+			var batch common.Batch[common.MovieAvgRating]
+			if err := json.Unmarshal(msg.Body, &batch); err != nil {
+				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			eofWeight = batch.Header.TotalWeight * int32(r.amtOfShards)
-		}
-		if int32(currentWeight) > eofWeight && eofWeight != 0 {
-			slog.Error("current weight is greater than eof weight", slog.Any("current weight", int32(currentWeight)), slog.Any("eof weight", eofWeight))
-		}
 
-		if int32(currentWeight) == eofWeight {
-			bestAndWorstMovies := calculateBestAndWorstMovie(movies)
-			response, err := json.Marshal(bestAndWorstMovies)
-			if err != nil {
-				slog.Error("error marshalling response", slog.String("error", err.Error()))
+			for _, movieRating := range batch.Data {
+				if currentRating, ok := movies[movieRating.MovieID]; !ok {
+					movies[movieRating.MovieID] = movieRating
+				} else {
+					currentRating.RatingSum += movieRating.RatingSum
+					currentRating.RatingCount += movieRating.RatingCount
+					movies[movieRating.MovieID] = currentRating
+				}
 			}
-			r.connection.ChanToSend <- response
-			slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.ID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.ID))
 
+			currentWeight += batch.Header.Weight
+
+			if batch.IsEof() {
+				if eofWeight != 0 {
+					if err := msg.Ack(); err != nil {
+						return
+					}
+					continue
+				}
+				eofWeight = batch.Header.TotalWeight * int32(r.amtOfShards)
+			}
+			if int32(currentWeight) > eofWeight && eofWeight != 0 {
+				slog.Error("current weight is greater than eof weight", slog.Any("current weight", int32(currentWeight)), slog.Any("eof weight", eofWeight))
+			}
+
+			if int32(currentWeight) == eofWeight {
+				bestAndWorstMovies := calculateBestAndWorstMovie(movies)
+				response, err := json.Marshal(bestAndWorstMovies)
+				if err != nil {
+					slog.Error("error marshalling response", slog.String("error", err.Error()))
+				}
+				r.connection.ChanToSend <- response
+				slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.ID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.ID))
+
+			}
+
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			}
 		}
-
-		if err := msg.Ack(); err != nil {
-			slog.Error("error acknowledging message", slog.String("error", err.Error()))
-		}
-
 	}
 }
 
-func (r *FinalReducer) startReceivingQ4() {
+func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 	actorMovies := make(map[string]common.ActorMoviesAmount)
 	currentWeight := uint32(0)
 	eofWeight := int32(0)
-	for msg := range r.connection.ChanToRecv {
-		var batch common.Batch[common.ActorMoviesAmount]
-		if err := json.Unmarshal(msg.Body, &batch); err != nil {
-			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
-			if err := msg.Ack(); err != nil {
-				slog.Error("error acknowledging message", slog.String("error", err.Error()))
-			}
-			continue
-		}
-
-		// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
-		for _, actorMoviesAmount := range batch.Data {
-			if currentMoviesAmount, ok := actorMovies[actorMoviesAmount.ActorID]; !ok {
-				actorMovies[actorMoviesAmount.ActorID] = actorMoviesAmount
-			} else {
-				currentMoviesAmount.MoviesAmount += actorMoviesAmount.MoviesAmount
-				actorMovies[actorMoviesAmount.ActorID] = currentMoviesAmount
-			}
-		}
-
-		currentWeight += batch.Header.Weight
-
-		if batch.IsEof() {
-			if eofWeight != 0 {
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("received termination signal, stopping final reducer for query 4")
+			return
+		case msg := <-r.connection.ChanToRecv:
+			var batch common.Batch[common.ActorMoviesAmount]
+			if err := json.Unmarshal(msg.Body, &batch); err != nil {
+				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				if err := msg.Ack(); err != nil {
-					return
+					slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				}
 				continue
 			}
-			eofWeight = batch.Header.TotalWeight * int32(r.amtOfShards)
-		}
 
-		if int32(currentWeight) == eofWeight && eofWeight != 0 {
-			top10Actors := calculateTop10Actors(actorMovies)
-			response, err := json.Marshal(top10Actors)
-			if err != nil {
-				slog.Error("error marshalling response", slog.String("error", err.Error()))
+			// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
+			for _, actorMoviesAmount := range batch.Data {
+				if currentMoviesAmount, ok := actorMovies[actorMoviesAmount.ActorID]; !ok {
+					actorMovies[actorMoviesAmount.ActorID] = actorMoviesAmount
+				} else {
+					currentMoviesAmount.MoviesAmount += actorMoviesAmount.MoviesAmount
+					actorMovies[actorMoviesAmount.ActorID] = currentMoviesAmount
+				}
 			}
-			r.connection.ChanToSend <- response
-			slog.Info("sent query4 final response", slog.Any("top10 actors", top10Actors))
-		}
 
-		if err := msg.Ack(); err != nil {
-			slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			currentWeight += batch.Header.Weight
+
+			if batch.IsEof() {
+				if eofWeight != 0 {
+					if err := msg.Ack(); err != nil {
+						return
+					}
+					continue
+				}
+				eofWeight = batch.Header.TotalWeight * int32(r.amtOfShards)
+			}
+
+			if int32(currentWeight) == eofWeight && eofWeight != 0 {
+				top10Actors := calculateTop10Actors(actorMovies)
+				response, err := json.Marshal(top10Actors)
+				if err != nil {
+					slog.Error("error marshalling response", slog.String("error", err.Error()))
+				}
+				r.connection.ChanToSend <- response
+				slog.Info("sent query4 final response", slog.Any("top10 actors", top10Actors))
+			}
+
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			}
 		}
 	}
 }
 
-func (r *FinalReducer) startReceivingQ5() {
+func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 	sentimentProfitRatios := common.SentimentProfitRatioAccumulator{}
 	currentWeight := uint32(0)
 	eofWeight := int32(0)
-	for msg := range r.connection.ChanToRecv {
-		var batch common.Batch[common.SentimentProfitRatioAccumulator]
-		if err := json.Unmarshal(msg.Body, &batch); err != nil {
-			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("received termination signal, stopping final reducer for query 5")
+			return
+		case msg := <-r.connection.ChanToRecv:
+			var batch common.Batch[common.SentimentProfitRatioAccumulator]
+			if err := json.Unmarshal(msg.Body, &batch); err != nil {
+				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+				if err := msg.Ack(); err != nil {
+					slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				}
+				continue
+			}
+
+			// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
+			for _, sentimentProfitRatio := range batch.Data {
+				sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum
+				sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount
+				sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioSum
+				sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioCount
+
+				if sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum > 10000 {
+					slog.Debug("ALOT positive sentiment profit ratio", slog.Any("count", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount), slog.Any("sum", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum))
+				}
+			}
+
+			currentWeight += batch.Header.Weight
+			slog.Info("current weight", slog.Any("current weight", currentWeight), slog.Any("eof weight", eofWeight))
+			if batch.IsEof() {
+				eofWeight = int32(batch.Header.TotalWeight)
+				slog.Info("eof weight", slog.Any("eof weight", eofWeight))
+			}
+
+			if int32(currentWeight) == eofWeight && eofWeight != 0 {
+				sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
+				response, err := json.Marshal(sentimentProfitRatioAverage)
+				if err != nil {
+					slog.Error("error marshalling response", slog.String("error", err.Error()))
+				}
+				r.connection.ChanToSend <- response
+				slog.Info("sent query5 final response", slog.Float64("positive avg profit ratio", sentimentProfitRatioAverage.PositiveAvgProfitRatio), slog.Float64("negative avg profit ratio", sentimentProfitRatioAverage.NegativeAvgProfitRatio))
+			}
+
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
-			continue
-		}
-
-		// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
-		for _, sentimentProfitRatio := range batch.Data {
-			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum
-			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount
-			sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioSum
-			sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioCount
-
-			if sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum > 10000 {
-				slog.Debug("ALOT positive sentiment profit ratio", slog.Any("count", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount), slog.Any("sum", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum))
-			}
-		}
-
-		currentWeight += batch.Header.Weight
-		slog.Info("current weight", slog.Any("current weight", currentWeight), slog.Any("eof weight", eofWeight))
-		if batch.IsEof() {
-			eofWeight = int32(batch.Header.TotalWeight)
-			slog.Info("eof weight", slog.Any("eof weight", eofWeight))
-		}
-
-		if int32(currentWeight) == eofWeight && eofWeight != 0 {
-			sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
-			response, err := json.Marshal(sentimentProfitRatioAverage)
-			if err != nil {
-				slog.Error("error marshalling response", slog.String("error", err.Error()))
-			}
-			r.connection.ChanToSend <- response
-			slog.Info("sent query5 final response", slog.Float64("positive avg profit ratio", sentimentProfitRatioAverage.PositiveAvgProfitRatio), slog.Float64("negative avg profit ratio", sentimentProfitRatioAverage.NegativeAvgProfitRatio))
-		}
-
-		if err := msg.Ack(); err != nil {
-			slog.Error("error acknowledging message", slog.String("error", err.Error()))
 		}
 	}
 }

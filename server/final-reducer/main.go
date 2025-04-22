@@ -46,5 +46,8 @@ func main() {
 
 	reducer.Start()
 
-	reducer.Stop()
+	if err := reducer.Stop(); err != nil {
+		slog.Error("error stopping reducer", slog.String("error", err.Error()))
+		return
+	}
 }
