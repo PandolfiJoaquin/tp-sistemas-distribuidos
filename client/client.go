@@ -10,7 +10,7 @@ import (
 )
 
 const MoviePath = "archive/movies_metadata.csv"
-const ReviewPath = "archive/ratings.csv"
+const ReviewPath = "archive/ratings_small.csv"
 const CreditsPath = "archive/credits.csv"
 
 type ClientConfig struct {
@@ -191,7 +191,7 @@ func (c *Client) SendAllCredits() {
 	slog.Info("sent credits", slog.Int("total", reader.Total))
 }
 
-const TotalQueries = 7
+const TotalQueries = 5
 
 func (c *Client) RecvAnswers(wg *sync.WaitGroup) {
 	queriesReceived := make([]bool, 0) // Array to store when we get the complete query

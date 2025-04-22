@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -211,19 +212,25 @@ func (g *Gateway) handleConnection() {
 	slog.Info("Client connected", slog.String("address", g.client.RemoteAddr().String()))
 	err := g.receiveMovies()
 	if err != nil {
-		slog.Error("error receiving movies", slog.String("error", err.Error()))
+		if g.running {
+			slog.Error("error receiving movies", slog.String("error", err.Error()))
+		}
 		return
 	}
 
 	err = g.receiveReviews()
 	if err != nil {
-		slog.Error("error receiving reviews", slog.String("error", err.Error()))
+		if g.running {
+			slog.Error("error receiving reviews", slog.String("error", err.Error()))
+		}
 		return
 	}
 
 	err = g.receiveCredits()
 	if err != nil {
-		slog.Error("error receiving credits", slog.String("error", err.Error()))
+		if g.running {
+			slog.Error("error receiving credits", slog.String("error", err.Error()))
+		}
 		return
 	}
 }
@@ -265,15 +272,19 @@ func (g *Gateway) Start() {
 	go g.signalHandler(wg)
 	g.listen()
 	wg.Wait()
+
+	slog.Info("Gateway shut down")
 }
 
-const TotalQueries uint8 = 7
+const TotalQueries uint8 = 5
 
 func (g *Gateway) processMessages() {
 	defer func(client net.Conn) {
 		err := client.Close()
 		if err != nil {
-
+			if g.running && !errors.Is(err, net.ErrClosed) {
+				slog.Error("error closing client connection", slog.String("error", err.Error()))
+			}
 		}
 	}(g.client)
 
