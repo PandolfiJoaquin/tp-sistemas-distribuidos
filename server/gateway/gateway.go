@@ -327,8 +327,17 @@ func (g *Gateway) processMessages() {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				return
 			}
-		case _ = <-g.resultsQueues[4]:
-			// TODO: Handle query 4 results
+		case msg := <-g.resultsQueues[4]:
+			var top10Actors common.Top10Actors
+			if err := json.Unmarshal(msg.Body, &top10Actors); err != nil {
+				slog.Error("error unmarshalling top 10 actors", slog.String("error", err.Error()))
+				return
+			}
+			slog.Info("Top 10 actors", slog.Any("top10Actors", top10Actors))
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				return
+			}
 		case msg := <-g.resultsQueues[5]:
 			if err := g.handleResults5(msg); err != nil {
 				slog.Error("error handling result 5", slog.String("error", err.Error()))

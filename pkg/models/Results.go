@@ -57,7 +57,7 @@ type Q4Actors struct {
 
 // placeholder for Q4Actors
 func (q Q4Actors) String() string {
-	return "Query 4: " + q.Actor + " | Appearances: " + strconv.Itoa(int(q.Appearances))
+	return "Query 4: " + q.ActorName + " | Appearances: " + strconv.Itoa(int(q.Appearances))
 }
 
 type Q5Avg struct {
