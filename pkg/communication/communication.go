@@ -18,7 +18,7 @@ func RecvAll(conn net.Conn, size int) ([]byte, error) {
 	for total < size {
 		n, err := conn.Read(buf[total:])
 		if err != nil || n == 0 {
-			return nil, fmt.Errorf("error reading from connection: %v", err)
+			return nil, fmt.Errorf("error reading from connection: %w", err)
 		}
 		total += n
 	}
@@ -31,7 +31,7 @@ func SendAll(conn net.Conn, message []byte) error {
 	for written < len(message) {
 		n, err := conn.Write(message)
 		if err != nil || n == 0 {
-			return fmt.Errorf("error writing to connection: %v", err)
+			return fmt.Errorf("error writing to connection: %w", err)
 		}
 		written += n
 	}
