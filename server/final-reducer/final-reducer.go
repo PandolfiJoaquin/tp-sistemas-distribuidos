@@ -104,6 +104,13 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 	countries := make(map[pkg.Country]uint64)
 	currentWeight := uint32(0)
 	eofWeight := int32(0)
+
+	resetValues := func() {
+		countries = make(map[pkg.Country]uint64)
+		currentWeight = 0
+		eofWeight = 0
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -138,6 +145,7 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 				}
 				r.connection.ChanToSend <- response
 				slog.Info("sent query2 final response")
+				resetValues()
 			}
 
 			if err := msg.Ack(); err != nil {
@@ -151,6 +159,13 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 	movies := make(map[string]common.MovieAvgRating)
 	currentWeight := uint32(0)
 	eofWeight := int32(0)
+
+	resetValues := func() {
+		movies = make(map[string]common.MovieAvgRating)
+		currentWeight = 0
+		eofWeight = 0
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -196,7 +211,7 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 				}
 				r.connection.ChanToSend <- response
 				slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.ID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.ID))
-
+				resetValues()
 			}
 
 			if err := msg.Ack(); err != nil {
@@ -210,6 +225,13 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 	actorMovies := make(map[string]common.ActorMoviesAmount)
 	currentWeight := uint32(0)
 	eofWeight := int32(0)
+
+	resetValues := func() {
+		actorMovies = make(map[string]common.ActorMoviesAmount)
+		currentWeight = 0
+		eofWeight = 0
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -255,6 +277,7 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 				}
 				r.connection.ChanToSend <- response
 				slog.Info("sent query4 final response", slog.Any("top10 actors", top10Actors))
+				resetValues()
 			}
 
 			if err := msg.Ack(); err != nil {
@@ -268,6 +291,12 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 	sentimentProfitRatios := common.SentimentProfitRatioAccumulator{}
 	currentWeight := uint32(0)
 	eofWeight := int32(0)
+
+	resetValues := func() {
+		sentimentProfitRatios = common.SentimentProfitRatioAccumulator{}
+		currentWeight = 0
+		eofWeight = 0
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -310,6 +339,7 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 				}
 				r.connection.ChanToSend <- response
 				slog.Info("sent query5 final response", slog.Float64("positive avg profit ratio", sentimentProfitRatioAverage.PositiveAvgProfitRatio), slog.Float64("negative avg profit ratio", sentimentProfitRatioAverage.NegativeAvgProfitRatio))
+				resetValues()
 			}
 
 			if err := msg.Ack(); err != nil {
