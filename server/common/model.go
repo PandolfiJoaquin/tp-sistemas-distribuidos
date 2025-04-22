@@ -183,12 +183,6 @@ type Actor struct {
 	Name    string `json:"name"`
 }
 
-type MovieActor struct { //si, es igual al de arriba
-	ActorID string `json:"actor_id"`
-	Name    string `json:"name"`
-	MovieID string `json:"movie_id"`
-}
-
 type MovieWithSentiment struct {
 	Movie
 	Sentiment Sentiment `json:"sentiment"`

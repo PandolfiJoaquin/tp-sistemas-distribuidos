@@ -216,7 +216,13 @@ func (r *FinalReducer) startReceivingQ4() {
 		currentWeight += batch.Header.Weight
 
 		if batch.IsEof() {
-			eofWeight = int32(batch.Header.TotalWeight)
+			if eofWeight != 0 {
+				if err := msg.Ack(); err != nil {
+					return
+				}
+				continue
+			}
+			eofWeight = batch.Header.TotalWeight * int32(r.amtOfShards)
 		}
 
 		if int32(currentWeight) == eofWeight && eofWeight != 0 {
@@ -226,7 +232,7 @@ func (r *FinalReducer) startReceivingQ4() {
 				slog.Error("error marshalling response", slog.String("error", err.Error()))
 			}
 			r.connection.ChanToSend <- response
-			slog.Info("sent query4 final response")
+			slog.Info("sent query4 final response", slog.Any("top10 actors", top10Actors))
 		}
 
 		if err := msg.Ack(); err != nil {
@@ -262,9 +268,10 @@ func (r *FinalReducer) startReceivingQ5() {
 		}
 
 		currentWeight += batch.Header.Weight
-
+		slog.Info("current weight", slog.Any("current weight", currentWeight), slog.Any("eof weight", eofWeight))
 		if batch.IsEof() {
 			eofWeight = int32(batch.Header.TotalWeight)
+			slog.Info("eof weight", slog.Any("eof weight", eofWeight))
 		}
 
 		if int32(currentWeight) == eofWeight && eofWeight != 0 {
