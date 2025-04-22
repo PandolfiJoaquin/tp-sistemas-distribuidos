@@ -12,8 +12,8 @@ const (
 	moviestopic     = "movies-to-join-%d"
 	reviewsExchange = "reviews-exchange"
 	reviewsTopic    = "reviews-to-join-%d"
-	creditExchange  = "credit-exchange"
-	creditTopic     = "credit-to-join-%d"
+	creditExchange  = "credits-exchange"
+	creditTopic     = "credits-to-join-%d"
 )
 
 const q3ToReduceQueue = "q3-to-reduce"

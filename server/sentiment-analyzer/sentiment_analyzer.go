@@ -63,7 +63,6 @@ func (a *Analyzer) run(previousChan <-chan common.Message, nextChan chan<- []byt
 			slog.Error("Error acknowledging message", slog.String("error", err.Error()))
 			return
 		}
-
 	}
 }
 
