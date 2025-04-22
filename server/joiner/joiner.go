@@ -17,7 +17,7 @@ const (
 )
 
 const q3ToReduceQueue = "q3-to-reduce"
-const q5ToReduceQueue = "q5-to-reduce"
+const q4ToReduceQueue = "q4-to-reduce"
 
 type Joiner struct {
 	joinerId       int
@@ -64,13 +64,13 @@ func (j *Joiner) Start() {
 		return
 	}
 
-	q5ToReduce, err := j.middleware.GetChanToSend(q5ToReduceQueue)
+	q4ToReduce, err := j.middleware.GetChanToSend(q4ToReduceQueue)
 	if err != nil {
-		slog.Error("error creating channel", slog.String("queue", q5ToReduceQueue), slog.String("error", err.Error()))
+		slog.Error("error creating channel", slog.String("queue", q4ToReduceQueue), slog.String("error", err.Error()))
 		return
 	}
 
-	go j.run(moviesChan, reviewsChan, creditChan, q3ToReduce, q5ToReduce)
+	go j.run(moviesChan, reviewsChan, creditChan, q3ToReduce, q4ToReduce)
 
 	forever := make(chan bool)
 	<-forever
@@ -78,7 +78,7 @@ func (j *Joiner) Start() {
 
 func (j *Joiner) run(
 	_moviesChan, _reviewsChan, _creditChan <-chan common.Message,
-	q3ToReduce, q5ToReduce chan<- []byte,
+	q3ToReduce, q4ToReduce chan<- []byte,
 ) {
 	dummyChan := make(<-chan common.Message)
 	movies := _moviesChan
@@ -150,7 +150,7 @@ func (j *Joiner) run(
 				continue
 			}
 			slog.Info("Sending msgs: ", slog.Any("response", actorsBatch))
-			q5ToReduce <- response
+			q4ToReduce <- response
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
