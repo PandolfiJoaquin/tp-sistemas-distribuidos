@@ -13,7 +13,7 @@ type QueryResult interface {
 }
 
 type Q1Movie struct {
-	Title  string   `json:"title"`
+	Title  string  `json:"title"`
 	Genres []Genre `json:"genres"`
 }
 
@@ -50,7 +50,8 @@ func (q Q3Movie) String() string {
 }
 
 type Q4Actors struct {
-	Actor       string `json:"actor"`
+	ActorName   string `json:"actor"`
+	ActorId     string `json:"actor_id"`
 	Appearances uint32 `json:"appearances"`
 }
 
@@ -61,7 +62,7 @@ func (q Q4Actors) String() string {
 
 type Q5Avg struct {
 	PositiveAvgProfitRatio float64 `json:"positive_avg_profit_ratio"`
-    NegativeAvgProfitRatio float64 `json:"negative_avg_profit_ratio"`
+	NegativeAvgProfitRatio float64 `json:"negative_avg_profit_ratio"`
 }
 
 // placeholder for Q5Avg

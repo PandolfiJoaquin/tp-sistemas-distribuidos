@@ -191,7 +191,7 @@ func (c *Client) SendAllCredits() {
 	slog.Info("sent credits", slog.Int("total", reader.Total))
 }
 
-const TotalQueries = 7
+const TotalQueries = 5
 
 func (c *Client) RecvAnswers(wg *sync.WaitGroup) {
 	queriesReceived := make([]bool, 0) // Array to store when we get the complete query

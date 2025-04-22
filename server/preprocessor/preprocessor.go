@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os/signal"
 	"pkg/models"
 	"strconv"
+	"syscall"
 	"tp-sistemas-distribuidos/server/common"
 )
 
@@ -17,8 +20,8 @@ const (
 	AnalyzerQueue   = "sentiment-analyzer"
 	reviewsTopic    = "reviews-to-join-%d"
 	reviewsExchange = "reviews-exchange"
-	creditsTopic    = ""
-	creditsExchange = ""
+	creditsTopic    = "credits-to-join-%d"
+	creditsExchange = "credits-exchange"
 )
 
 type PreprocessorConfig struct {
@@ -32,6 +35,7 @@ type Preprocessor struct {
 	toProcessChan    <-chan common.Message
 	shards           int
 	reviewsChans     map[int]chan<- []byte
+	creditsChans     map[int]chan<- []byte
 	moviesChans      []chan<- []byte
 	pesoTotalQuePaso int
 }
@@ -43,10 +47,10 @@ func NewPreprocessor(rabbitUser string, rabbitPass string, shards int) *Preproce
 	}
 
 	Preprocessor := &Preprocessor{
-		config:           config,
-		reviewsChans:     map[int]chan<- []byte{},
-		shards:           shards,
-		pesoTotalQuePaso: 0,
+		config:       config,
+		reviewsChans: map[int]chan<- []byte{},
+		creditsChans: map[int]chan<- []byte{},
+		shards:       shards,
 	}
 
 	err := Preprocessor.middlewareSetup()
@@ -74,34 +78,27 @@ func (p *Preprocessor) middlewareSetup() error {
 		if err != nil {
 			return fmt.Errorf("error getting channel to send reviews: %s", err)
 		}
-
+		p.creditsChans[shard], err = middleware.GetChanWithTopicToSend(creditsExchange, fmt.Sprintf(creditsTopic, shard))
+		if err != nil {
+			return fmt.Errorf("error getting channel to send credits: %s", err)
+		}
 	}
 
-	moviesChans := make([]chan<- []byte, 0)
-	moviesToFilterQ1, err := middleware.GetChanToSend(filterMoviesQ1)
-	if err != nil {
-		return fmt.Errorf("error getting channel to send movies: %s", err)
+	moviesChans := make([]chan<- []byte, 0, 4) // optional capacity hint
+	queues := []string{
+		filterMoviesQ1,
+		filterMoviesQ2,
+		filterMovieQ3Q4,
+		AnalyzerQueue,
 	}
 
-	moviesToFilterQ2, err := middleware.GetChanToSend(filterMoviesQ2)
-	if err != nil {
-		return fmt.Errorf("error getting channel to send movies: %s", err)
+	for _, q := range queues {
+		ch, err := middleware.GetChanToSend(q)
+		if err != nil {
+			return fmt.Errorf("error getting channel to send movies: %s", err)
+		}
+		moviesChans = append(moviesChans, ch)
 	}
-
-	moviesToFilterQ3Q4, err := middleware.GetChanToSend(filterMovieQ3Q4)
-	if err != nil {
-		return fmt.Errorf("error getting channel to send movies: %s", err)
-	}
-
-	moviesToAnalyze, err := middleware.GetChanToSend(AnalyzerQueue)
-	if err != nil {
-		return fmt.Errorf("error getting channel to send movies: %s", err)
-	}
-
-	moviesChans = append(moviesChans, moviesToFilterQ1)
-	moviesChans = append(moviesChans, moviesToFilterQ2)
-	moviesChans = append(moviesChans, moviesToFilterQ3Q4)
-	moviesChans = append(moviesChans, moviesToAnalyze)
 
 	toProcess, err := middleware.GetChanToRecv(toPreProcess)
 	if err != nil {
@@ -122,122 +119,102 @@ func (p *Preprocessor) close() {
 }
 
 func (p *Preprocessor) Start() {
-	go p.processMessages()
 	defer p.close()
 
-	// TODO: Handle shutdown gracefully
-	forever := make(chan bool)
-	<-forever
+	// Sigterm , sigint
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+	p.processMessages(ctx)
 }
 
-func (p *Preprocessor) processMessages() {
-	for msg := range p.toProcessChan {
-		var batch common.ToProcessMsg
-
-		if err := json.Unmarshal(msg.Body, &batch); err != nil {
-			slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+func (p *Preprocessor) processMessages(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("Received shutdown signal, stopping...")
 			return
-		}
+		case msg := <-p.toProcessChan:
+			var batch common.ToProcessMsg
 
-		if err := p.preprocessBatch(batch); err != nil {
-			slog.Error("error preprocessing batch", slog.String("error", err.Error()))
-			return
-		}
+			if err := json.Unmarshal(msg.Body, &batch); err != nil {
+				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+				return
+			}
 
-		if err := msg.Ack(); err != nil {
-			slog.Error("error acknowledging message", slog.String("error", err.Error()))
-			return
-		}
+			if err := p.preprocessBatch(batch); err != nil {
+				slog.Error("error preprocessing batch", slog.String("error", err.Error()))
+				return
+			}
 
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				return
+			}
+		}
 	}
 }
 
-func (p *Preprocessor) preprocessBatch(batch common.ToProcessMsg) error {
-	var (
-		payload any
-		outCh   []chan<- []byte
-	)
-
-	switch batch.Type {
+func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
+	switch msg.Type {
 	case "movies":
 		var mb models.RawMovieBatch
-		if err := json.Unmarshal(batch.Body, &mb); err != nil {
-			return fmt.Errorf("error unmarshalling movies batch: %w", err)
+		if err := json.Unmarshal(msg.Body, &mb); err != nil {
+			return fmt.Errorf("movies unmarshal: %w", err)
 		}
+
+		var payload any
 		if mb.IsEof() {
 			payload = makeEOFBatch[common.Movie](mb.Header.TotalWeight)
 		} else {
 			payload = p.preprocessMovies(mb)
 		}
 
-		slog.Info("preprocessing movies ", slog.String("batch size: ", strconv.Itoa(int(mb.Header.Weight))))
-
-		outCh = append(outCh, p.moviesChans...)
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("marshal movies: %w", err)
+		}
+		for _, ch := range p.moviesChans {
+			// Check Q5 maybe
+			ch <- data
+		}
+		slog.Debug("preprocessing movies", slog.Int("size", int(mb.Header.Weight)))
 
 	case "reviews":
 		var rb models.RawReviewBatch
-		if err := json.Unmarshal(batch.Body, &rb); err != nil {
-			return fmt.Errorf("error unmarshalling reviews batch: %w", err)
+		if err := json.Unmarshal(msg.Body, &rb); err != nil {
+			return fmt.Errorf("reviews unmarshal: %w", err)
 		}
 
-		// TODO: CAMBIAR ESTE CODIGO HORRIPILANTE
-		if rb.IsEof() {
-			slog.Info("EOF reviews", slog.Any("total weight que paso ", p.pesoTotalQuePaso))
-			eofReviews := makeEOFBatch[common.Review](rb.Header.TotalWeight)
-			bytesEof, err := json.Marshal(eofReviews)
-			if err != nil {
-				return fmt.Errorf("error marshaling EOF reviews: %w", err)
-			}
-			for i := 0; i < p.shards; i++ {
-				p.reviewsChans[i+1] <- bytesEof
-			}
-		} else {
-			reviews := p.preprocessReviews(rb)
-			p.pesoTotalQuePaso += int(reviews.Weight)
-			reviewsDivided := divideReviews(reviews, p.shards)
-
-			for i, reviewsShard := range reviewsDivided {
-				slog.Info("Sending reviews")
-				bytesReview, err := json.Marshal(reviewsShard)
-				if err != nil {
-					return fmt.Errorf("error marshaling reviews: %w", err)
-				}
-				p.reviewsChans[i+1] <- bytesReview
-			}
+		batch := p.preprocessReviews(rb)
+		if err := sendBatchMap(
+			batch,
+			p.shards,
+			p.reviewsChans,
+			func(r common.Review) string { return r.MovieID },
+		); err != nil {
+			return fmt.Errorf("sending reviews: %w", err)
 		}
-
-		slog.Debug("preprocessing reviews", slog.String("batch size: ", strconv.Itoa(int(rb.Header.Weight))))
+		slog.Debug("preprocessing reviews", slog.Int("size", int(rb.Header.Weight)))
 
 	case "credits":
 		var cb models.RawCreditBatch
-		if err := json.Unmarshal(batch.Body, &cb); err != nil {
-			return fmt.Errorf("error unmarshalling credits batch: %w", err)
+		if err := json.Unmarshal(msg.Body, &cb); err != nil {
+			return fmt.Errorf("credits unmarshal: %w", err)
 		}
 
-		slog.Debug("preprocessing credits", slog.String("batch size: ", strconv.Itoa(int(cb.Header.Weight))))
-		if cb.IsEof() {
-			payload = makeEOFBatch[common.Credit](cb.Header.TotalWeight)
-		} else {
-			payload = p.preprocessCredits(cb)
+		batch := p.preprocessCredits(cb)
+		if err := sendBatchMap(
+			batch,
+			p.shards,
+			p.creditsChans,
+			func(c common.Credit) string { return c.MovieId },
+		); err != nil {
+			return fmt.Errorf("sending credits: %w", err)
 		}
-
-		// TODO: Add the channel to send credits
+		slog.Debug("preprocessing credits", slog.Int("size", int(cb.Header.Weight)))
 
 	default:
-		return fmt.Errorf("unknown batch type %q", batch.Type)
-	}
-
-	if payload == nil {
-		return nil
-	}
-
-	resp, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("error marshalling %s payload: %w", batch.Type, err)
-	}
-
-	for _, ch := range outCh {
-		ch <- resp
+		return fmt.Errorf("unknown batch type %q", msg.Type)
 	}
 
 	return nil
@@ -263,7 +240,7 @@ func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.Batch
 		})
 	}
 
-	res := makeBatchMsg[common.Movie](batch.Header.Weight, movies)
+	res := makeBatchMsg[common.Movie](batch.Header.Weight, movies, batch.Header.TotalWeight)
 
 	return res
 }
@@ -282,7 +259,7 @@ func (p *Preprocessor) preprocessReviews(batch models.RawReviewBatch) common.Bat
 			Rating:  rating,
 		})
 	}
-	res := makeBatchMsg[common.Review](uint32(len(batch.Reviews)), reviews)
+	res := makeBatchMsg[common.Review](batch.Header.Weight, reviews, batch.Header.TotalWeight)
 
 	return res
 }
@@ -307,7 +284,7 @@ func (p *Preprocessor) preprocessCredits(batch models.RawCreditBatch) common.Bat
 		})
 	}
 
-	res := makeBatchMsg[common.Credit](batch.Header.Weight, credits)
+	res := makeBatchMsg[common.Credit](batch.Header.Weight, credits, batch.Header.TotalWeight)
 
 	return res
 }
@@ -322,33 +299,59 @@ func makeEOFBatch[T any](totalWeight int32) common.Batch[T] {
 	}
 }
 
-func makeBatchMsg[T any](weight uint32, data []T) common.Batch[T] {
+func makeBatchMsg[T any](weight uint32, data []T, totalWeight int32) common.Batch[T] {
 	return common.Batch[T]{
 		Header: common.Header{
 			Weight:      weight,
-			TotalWeight: -1,
+			TotalWeight: totalWeight,
 		},
 		Data: data,
 	}
 }
 
-func divideReviews(batch common.Batch[common.Review], numberOfShards int) []common.Batch[common.Review] {
-	reviewsShards := make([][]common.Review, numberOfShards)
-
-	for i := range numberOfShards {
-		reviewsShards[i] = common.Filter(batch.Data, func(review common.Review) bool {
-			return common.GetShard(review.MovieID, numberOfShards) == i+1
-		})
-	}
-	slog.Info("len reviews", slog.Any("reviews len", len(batch.Data)))
-	if len(reviewsShards[0]) != len(batch.Data) {
-		slog.Error("error dividing reviews")
-	}
-	return common.Map(reviewsShards, func(reviews []common.Review) common.Batch[common.Review] {
-		return common.Batch[common.Review]{
+func divideBatchInShards[T any](batch common.Batch[T], shards int, getKey func(T) string) []common.Batch[T] {
+	bucketShards := make([]common.Batch[T], shards)
+	for i := 0; i < shards; i++ {
+		bucketShards[i] = common.Batch[T]{
 			Header: batch.Header,
-			Data:   reviews,
+			Data: common.Filter(batch.Data, func(item T) bool {
+				shardID := common.GetShard(getKey(item), shards)
+				return shardID == i+1
+			}),
 		}
-	})
+	}
+	return bucketShards
+}
 
+// sendBatchMap marshals either an EOF batch or normal sharded batches and sends them
+// to chans[1]..chans[shards]. Assumes map keys 1..shards exist.
+func sendBatchMap[T any](batch common.Batch[T], shards int, chans map[int]chan<- []byte, getKey func(T) string) error {
+	if batch.IsEof() {
+		data, err := json.Marshal(batch)
+		if err != nil {
+			return fmt.Errorf("marshal EOF: %w", err)
+		}
+		for id := 1; id <= shards; id++ {
+			ch, ok := chans[id]
+			if !ok {
+				return fmt.Errorf("missing chan for shard %d", id)
+			}
+			ch <- data
+		}
+		return nil
+	}
+
+	shardsBatches := divideBatchInShards(batch, shards, getKey)
+	for id := 1; id <= shards; id++ {
+		data, err := json.Marshal(shardsBatches[id-1])
+		if err != nil {
+			return fmt.Errorf("marshal shard %d: %w", id, err)
+		}
+		ch, ok := chans[id]
+		if !ok {
+			return fmt.Errorf("missing chan for shard %d", id)
+		}
+		ch <- data
+	}
+	return nil
 }

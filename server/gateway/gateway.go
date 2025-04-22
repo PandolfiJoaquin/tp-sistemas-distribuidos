@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -103,7 +104,6 @@ func (g *Gateway) middlewareSetup() error {
 }
 
 func (g *Gateway) listen() {
-	// Listener will only accept one connection at a time //TODO: check to do one connection per queries
 	for g.running {
 		conn, err := g.listener.Accept()
 		if err != nil {
@@ -113,7 +113,7 @@ func (g *Gateway) listen() {
 			return
 		}
 		g.client = conn
-		go g.handleConnection()
+		go g.handleConnection() //Handle connection will always finish before the next accept
 		g.processMessages()
 	}
 }
@@ -211,19 +211,25 @@ func (g *Gateway) handleConnection() {
 	slog.Info("Client connected", slog.String("address", g.client.RemoteAddr().String()))
 	err := g.receiveMovies()
 	if err != nil {
-		slog.Error("error receiving movies", slog.String("error", err.Error()))
+		if g.running {
+			slog.Error("error receiving movies", slog.String("error", err.Error()))
+		}
 		return
 	}
 
 	err = g.receiveReviews()
 	if err != nil {
-		slog.Error("error receiving reviews", slog.String("error", err.Error()))
+		if g.running {
+			slog.Error("error receiving reviews", slog.String("error", err.Error()))
+		}
 		return
 	}
 
 	err = g.receiveCredits()
 	if err != nil {
-		slog.Error("error receiving credits", slog.String("error", err.Error()))
+		if g.running {
+			slog.Error("error receiving credits", slog.String("error", err.Error()))
+		}
 		return
 	}
 }
@@ -265,15 +271,19 @@ func (g *Gateway) Start() {
 	go g.signalHandler(wg)
 	g.listen()
 	wg.Wait()
+
+	slog.Info("Gateway shut down")
 }
 
-const TotalQueries uint8 = 7
+const TotalQueries uint8 = 5
 
 func (g *Gateway) processMessages() {
 	defer func(client net.Conn) {
 		err := client.Close()
 		if err != nil {
-
+			if g.running && !errors.Is(err, net.ErrClosed) {
+				slog.Error("error closing client connection", slog.String("error", err.Error()))
+			}
 		}
 	}(g.client)
 
@@ -320,7 +330,7 @@ func (g *Gateway) processMessages() {
 		case _ = <-g.resultsQueues[4]:
 			// TODO: Handle query 4 results
 		case msg := <-g.resultsQueues[5]:
-			if err := g.handleResult5(msg); err != nil {
+			if err := g.handleResults5(msg); err != nil {
 				slog.Error("error handling result 5", slog.String("error", err.Error()))
 				return
 			}
@@ -425,7 +435,32 @@ func (g *Gateway) handleResults3(msg common.Message) error {
 	return nil
 }
 
-func (g *Gateway) handleResult5(msg common.Message) error {
+func (g *Gateway) handleResults4(msg common.Message) error {
+	var top10Actors common.Top10Actors
+	if err := json.Unmarshal(msg.Body, &top10Actors); err != nil {
+		return fmt.Errorf("error unmarshalling top 10 actors: %w", err)
+	}
+
+	slog.Info("Top 10 actors", slog.Any("top10Actors", top10Actors))
+	q4Result := make([]models.QueryResult, len(top10Actors.TopActors))
+	for i, actor := range top10Actors.TopActors {
+		q4Result[i] = models.Q4Actors{
+			ActorId:     actor.ActorID,
+			ActorName:   actor.ActorName,
+			Appearances: actor.MoviesAmount,
+		}
+	}
+
+	err := communication.SendQueryResults(g.client, 4, q4Result)
+	if err != nil {
+		return fmt.Errorf("error sending query results: %w", err)
+	}
+
+	g.done++
+	return nil
+}
+
+func (g *Gateway) handleResults5(msg common.Message) error {
 	var sentimentProfitRatio common.SentimentProfitRatioAverage
 	if err := json.Unmarshal(msg.Body, &sentimentProfitRatio); err != nil {
 		return fmt.Errorf("error unmarshalling sentiment profit ratio: %w", err)
