@@ -55,23 +55,22 @@ func (a *Analyzer) Start() {
 
 func (a *Analyzer) run(previousChan <-chan common.Message, nextChan chan<- []byte) {
 	for msg := range previousChan {
-		a.processMessage(msg, nextChan)
-	}
-}
-
-func (a *Analyzer) processMessage(msg common.Message, nextChan chan<- []byte) {
-	defer func() {
-		err := msg.Ack()
-		if err != nil {
+		if err := a.processMessage(msg, nextChan); err != nil {
+			slog.Error("Error processing message", slog.String("error", err.Error()))
+			continue
+		}
+		if err := msg.Ack(); err != nil {
 			slog.Error("Error acknowledging message", slog.String("error", err.Error()))
 			return
 		}
-	}()
 
+	}
+}
+
+func (a *Analyzer) processMessage(msg common.Message, nextChan chan<- []byte) error {
 	var batch common.Batch[common.Movie]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
-		slog.Error("Error unmarshalling message", slog.String("error", err.Error()))
-		return
+		return fmt.Errorf("error unmarshalling message: %v", err)
 
 	}
 	slog.Debug("Received message", slog.String("message", string(msg.Body)))
@@ -79,10 +78,10 @@ func (a *Analyzer) processMessage(msg common.Message, nextChan chan<- []byte) {
 	batchWithSentiment := a.analyzeSentiment(batch)
 	serializedBatch, err := json.Marshal(batchWithSentiment)
 	if err != nil {
-		slog.Error("Error marshalling response", slog.String("error", err.Error()))
-		return
+		return fmt.Errorf("error marshalling response: %v", err)
 	}
 	nextChan <- serializedBatch
+	return nil
 }
 
 func (a *Analyzer) Stop() error {
