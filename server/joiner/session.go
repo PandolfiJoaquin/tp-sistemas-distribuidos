@@ -62,7 +62,7 @@ func (s *JoinerSession) cleanUp() {
 		return
 	}
 	slog.Info("cleaning up session", slog.Any("creditsReceived", s.creditsReceived), slog.Any("reviewsReceived", s.reviewsReceived))
-	s.movies = []common.Movie{}
+	*s = *NewJoinerSession()
 
 }
 
