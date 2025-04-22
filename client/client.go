@@ -246,7 +246,7 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
 		default:
 			if len(queriesReceived) == TotalQueries {
 				slog.Info("All queries received")
-				break
+				return
 			}
 
 			results, err := communication.RecvQueryResults(c.conn)

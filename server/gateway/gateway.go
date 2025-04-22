@@ -18,12 +18,6 @@ import (
 
 const (
 	nextStep = "to-preprocess"
-
-	qres1 = "q1-results"
-	qres2 = "q2-results"
-	qres3 = "q3-results"
-	qres4 = "q4-results"
-	qres5 = "q5-results"
 )
 
 type GatewayConfig struct {
