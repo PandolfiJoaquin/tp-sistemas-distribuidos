@@ -226,7 +226,7 @@ func (r *FinalReducer) startReceivingQ4() {
 				slog.Error("error marshalling response", slog.String("error", err.Error()))
 			}
 			r.connection.ChanToSend <- response
-			slog.Info("sent query4 final response")
+			slog.Info("sent query4 final response", slog.Any("top10 actors", top10Actors))
 		}
 
 		if err := msg.Ack(); err != nil {
