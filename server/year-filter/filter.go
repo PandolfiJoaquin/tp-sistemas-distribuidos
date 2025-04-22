@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os/signal"
+	"syscall"
 
 	"tp-sistemas-distribuidos/server/common"
 )
@@ -67,15 +70,21 @@ func initializeConnections(middleware *common.Middleware) (map[int]connection, e
 }
 
 func (f *YearFilter) Start() {
-	go f.start()
+	defer f.stop()
 
-	forever := make(chan bool)
-	<-forever
+	// Sigterm , sigint
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	f.start(ctx)
 }
 
-func (f *YearFilter) start() {
+func (f *YearFilter) start(ctx context.Context) {
 	for {
 		select {
+		case <-ctx.Done():
+			slog.Info("received termination signal, stopping year filter")
+			return
 		case msg := <-f.connections[1].ChanToRecv:
 			if err := f.processQueryMessage(1, msg, f.year2000sFilter); err != nil {
 				slog.Error("error processing q1 message", slog.String("error", err.Error()))
@@ -114,7 +123,6 @@ func (f *YearFilter) filterMessage(msg common.Message, filterFunc func(common.Mo
 	filteredMovies := batch.Data
 	if !batch.IsEof() {
 		filteredMovies = common.Filter(batch.Data, filterFunc)
-		slog.Info("movies left after filtering by year", slog.Any("movies", filteredMovies))
 	}
 
 	batch.Data = filteredMovies
@@ -138,9 +146,9 @@ func (f *YearFilter) yearAfter2000sFilter(movie common.Movie) bool {
 	return movie.Year >= 2000
 }
 
-func (f *YearFilter) Stop() error {
+func (f *YearFilter) stop() {
 	if err := f.middleware.Close(); err != nil {
-		return fmt.Errorf("error closing middleware: %w", err)
+		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
-	return nil
+	slog.Info("year filter stopped")
 }

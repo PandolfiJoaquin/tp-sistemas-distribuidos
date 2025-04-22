@@ -76,6 +76,8 @@ func initializeConnectionForQuery(queryNum int, middleware *common.Middleware) (
 }
 
 func (r *FinalReducer) Start() {
+	defer r.stop()
+
 	// Sigterm , sigint
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -96,8 +98,6 @@ func (r *FinalReducer) Start() {
 		slog.Error("query number not found", slog.Int("query number", r.queryNum))
 		return
 	}
-
-	slog.Info("final reducer finalized")
 }
 
 func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
@@ -447,6 +447,9 @@ func calculateSentimentProfitRatioAverage(sentimentProfitRatios common.Sentiment
 	}
 }
 
-func (r *FinalReducer) Stop() error {
-	return nil
+func (r *FinalReducer) stop() {
+	if err := r.middleware.Close(); err != nil {
+		slog.Error("error closing middleware", slog.String("error", err.Error()))
+	}
+	slog.Info("final reducer stopped")
 }

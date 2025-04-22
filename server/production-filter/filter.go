@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os/signal"
 	"slices"
+	"syscall"
 
 	pkg "pkg/models"
 	"tp-sistemas-distribuidos/server/common"
@@ -43,11 +46,6 @@ func NewProductionFilter(rabbitUser, rabbitPass string, shards int) (*Production
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
-
-	// connections, err := initializeConnections(middleware, queriesQueues)
-	// if err != nil {
-	// return nil, fmt.Errorf("error initializing connections: %w", err)
-	// }
 
 	query1Connection, err := initializeConnection(middleware, previousQueueQuery1, nextQueueQuery1)
 	if err != nil {
@@ -104,15 +102,21 @@ func initializeShardsConnections(middleware *common.Middleware, previousQueue st
 }
 
 func (f *ProductionFilter) Start() {
-	go f.start()
+	defer f.stop()
 
-	forever := make(chan bool)
-	<-forever
+	// Sigterm , sigint
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	f.start(ctx)
 }
 
-func (f *ProductionFilter) start() {
+func (f *ProductionFilter) start(ctx context.Context) {
 	for {
 		select {
+		case <-ctx.Done():
+			slog.Info("received termination signal, stopping production filter")
+			return
 		case msg := <-f.query1Connection.ChanToRecv:
 			batch, err := f.processQueryMessage(msg, f.filterByProductionQ1)
 			if err != nil {
@@ -151,7 +155,6 @@ func (f *ProductionFilter) start() {
 				shard := i + 1
 				currentBatch := batch
 				currentBatch.Data = moviesData
-				slog.Info("sending batch", slog.Int("shard", shard))
 				if err := f.sendBatch(f.query3ShardsConnections.nextChan[shard], currentBatch); err != nil {
 					slog.Error("error sending batch", slog.String("error", err.Error()))
 				}
@@ -212,9 +215,9 @@ func (f *ProductionFilter) filterByProductionQ3(movie common.Movie) bool {
 	return slices.Contains(movie.ProductionCountries, arg)
 }
 
-func (f *ProductionFilter) Stop() error {
+func (f *ProductionFilter) stop() {
 	if err := f.middleware.Close(); err != nil {
-		return fmt.Errorf("error closing middleware: %w", err)
+		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
-	return nil
+	slog.Info("production filter stopped")
 }

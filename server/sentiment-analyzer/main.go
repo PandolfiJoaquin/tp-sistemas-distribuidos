@@ -30,9 +30,4 @@ func main() {
 	}
 
 	analyzer.Start()
-
-	if err := analyzer.Stop(); err != nil {
-		slog.Error("error stopping sentiment analyzer", slog.String("error", err.Error()))
-		return
-	}
 }
