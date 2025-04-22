@@ -45,6 +45,4 @@ func main() {
 	}
 
 	reducer.Start()
-
-	reducer.Stop()
 }

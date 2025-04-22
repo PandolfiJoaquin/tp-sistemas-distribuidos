@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
 	"pkg/log"
+	"strconv"
 )
 
 func main() {
@@ -38,8 +38,4 @@ func main() {
 	}
 
 	filter.Start()
-
-	if err := filter.Stop(); err != nil {
-		slog.Error("error stopping production filter", slog.String("error", err.Error()))
-	}
 }

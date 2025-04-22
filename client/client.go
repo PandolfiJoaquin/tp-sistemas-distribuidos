@@ -10,7 +10,7 @@ import (
 )
 
 const MoviePath = "archive/movies_metadata.csv"
-const ReviewPath = "archive/ratings_small.csv"
+const ReviewPath = "archive/ratings.csv"
 const CreditsPath = "archive/credits.csv"
 
 type ClientConfig struct {
