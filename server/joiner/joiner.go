@@ -23,9 +23,9 @@ const q3ToReduceQueue = "q3-to-reduce"
 const q4ToReduceQueue = "q4-to-reduce"
 
 type Joiner struct {
-	joinerId       int
-	middleware     *common.Middleware
-	moviesReceived []common.Batch[common.Movie]
+	joinerId   int
+	middleware *common.Middleware
+	session    *JoinerSession //para varios clientes convertir esto en un mapa [ClientId]JoinerSession
 }
 
 func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
@@ -34,10 +34,11 @@ func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
 		return nil, err
 	}
+
 	return &Joiner{
-		joinerId:       joinerId,
-		middleware:     middleware,
-		moviesReceived: []common.Batch[common.Movie]{},
+		joinerId:   joinerId,
+		middleware: middleware,
+		session:    NewJoinerSession(),
 	}, nil
 }
 
@@ -102,9 +103,8 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			slog.Info("Received message from movies", slog.Any("batch", batch))
-			j.saveBatch(batch)
-			if j.allMoviesReceived() {
+			j.session.SaveMovies(batch)
+			if j.session.AllMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
 				reviews = _reviewsChan
 				credits = _creditChan
@@ -115,13 +115,12 @@ func (j *Joiner) run(
 			continue
 
 		case msg := <-reviews:
-			slog.Info("Received message from reviews")
 			var batch common.Batch[common.Review]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-
+			j.session.NotifyReview(batch.Header)
 			reviewXMovies := j.join(batch.Data)
 			reviewsXMoviesBatch := common.Batch[common.MovieReview]{
 				Header: batch.Header,
@@ -133,7 +132,6 @@ func (j *Joiner) run(
 				slog.Error("error marshalling batch", slog.String("error", err.Error()))
 				continue
 			}
-			slog.Info("Sending msgs: ", slog.Any("response", reviewsXMoviesBatch))
 			q3ToReduce <- response
 
 			if err := msg.Ack(); err != nil {
@@ -141,14 +139,14 @@ func (j *Joiner) run(
 			}
 			continue
 		case msg := <-credits:
-			slog.Info("Received message from credits")
 			var batch common.Batch[common.Credit]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
+			j.session.NotifyCredit(batch.Header)
 
-			actors := j.filter(batch.Data)
+			actors := j.filterCredits(batch.Data)
 			actorsBatch := common.Batch[common.Credit]{
 				Header: batch.Header,
 				Data:   actors,
@@ -159,7 +157,6 @@ func (j *Joiner) run(
 				slog.Error("error marshalling batch", slog.String("error", err.Error()))
 				continue
 			}
-			slog.Info("Sending msgs: ", slog.Any("response", actorsBatch))
 			q4ToReduce <- response
 
 			if err := msg.Ack(); err != nil {
@@ -178,7 +175,7 @@ func (j *Joiner) join(reviews []common.Review) []common.MovieReview {
 
 func (j *Joiner) joinReview(r common.Review) []common.MovieReview {
 
-	movies := j.getMovies()
+	movies := j.session.GetMovies()
 	moviesForReview := common.Filter(movies, func(m common.Movie) bool { return m.ID == r.MovieID })
 	reviewXMovies := common.Map(moviesForReview, func(m common.Movie) common.MovieReview {
 		return common.MovieReview{
@@ -190,34 +187,6 @@ func (j *Joiner) joinReview(r common.Review) []common.MovieReview {
 	return reviewXMovies
 }
 
-func (j *Joiner) getMovies() []common.Movie {
-	//TODO: movies shouldn't be stored in batches. when loading from disk this would change
-	return common.Flatten(common.Map(j.moviesReceived, func(batch common.Batch[common.Movie]) []common.Movie { return batch.Data }))
-}
-
-func (j *Joiner) saveBatch(batch common.Batch[common.Movie]) {
-	j.moviesReceived = append(j.moviesReceived, batch)
-}
-
-// allMoviesReceived checks if it has all necessary movies to run joining with reviews
-func (j *Joiner) allMoviesReceived() bool {
-	eofBatch := common.First(j.moviesReceived, func(b common.Batch[common.Movie]) bool { return b.IsEof() })
-	if eofBatch == nil {
-		return false
-	}
-
-	totalWeight := int(eofBatch.Header.TotalWeight)
-	weightsReceived := common.Map(j.moviesReceived, func(b common.Batch[common.Movie]) uint32 { return b.Header.Weight })
-	totalWeightReceived := common.Sum(weightsReceived)
-
-	if totalWeightReceived > totalWeight {
-		slog.Error("total weight received is greater than total weight")
-		return false
-	}
-	return totalWeightReceived == totalWeight
-
-}
-
 func (j *Joiner) stop() {
 	if err := j.middleware.Close(); err != nil {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
@@ -225,8 +194,8 @@ func (j *Joiner) stop() {
 	slog.Info("joiner stopped")
 }
 
-func (j *Joiner) filter(data []common.Credit) []common.Credit {
-	movies := j.getMovies()
+func (j *Joiner) filterCredits(data []common.Credit) []common.Credit {
+	movies := j.session.GetMovies()
 	movieIds := common.Map(movies, func(m common.Movie) string { return m.ID })
 	ids := make(map[string]bool)
 	for _, id := range movieIds {
