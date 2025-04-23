@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"os/signal"
 	"pkg/communication"
 	"sync"
+	"syscall"
 	"tp-sistemas-distribuidos/client/utils"
 )
 
@@ -50,8 +55,35 @@ func (c *Client) connect() error {
 	return nil
 }
 
+func (c *Client) SigtermHandler(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+		slog.Info("Received shutdown signal, closing client")
+		if c.conn != nil {
+			err := c.conn.Close()
+			if err != nil {
+				slog.Error("error closing connection", slog.String("error", err.Error()))
+			}
+		}
+	}
+}
+
+func (c *Client) close() {
+	if c.conn != nil {
+		err := c.conn.Close()
+		if err != nil && !errors.Is(err, net.ErrClosed) {
+			slog.Error("error closing connection", slog.String("error", err.Error()))
+		}
+	}
+}
+
 func (c *Client) Start() {
 	wg := &sync.WaitGroup{}
+	// SIGINT and SIGTERM signal handling
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	go c.SigtermHandler(ctx)
 
 	err := c.connect()
 	if err != nil {
@@ -59,24 +91,43 @@ func (c *Client) Start() {
 		return
 	}
 
-	defer func(conn net.Conn) {
-		err := conn.Close()
-		if err != nil {
-			slog.Error("error closing connection", slog.String("error", err.Error()))
-		}
-	}(c.conn)
-
 	slog.Info("client connected to server", slog.String("serverAddress", c.config.ServerAddress))
 
 	wg.Add(1)
-	go c.RecvAnswers(wg)
-
-	c.SendAllMovies()
-	c.SendAllReviews()
-	c.SendAllCredits()
-
+	go c.RecvAnswers(wg, ctx)
+	c.sendData()
 	wg.Wait()
+	slog.Info("Shutting down client")
+}
 
+func (c *Client) sendData() {
+	total, err := c.SendAllMovies()
+	if err != nil {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+			slog.Error("error sending movies", slog.String("error", err.Error()))
+		}
+		return
+	}
+	slog.Info("Sent all movies to server", slog.Int("total", total))
+
+	total, err = c.SendAllReviews()
+	if err != nil {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+			slog.Error("error sending reviews", slog.String("error", err.Error()))
+		}
+		return
+	}
+	slog.Info("Sent all reviews to server", slog.Int("total", total))
+
+	total, err = c.SendAllCredits()
+	if err != nil {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+			slog.Error("error sending credits", slog.String("error", err.Error()))
+		}
+		return
+	}
+
+	slog.Info("Sent all credits to server", slog.Int("total", total))
 }
 
 func (c *Client) sendMovies(reader *utils.MoviesReader) error {
@@ -93,28 +144,25 @@ func (c *Client) sendMovies(reader *utils.MoviesReader) error {
 	return nil
 }
 
-func (c *Client) SendAllMovies() {
+func (c *Client) SendAllMovies() (int, error) {
 	reader, err := utils.NewMoviesReader(MoviePath, c.config.MaxBatchMovie)
 	defer reader.Close()
 	if err != nil {
-		slog.Error("error creating movies reader", slog.String("error", err.Error()))
-		return
+		return 0, fmt.Errorf("error creating movies reader: %w", err)
 	}
 
 	for !reader.Finished {
 		err = c.sendMovies(reader)
 		if err != nil {
-			slog.Error("error sending movies", slog.String("error", err.Error()))
-			return
+			return 0, fmt.Errorf("error sending movies: %w", err)
 		}
 	}
 
 	err = communication.SendMovieEof(c.conn, int32(reader.Total))
 	if err != nil {
-		slog.Error("error sending EOF", slog.String("error", err.Error()))
-		return
+		return 0, fmt.Errorf("error sending EOF: %w", err)
 	}
-	slog.Info("Sent all movies to server", slog.Int("total", reader.Total))
+	return reader.Total, nil
 }
 
 func (c *Client) sendReviews(reader *utils.ReviewReader) error {
@@ -131,27 +179,24 @@ func (c *Client) sendReviews(reader *utils.ReviewReader) error {
 	return nil
 }
 
-func (c *Client) SendAllReviews() {
+func (c *Client) SendAllReviews() (int, error) {
 	reader, err := utils.NewReviewReader(ReviewPath, c.config.MaxBatchReview)
 	if err != nil {
-		slog.Error("error creating reviews reader", slog.String("error", err.Error()))
-		return
+		return 0, fmt.Errorf("error creating reviews reader: %w", err)
 	}
 
 	for !reader.Finished {
 		err = c.sendReviews(reader)
 		if err != nil {
-			slog.Error("error sending reviews", slog.String("error", err.Error()))
-			return
+			return 0, fmt.Errorf("error sending reviews: %w", err)
 		}
 	}
 
 	err = communication.SendReviewEof(c.conn, int32(reader.Total))
 	if err != nil {
-		slog.Error("error sending EOF", slog.String("error", err.Error()))
-		return
+		return 0, fmt.Errorf("error sending reviews EOF: %w", err)
 	}
-	slog.Info("Sent all reviews to server", slog.Int("total", reader.Total))
+	return reader.Total, nil
 }
 
 func (c *Client) sendCredits(reader *utils.CreditsReader) error {
@@ -168,59 +213,67 @@ func (c *Client) sendCredits(reader *utils.CreditsReader) error {
 	return nil
 }
 
-func (c *Client) SendAllCredits() {
+func (c *Client) SendAllCredits() (int, error) {
 	reader, err := utils.NewCreditsReader(CreditsPath, c.config.MaxBatchCredit)
 	if err != nil {
-		slog.Error("error creating credits reader", slog.String("error", err.Error()))
-		return
+		return 0, fmt.Errorf("error creating credits reader: %w", err)
 	}
 
 	for !reader.Finished {
 		err = c.sendCredits(reader)
 		if err != nil {
-			slog.Error("error sending credits", slog.String("error", err.Error()))
-			return
+			return 0, fmt.Errorf("error sending credits: %w", err)
 		}
 	}
 
 	err = communication.SendCreditsEof(c.conn, int32(reader.Total))
 	if err != nil {
-		slog.Error("error sending EOF", slog.String("error", err.Error()))
-		return
+		return 0, fmt.Errorf("error sending credits EOF: %w", err)
+
 	}
-	slog.Info("sent credits", slog.Int("total", reader.Total))
+	return reader.Total, nil
 }
 
 const TotalQueries = 5
 
-func (c *Client) RecvAnswers(wg *sync.WaitGroup) {
+func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
 	queriesReceived := make([]bool, 0) // Array to store when we get the complete query
 	defer wg.Done()
 	for {
-		if len(queriesReceived) == TotalQueries {
-			slog.Info("All queries received")
-			break
-		}
-
-		// TODO:  Handle EOF of different queries
-		results, err := communication.RecvQueryResults(c.conn)
-		if err != nil {
-			slog.Error("error receiving query results", slog.String("error", err.Error()))
+		select {
+		case <-ctx.Done():
 			return
-		}
+		default:
+			if len(queriesReceived) == TotalQueries {
+				slog.Info("All queries received")
+				return
+			}
 
-		if communication.IsQueryEof(results) {
-			queriesReceived = append(queriesReceived, true)
-			continue
-		}
+			results, err := communication.RecvQueryResults(c.conn)
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					slog.Info("Server closed connection")
+					return
+				}
+				if errors.Is(err, net.ErrClosed) {
+					return
+				}
+				slog.Error("error receiving query results", slog.String("error", err.Error()))
+				return
+			}
 
-		if results.QueryId != 1 {
-			queriesReceived = append(queriesReceived, false)
-		}
+			if communication.IsQueryEof(results) {
+				queriesReceived = append(queriesReceived, true)
+				continue
+			}
 
-		for _, result := range results.Items {
-			slog.Info("Got query result", slog.String("result", result.String()))
-		}
+			if results.QueryId != 1 {
+				queriesReceived = append(queriesReceived, false)
+			}
 
+			for _, result := range results.Items {
+				slog.Info("Got query result", slog.String("result", result.String()))
+			}
+		}
 	}
 }

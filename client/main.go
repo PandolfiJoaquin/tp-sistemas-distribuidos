@@ -10,7 +10,7 @@ const (
 	server       = "gateway:12345"
 	MoviesBatch  = 30
 	ReviewsBatch = 300
-	CreditsBatch = 10
+	CreditsBatch = 30
 )
 
 func main() {
