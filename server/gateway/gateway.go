@@ -352,10 +352,6 @@ func (g *Gateway) handleResult1(msg common.Message) error {
 		return fmt.Errorf("error acknowledging message: %w", err)
 	}
 
-	if err := msg.Ack(); err != nil {
-		return fmt.Errorf("error acknowledging message: %w", err)
-	}
-
 	return nil
 }
 

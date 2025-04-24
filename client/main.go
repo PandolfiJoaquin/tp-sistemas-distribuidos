@@ -11,6 +11,7 @@ const (
 	MoviesBatch  = 30
 	ReviewsBatch = 300
 	CreditsBatch = 30
+	sleep = 10
 )
 
 func main() {
@@ -21,7 +22,7 @@ func main() {
 	}
 	slog.SetDefault(logger)
 
-	config := NewClientConfig(server, MoviesBatch, ReviewsBatch, CreditsBatch)
+	config := NewClientConfig(server, MoviesBatch, ReviewsBatch, CreditsBatch, sleep)
 	client := NewClient(config)
 
 	slog.Info("client created successfully")
