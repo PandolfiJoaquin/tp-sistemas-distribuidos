@@ -39,14 +39,20 @@ func (q Q2Country) String() string {
 	return "Query 2: " + q.Country.Name + " | Budget: " + strconv.FormatUint(q.Budget, 10)
 }
 
+type Q3Result struct {
+	Best  Q3Movie `json:"best"`
+	Worst Q3Movie `json:"worst"`
+}
+
 type Q3Movie struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
+	// rating float32 `json:"rating"`
 }
 
 // placeholder for Q3Movie
-func (q Q3Movie) String() string {
-	return "Query 3: " + q.ID + " | Title: " + q.Title
+func (q Q3Result) String() string {
+	return "Query 3: Best Movie: " + q.Best.Title + " | Worst Movie: " + q.Worst.Title
 }
 
 type Q4Actors struct {
@@ -72,6 +78,6 @@ func (q Q5Avg) String() string {
 
 func (q Q1Movie) QueryId() int   { return 1 }
 func (q Q2Country) QueryId() int { return 2 }
-func (q Q3Movie) QueryId() int   { return 3 }
+func (q Q3Result) QueryId() int  { return 3 }
 func (q Q4Actors) QueryId() int  { return 4 }
 func (q Q5Avg) QueryId() int     { return 5 }
