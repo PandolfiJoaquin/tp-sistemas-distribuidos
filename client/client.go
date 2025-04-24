@@ -11,11 +11,12 @@ import (
 	"pkg/communication"
 	"sync"
 	"syscall"
+	"time"
 	"tp-sistemas-distribuidos/client/utils"
 )
 
 const MoviePath = "archive/movies_metadata.csv"
-const ReviewPath = "archive/ratings.csv"
+const ReviewPath = "archive/ratings_small.csv"
 const CreditsPath = "archive/credits.csv"
 
 type ClientConfig struct {
@@ -23,14 +24,16 @@ type ClientConfig struct {
 	MaxBatchMovie  int
 	MaxBatchReview int
 	MaxBatchCredit int
+	sleep 	   int
 }
 
-func NewClientConfig(serverAddress string, maxBatchMovie, maxBatchReview, maxBatchCredits int) ClientConfig {
+func NewClientConfig(serverAddress string, maxBatchMovie, maxBatchReview, maxBatchCredits,  sleep int) ClientConfig {
 	return ClientConfig{
 		ServerAddress:  serverAddress,
 		MaxBatchMovie:  maxBatchMovie,
 		MaxBatchReview: maxBatchReview,
 		MaxBatchCredit: maxBatchCredits,
+		sleep:          sleep,
 	}
 }
 
@@ -141,6 +144,8 @@ func (c *Client) sendMovies(reader *utils.MoviesReader) error {
 		return fmt.Errorf("error sending movies: %w", err)
 	}
 
+	time.Sleep(time.Duration(c.config.sleep) * time.Millisecond)
+
 	return nil
 }
 
@@ -157,6 +162,7 @@ func (c *Client) SendAllMovies() (int, error) {
 			return 0, fmt.Errorf("error sending movies: %w", err)
 		}
 	}
+
 
 	err = communication.SendMovieEof(c.conn, int32(reader.Total))
 	if err != nil {
@@ -176,6 +182,8 @@ func (c *Client) sendReviews(reader *utils.ReviewReader) error {
 		return fmt.Errorf("error sending reviews: %w", err)
 	}
 
+	time.Sleep(time.Duration(c.config.sleep) * time.Millisecond)
+
 	return nil
 }
 
@@ -191,6 +199,7 @@ func (c *Client) SendAllReviews() (int, error) {
 			return 0, fmt.Errorf("error sending reviews: %w", err)
 		}
 	}
+
 
 	err = communication.SendReviewEof(c.conn, int32(reader.Total))
 	if err != nil {
@@ -209,6 +218,8 @@ func (c *Client) sendCredits(reader *utils.CreditsReader) error {
 	if err != nil {
 		return fmt.Errorf("error sending credits: %w", err)
 	}
+
+	time.Sleep(time.Duration(c.config.sleep) * time.Millisecond)
 
 	return nil
 }
