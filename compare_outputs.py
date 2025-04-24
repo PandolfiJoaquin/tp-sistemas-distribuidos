@@ -119,7 +119,7 @@ if __name__ == "__main__":
             "Japan | Budget: 832585873"
         ],
         3: [
-            "Best Movie: ID: 80717 | Title: Violeta Went to Heaven | Rating: 5.00 | Worst Movie: ID: 69278 | Title: Phase 7 | Rating: 2.75"
+            "Best Movie: ID: 125619 | Title: The forbidden education | Rating: 4.00 | Worst Movie: ID: 128598 | Title: Left for Dead | Rating: 1.00"
         ],
         4: [
             "Actor: Ricardo Darín | Appearances: 17",

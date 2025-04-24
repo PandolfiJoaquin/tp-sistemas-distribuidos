@@ -13,7 +13,7 @@ const (
 	MoviesBatch  = 30
 	ReviewsBatch = 300
 	CreditsBatch = 30
-	sleep = 10
+	sleep = 1
 )
 
 func main() {
