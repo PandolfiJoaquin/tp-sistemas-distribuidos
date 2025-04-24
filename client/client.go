@@ -19,11 +19,11 @@ import (
 )
 
 const (
-	MoviePath    = "archive/movies_metadata.csv"
-	ReviewPath   = "archive/ratings_small.csv"
-	CreditsPath  = "archive/credits.csv"
+	MoviePath        = "archive/movies_metadata.csv"
+	ReviewPath       = "archive/ratings_small.csv"
+	CreditsPath      = "archive/credits.csv"
 	OutputPathFormat = "results/queries-results-%d.txt"
-	TotalQueries = 5
+	TotalQueries     = 5
 )
 
 type ClientConfig struct {
@@ -67,9 +67,12 @@ func (c *Client) connect() error {
 	return nil
 }
 
-func (c *Client) sigtermHandler(ctx context.Context) {
-	<-ctx.Done()
-	slog.Info("Received shutdown signal, closing client")
+func (c *Client) sigtermHandler(ctx context.Context, finishedChan chan bool) {
+	select {
+	case <-ctx.Done():
+		slog.Info("Received shutdown signal, closing client")
+	case <-finishedChan:
+	}
 	c.close()
 }
 
@@ -83,12 +86,13 @@ func (c *Client) close() {
 }
 
 func (c *Client) Start() {
+	finishedChan := make(chan bool)
 	wg := &sync.WaitGroup{}
 	// SIGINT and SIGTERM signal handling
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	go c.sigtermHandler(ctx)
+	go c.sigtermHandler(ctx, finishedChan)
 
 	err := c.connect()
 	if err != nil {
@@ -102,6 +106,7 @@ func (c *Client) Start() {
 	go c.RecvAnswers(wg, ctx)
 	c.sendData()
 	wg.Wait()
+	finishedChan <- true
 	slog.Info("Shutting down client")
 }
 
@@ -256,20 +261,12 @@ func (c *Client) writeQueryResults(queriesResults map[int][]models.QueryResult) 
 
 		sb.WriteString(fmt.Sprintf("Query %d: ", queryID))
 
-		if queryID == 3 {
-			// For Query 3, add labels for best and worst movies
-			sb.WriteString("Best Movie: ")
-			sb.WriteString(results[0].String())
-			sb.WriteString(", Worst Movie: ")
-			sb.WriteString(results[1].String())
-		} else {
-			// For other queries, write results normally
-			for i, result := range results {
-				if i > 0 {
-					sb.WriteString(", ")
-				}
-				sb.WriteString(result.String())
+		// For other queries, write results normally
+		for i, result := range results {
+			if i > 0 {
+				sb.WriteString(", ")
 			}
+			sb.WriteString(result.String())
 		}
 		sb.WriteString("\n")
 	}

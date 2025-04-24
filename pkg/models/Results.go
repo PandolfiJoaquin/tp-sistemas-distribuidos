@@ -45,14 +45,14 @@ type Q3Result struct {
 }
 
 type Q3Movie struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	// rating float32 `json:"rating"`
+	ID    string  `json:"id"`
+	Title string  `json:"title"`
+	Rating float32 `json:"rating"`
 }
 
 // placeholder for Q3Movie
 func (q Q3Result) String() string {
-	return "Query 3: Best Movie: " + q.Best.Title + " | Worst Movie: " + q.Worst.Title
+	return "Best Movie: ID: " + q.Best.ID + " | Title: " + q.Best.Title + " | Rating: " + strconv.FormatFloat(float64(q.Best.Rating), 'f', 2, 32) + " | Worst Movie: ID: " + q.Worst.ID + " | Title: " + q.Worst.Title + " | Rating: " + strconv.FormatFloat(float64(q.Worst.Rating), 'f', 2, 32)
 }
 
 type Q4Actors struct {

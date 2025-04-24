@@ -1,4 +1,3 @@
-
 def compare_results(actual_file_path, expected_results):
     """
     Compare actual query results with expected results.
@@ -120,8 +119,7 @@ if __name__ == "__main__":
             "Japan | Budget: 832585873"
         ],
         3: [
-            "ID: 80717 | Title: Violeta Went to Heaven",
-            "ID: 69278 | Title: Phase 7"
+            "Best Movie: ID: 80717 | Title: Violeta Went to Heaven | Rating: 5.00 | Worst Movie: ID: 69278 | Title: Phase 7 | Rating: 2.75"
         ],
         4: [
             "Actor: Ricardo Darín | Appearances: 17",
