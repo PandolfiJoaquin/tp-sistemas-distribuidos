@@ -332,6 +332,7 @@ func (g *Gateway) processMessages(deadChan chan bool) {
 			return
 		}
 	}
+	g.done = 0
 }
 
 func (g *Gateway) handleResult1(msg common.Message) error {
@@ -340,13 +341,11 @@ func (g *Gateway) handleResult1(msg common.Message) error {
 		return fmt.Errorf("error consuming results: %w", err)
 	}
 
-	if len(batch.Data) == 0 && !batch.IsEof() {
-		return nil
-	}
-
-	err = g.processResult1(batch)
-	if err != nil {
-		return fmt.Errorf("error processing result: %w", err)
+	if !(len(batch.Data) == 0 && !batch.IsEof()) {
+		err = g.processResult1(batch)
+		if err != nil {
+			return fmt.Errorf("error processing result: %w", err)
+		}
 	}
 
 	if err := msg.Ack(); err != nil {
