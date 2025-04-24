@@ -1,0 +1,11 @@
+{
+  "clients": 1,
+  "joiners": 5,
+  "nodes": {
+    "preprocessor": 3,
+    "production-filter": 2,
+    "year-filter": 2,
+    "sentiment-analyzer": 2,
+    "reducer": 4
+  }
+}
