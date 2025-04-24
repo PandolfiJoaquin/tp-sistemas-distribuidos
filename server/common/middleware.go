@@ -109,6 +109,15 @@ func (m *Middleware) GetChanWithTopicToSend(exchange, topic string) (chan<- []by
 		return nil, fmt.Errorf("error declaring exchange: %s", err)
 	}
 
+	q, err := m.ch.QueueDeclare(exchange+topic, false, false, false, false, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error declaring queue: %s", err)
+	}
+
+	if err := m.ch.QueueBind(q.Name, topic, exchange, false, nil); err != nil {
+		return nil, fmt.Errorf("error binding queue: %s", err)
+	}
+
 	chanToSend := make(chan []byte)
 	go func() {
 		for msg := range chanToSend {
@@ -125,7 +134,7 @@ func (m *Middleware) GetChanWithTopicToRecv(exchange, topic string) (<-chan Mess
 		return nil, fmt.Errorf("error declaring exchange: %s", err)
 	}
 
-	q, err := m.ch.QueueDeclare("", false, false, false, false, nil)
+	q, err := m.ch.QueueDeclare(exchange+topic, false, false, false, false, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error declaring queue: %s", err)
 	}
@@ -151,6 +160,7 @@ func (m *Middleware) GetChanWithTopicToRecv(exchange, topic string) (<-chan Mess
 	inboxChan := make(chan Message)
 	go func() {
 		for msg := range amqpChan {
+			//slog.Info("received message", slog.String("topic", topic), slog.String("exchange", exchange))
 			inboxChan <- Message{msg.Body, msg}
 		}
 	}()

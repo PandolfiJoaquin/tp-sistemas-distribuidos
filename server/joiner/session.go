@@ -31,6 +31,7 @@ func (s *JoinerSession) SaveMovies(batch common.Batch[common.Movie]) {
 	if batch.IsEof() {
 		slog.Info("movies Eof received", slog.Any("header", batch.Header))
 		s.moviesToExpect = batch.TotalWeight
+		return
 	}
 	s.movies = append(s.movies, batch.Data...)
 	s.moviesReceived += batch.Weight
@@ -51,12 +52,13 @@ func (s *JoinerSession) NotifyCredit(header common.Header) {
 	if header.IsEof() {
 		slog.Info("credits Eof received", slog.Any("header", header))
 		s.creditsToExpect = header.TotalWeight
+	} else {
+		s.creditsReceived += header.Weight
 	}
-	s.creditsReceived += header.Weight
-	s.cleanUp()
+	s.maybeCleanUp()
 }
 
-func (s *JoinerSession) cleanUp() {
+func (s *JoinerSession) maybeCleanUp() {
 	if s.creditsReceived != uint32(s.creditsToExpect) ||
 		s.reviewsReceived != uint32(s.reviewsToExpect) {
 		return
@@ -69,11 +71,10 @@ func (s *JoinerSession) cleanUp() {
 func (s *JoinerSession) NotifyReview(header common.Header) {
 	if header.IsEof() {
 		slog.Info("reviews Eof received", slog.Any("header", header))
-		s.reviewsToExpect = header.TotalWeight
-		return
+	} else {
+		s.reviewsReceived += header.Weight
 	}
-	s.reviewsReceived += header.Weight
-	s.cleanUp()
+	s.maybeCleanUp()
 }
 
 /*if totalWeightReceived > totalWeight {

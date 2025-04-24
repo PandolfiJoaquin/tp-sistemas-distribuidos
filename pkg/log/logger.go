@@ -1,9 +1,8 @@
-package log 
+package log
 
 import (
 	"log/slog"
 	"os"
-	"time"
 )
 
 func SetupLogger(appName string, debug bool, file *string) (*slog.Logger, error) {
@@ -27,7 +26,7 @@ func SetupLogger(appName string, debug bool, file *string) (*slog.Logger, error)
 			if attr.Key == slog.TimeKey {
 				return slog.Attr{
 					Key:   "timestamp",
-					Value: slog.StringValue(attr.Value.Time().Format(time.RFC3339)),
+					Value: slog.StringValue(attr.Value.Time().Format("15:04.00")),
 				}
 			}
 			return attr
