@@ -36,6 +36,7 @@ CLIENT_NODE = """
       - gateway
     volumes:
       - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
 """
 
 FINAL_REDUCER_NODE = """

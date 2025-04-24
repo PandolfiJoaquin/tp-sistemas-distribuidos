@@ -325,7 +325,6 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 			}
 
 			currentWeight += batch.Header.Weight
-			slog.Info("current weight", slog.Any("current weight", currentWeight), slog.Any("eof weight", eofWeight))
 			if batch.IsEof() {
 				eofWeight = int32(batch.Header.TotalWeight)
 				slog.Info("eof weight", slog.Any("eof weight", eofWeight))

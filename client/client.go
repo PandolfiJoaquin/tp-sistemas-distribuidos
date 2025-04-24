@@ -7,28 +7,37 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"os/signal"
 	"pkg/communication"
+	"pkg/models"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 	"tp-sistemas-distribuidos/client/utils"
 )
 
-const MoviePath = "archive/movies_metadata.csv"
-const ReviewPath = "archive/ratings_small.csv"
-const CreditsPath = "archive/credits.csv"
+const (
+	MoviePath    = "archive/movies_metadata.csv"
+	ReviewPath   = "archive/ratings_small.csv"
+	CreditsPath  = "archive/credits.csv"
+	OutputPathFormat = "results/queries-results-%d.txt"
+	TotalQueries = 5
+)
 
 type ClientConfig struct {
+	Id             int
 	ServerAddress  string
 	MaxBatchMovie  int
 	MaxBatchReview int
 	MaxBatchCredit int
-	sleep 	   int
+	sleep          int
 }
 
-func NewClientConfig(serverAddress string, maxBatchMovie, maxBatchReview, maxBatchCredits,  sleep int) ClientConfig {
+func NewClientConfig(id int, serverAddress string, maxBatchMovie, maxBatchReview, maxBatchCredits, sleep int) ClientConfig {
 	return ClientConfig{
+		Id:             id,
 		ServerAddress:  serverAddress,
 		MaxBatchMovie:  maxBatchMovie,
 		MaxBatchReview: maxBatchReview,
@@ -58,17 +67,10 @@ func (c *Client) connect() error {
 	return nil
 }
 
-func (c *Client) SigtermHandler(ctx context.Context) {
-	select {
-	case <-ctx.Done():
-		slog.Info("Received shutdown signal, closing client")
-		if c.conn != nil {
-			err := c.conn.Close()
-			if err != nil {
-				slog.Error("error closing connection", slog.String("error", err.Error()))
-			}
-		}
-	}
+func (c *Client) sigtermHandler(ctx context.Context) {
+	<-ctx.Done()
+	slog.Info("Received shutdown signal, closing client")
+	c.close()
 }
 
 func (c *Client) close() {
@@ -86,7 +88,7 @@ func (c *Client) Start() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	go c.SigtermHandler(ctx)
+	go c.sigtermHandler(ctx)
 
 	err := c.connect()
 	if err != nil {
@@ -104,7 +106,7 @@ func (c *Client) Start() {
 }
 
 func (c *Client) sendData() {
-	total, err := c.SendAllMovies()
+	total, err := c.sendAllMovies()
 	if err != nil {
 		if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 			slog.Error("error sending movies", slog.String("error", err.Error()))
@@ -113,7 +115,7 @@ func (c *Client) sendData() {
 	}
 	slog.Info("Sent all movies to server", slog.Int("total", total))
 
-	total, err = c.SendAllReviews()
+	total, err = c.sendAllReviews()
 	if err != nil {
 		if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 			slog.Error("error sending reviews", slog.String("error", err.Error()))
@@ -122,7 +124,7 @@ func (c *Client) sendData() {
 	}
 	slog.Info("Sent all reviews to server", slog.Int("total", total))
 
-	total, err = c.SendAllCredits()
+	total, err = c.sendAllCredits()
 	if err != nil {
 		if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 			slog.Error("error sending credits", slog.String("error", err.Error()))
@@ -149,12 +151,12 @@ func (c *Client) sendMovies(reader *utils.MoviesReader) error {
 	return nil
 }
 
-func (c *Client) SendAllMovies() (int, error) {
+func (c *Client) sendAllMovies() (int, error) {
 	reader, err := utils.NewMoviesReader(MoviePath, c.config.MaxBatchMovie)
-	defer reader.Close()
 	if err != nil {
 		return 0, fmt.Errorf("error creating movies reader: %w", err)
 	}
+	defer reader.Close()
 
 	for !reader.Finished {
 		err = c.sendMovies(reader)
@@ -162,7 +164,6 @@ func (c *Client) SendAllMovies() (int, error) {
 			return 0, fmt.Errorf("error sending movies: %w", err)
 		}
 	}
-
 
 	err = communication.SendMovieEof(c.conn, int32(reader.Total))
 	if err != nil {
@@ -187,7 +188,7 @@ func (c *Client) sendReviews(reader *utils.ReviewReader) error {
 	return nil
 }
 
-func (c *Client) SendAllReviews() (int, error) {
+func (c *Client) sendAllReviews() (int, error) {
 	reader, err := utils.NewReviewReader(ReviewPath, c.config.MaxBatchReview)
 	if err != nil {
 		return 0, fmt.Errorf("error creating reviews reader: %w", err)
@@ -199,7 +200,6 @@ func (c *Client) SendAllReviews() (int, error) {
 			return 0, fmt.Errorf("error sending reviews: %w", err)
 		}
 	}
-
 
 	err = communication.SendReviewEof(c.conn, int32(reader.Total))
 	if err != nil {
@@ -224,7 +224,7 @@ func (c *Client) sendCredits(reader *utils.CreditsReader) error {
 	return nil
 }
 
-func (c *Client) SendAllCredits() (int, error) {
+func (c *Client) sendAllCredits() (int, error) {
 	reader, err := utils.NewCreditsReader(CreditsPath, c.config.MaxBatchCredit)
 	if err != nil {
 		return 0, fmt.Errorf("error creating credits reader: %w", err)
@@ -240,15 +240,50 @@ func (c *Client) SendAllCredits() (int, error) {
 	err = communication.SendCreditsEof(c.conn, int32(reader.Total))
 	if err != nil {
 		return 0, fmt.Errorf("error sending credits EOF: %w", err)
-
 	}
 	return reader.Total, nil
 }
 
-const TotalQueries = 5
+func (c *Client) writeQueryResults(queriesResults map[int][]models.QueryResult) {
+	var sb strings.Builder
+
+	for queryID := 1; queryID <= TotalQueries; queryID++ {
+		results, exists := queriesResults[queryID]
+		if !exists {
+			slog.Error("query results not found", slog.Int("queryID", queryID))
+			continue
+		}
+
+		sb.WriteString(fmt.Sprintf("Query %d: ", queryID))
+
+		if queryID == 3 {
+			// For Query 3, add labels for best and worst movies
+			sb.WriteString("Best Movie: ")
+			sb.WriteString(results[0].String())
+			sb.WriteString(", Worst Movie: ")
+			sb.WriteString(results[1].String())
+		} else {
+			// For other queries, write results normally
+			for i, result := range results {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(result.String())
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	// Write all results to a single file
+	err := os.WriteFile(fmt.Sprintf(OutputPathFormat, c.config.Id), []byte(sb.String()), 0644)
+	if err != nil {
+		slog.Error("error writing query results", slog.String("error", err.Error()))
+	}
+}
 
 func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
 	queriesReceived := make([]bool, 0) // Array to store when we get the complete query
+	queriesResults := make(map[int][]models.QueryResult)
 	defer wg.Done()
 	for {
 		select {
@@ -257,6 +292,7 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
 		default:
 			if len(queriesReceived) == TotalQueries {
 				slog.Info("All queries received")
+				c.writeQueryResults(queriesResults)
 				return
 			}
 
@@ -283,7 +319,9 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
 			}
 
 			for _, result := range results.Items {
-				slog.Info("Got query result", slog.String("result", result.String()))
+				txt := fmt.Sprintf("Query result %d", results.QueryId)
+				slog.Info(txt, slog.String("result", result.String()))
+				queriesResults[results.QueryId] = append(queriesResults[results.QueryId], result)
 			}
 		}
 	}

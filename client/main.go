@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"os"
+	"strconv"
 	"pkg/log"
 )
 
@@ -22,7 +24,15 @@ func main() {
 	}
 	slog.SetDefault(logger)
 
-	config := NewClientConfig(server, MoviesBatch, ReviewsBatch, CreditsBatch, sleep)
+	// read cli_id from env
+	cliID := os.Getenv("CLI_ID")
+	id, err := strconv.Atoi(cliID)
+	if err != nil {
+		slog.Error("env variable CLI_ID is invalid", slog.String("error", err.Error()))
+		return
+	}
+
+	config := NewClientConfig(id, server, MoviesBatch, ReviewsBatch, CreditsBatch, sleep)
 	client := NewClient(config)
 
 	slog.Info("client created successfully")
