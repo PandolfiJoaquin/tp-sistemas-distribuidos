@@ -408,8 +408,18 @@ func (g *Gateway) handleResults3(msg common.Message) ([]models.QueryResult, erro
 	}
 	slog.Info("Best and worst movies", slog.Any("bestAndWorstMovies", bestAndWorstMovies))
 	q3Result := []models.QueryResult{
-		models.Q3Movie{ID: bestAndWorstMovies.BestMovie.ID, Title: bestAndWorstMovies.BestMovie.Title},
-		models.Q3Movie{ID: bestAndWorstMovies.WorstMovie.ID, Title: bestAndWorstMovies.WorstMovie.Title},
+		models.Q3Result{
+			Best: models.Q3Movie{
+				ID:     bestAndWorstMovies.BestMovie.ID,
+				Title:  bestAndWorstMovies.BestMovie.Title,
+				Rating: bestAndWorstMovies.BestMovie.Rating,
+			},
+			Worst: models.Q3Movie{
+				ID:    bestAndWorstMovies.WorstMovie.ID,
+				Title: bestAndWorstMovies.WorstMovie.Title,
+				Rating: bestAndWorstMovies.WorstMovie.Rating,
+			},
+		},
 	}
 	return q3Result, nil
 }

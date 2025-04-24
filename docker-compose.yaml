@@ -1,6 +1,6 @@
-
 name: tp-dist
 services:
+
   gateway:
     build:
       dockerfile: ./server/Dockerfile
@@ -14,79 +14,13 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
-  preprocessor:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-        NODE: preprocessor
-    container_name: preprocessor
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=5
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
-  production-filter:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-          NODE: production-filter
-    container_name: production-filter
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=5
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
-  year-filter:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-          NODE: year-filter
-    container_name: year-filter
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
-  sentiment-analyzer:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-          NODE: sentiment-analyzer
-    container_name: sentiment-analyzer
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
-  reducer:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-          NODE: reducer
-    container_name: reducer
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
+
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"   # AMQP protocol port
-      - "15672:15672" # Management UI port
+      - "5672:5672"
+      - "15672:15672"
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
@@ -97,7 +31,194 @@ services:
       interval: 2s
       timeout: 5s
       retries: 3
-  
+
+  preprocessor-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: preprocessor
+    container_name: preprocessor-1
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  preprocessor-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: preprocessor
+    container_name: preprocessor-2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  preprocessor-3:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: preprocessor
+    container_name: preprocessor-3
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  production-filter-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: production-filter
+    container_name: production-filter-1
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  production-filter-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: production-filter
+    container_name: production-filter-2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  year-filter-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: year-filter
+    container_name: year-filter-1
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  year-filter-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: year-filter
+    container_name: year-filter-2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  sentiment-analyzer-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: sentiment-analyzer
+    container_name: sentiment-analyzer-1
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  sentiment-analyzer-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: sentiment-analyzer
+    container_name: sentiment-analyzer-2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  reducer-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: reducer
+    container_name: reducer-1
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  reducer-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: reducer
+    container_name: reducer-2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  reducer-3:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: reducer
+    container_name: reducer-3
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  reducer-4:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: reducer
+    container_name: reducer-4
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
   final-reducer-q2:
     build:
       dockerfile: ./server/Dockerfile
@@ -110,10 +231,10 @@ services:
       - QUERY_NUM=2
       - JOINER_SHARDS=5
     depends_on:
-        rabbitmq:
-          condition: service_healthy
-          restart: true
-    
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
   final-reducer-q3:
     build:
       dockerfile: ./server/Dockerfile
@@ -126,10 +247,10 @@ services:
       - QUERY_NUM=3
       - JOINER_SHARDS=5
     depends_on:
-        rabbitmq:
-          condition: service_healthy
-          restart: true
-    
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
   final-reducer-q4:
     build:
       dockerfile: ./server/Dockerfile
@@ -142,10 +263,10 @@ services:
       - QUERY_NUM=4
       - JOINER_SHARDS=5
     depends_on:
-        rabbitmq:
-          condition: service_healthy
-          restart: true
-    
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
   final-reducer-q5:
     build:
       dockerfile: ./server/Dockerfile
@@ -158,15 +279,15 @@ services:
       - QUERY_NUM=5
       - JOINER_SHARDS=5
     depends_on:
-        rabbitmq:
-          condition: service_healthy
-          restart: true
-    
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
   joiner-1:
     build:
       dockerfile: ./server/Dockerfile
       args:
-          NODE: joiner
+        NODE: joiner
     container_name: joiner-1
     environment:
       - RABBITMQ_DEFAULT_USER=monke
@@ -176,12 +297,12 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
-    
+
   joiner-2:
     build:
       dockerfile: ./server/Dockerfile
       args:
-          NODE: joiner
+        NODE: joiner
     container_name: joiner-2
     environment:
       - RABBITMQ_DEFAULT_USER=monke
@@ -191,12 +312,12 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
-    
+
   joiner-3:
     build:
       dockerfile: ./server/Dockerfile
       args:
-          NODE: joiner
+        NODE: joiner
     container_name: joiner-3
     environment:
       - RABBITMQ_DEFAULT_USER=monke
@@ -206,12 +327,12 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
-    
+
   joiner-4:
     build:
       dockerfile: ./server/Dockerfile
       args:
-          NODE: joiner
+        NODE: joiner
     container_name: joiner-4
     environment:
       - RABBITMQ_DEFAULT_USER=monke
@@ -221,12 +342,12 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
-    
+
   joiner-5:
     build:
       dockerfile: ./server/Dockerfile
       args:
-          NODE: joiner
+        NODE: joiner
     container_name: joiner-5
     environment:
       - RABBITMQ_DEFAULT_USER=monke
@@ -236,7 +357,7 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
-    
+
   client1:
     container_name: client1
     build:
@@ -246,4 +367,5 @@ services:
     depends_on:
       - gateway
     volumes:
-        - ./archive/:/home/app/archive/
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/

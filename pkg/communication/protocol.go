@@ -189,7 +189,7 @@ func RecvQueryResults(conn net.Conn) (models.TotalQueryResults, error) {
 	case 2:
 		resultsArr, err = unmarshalSlice[models.Q2Country](results.Items)
 	case 3:
-		resultsArr, err = unmarshalSlice[models.Q3Movie](results.Items)
+		resultsArr, err = unmarshalSlice[models.Q3Result](results.Items)
 	case 4:
 		resultsArr, err = unmarshalSlice[models.Q4Actors](results.Items)
 	case 5:

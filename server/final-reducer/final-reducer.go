@@ -325,7 +325,6 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 			}
 
 			currentWeight += batch.Header.Weight
-			slog.Info("current weight", slog.Any("current weight", currentWeight), slog.Any("eof weight", eofWeight))
 			if batch.IsEof() {
 				eofWeight = int32(batch.Header.TotalWeight)
 				slog.Info("eof weight", slog.Any("eof weight", eofWeight))
@@ -378,8 +377,8 @@ func calculateTop5Countries(countries map[pkg.Country]uint64) common.Top5Countri
 func calculateBestAndWorstMovie(movies map[string]common.MovieAvgRating) common.BestAndWorstMovies {
 	bestMovie := ""
 	worstMovie := ""
-	bestRatingAvg := 0.0
-	worstRatingAvg := 0.0
+	bestRatingAvg := float64(0.0)
+	worstRatingAvg := float64(0.0)
 	for movie, rating := range movies {
 		ratingAvg := float64(rating.RatingSum) / float64(rating.RatingCount)
 		if ratingAvg > bestRatingAvg {
@@ -396,8 +395,8 @@ func calculateBestAndWorstMovie(movies map[string]common.MovieAvgRating) common.
 		slog.Warn("best or worst movie is empty")
 	}
 
-	bestMovieWithTitle := common.MovieWithTitle{ID: bestMovie, Title: movies[bestMovie].Title}
-	worstMovieWithTitle := common.MovieWithTitle{ID: worstMovie, Title: movies[worstMovie].Title}
+	bestMovieWithTitle := common.MovieWithTitle{ID: bestMovie, Title: movies[bestMovie].Title, Rating: float32(bestRatingAvg)}
+	worstMovieWithTitle := common.MovieWithTitle{ID: worstMovie, Title: movies[worstMovie].Title, Rating: float32(worstRatingAvg)}
 	return common.BestAndWorstMovies{BestMovie: bestMovieWithTitle, WorstMovie: worstMovieWithTitle}
 }
 

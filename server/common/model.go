@@ -91,8 +91,9 @@ type Top5Countries struct {
 }
 
 type MovieWithTitle struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
+	ID    string  `json:"id"`
+	Title string  `json:"title"`
+	Rating float32 `json:"rating"`
 }
 
 type BestAndWorstMovies struct {
