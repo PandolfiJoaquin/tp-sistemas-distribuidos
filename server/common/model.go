@@ -27,6 +27,12 @@ type Batch[T any] struct {
 	Data   []T `json:"data"`
 }
 
+func (h *Header) GetClientId() ClientId {
+	//return h.ClientId
+	clientId := ClientId("idDeNashe")
+	return clientId
+}
+
 func (h *Header) IsEof() bool {
 	return h.TotalWeight > 0
 }

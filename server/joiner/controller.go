@@ -21,35 +21,33 @@ const (
 	q4ToReduceQueue = "q4-to-reduce"
 )
 
-type Joiner struct {
+type JoinerController struct {
 	joinerId   int
 	middleware *common.Middleware
-	sessions   map[common.ClientId]*JoinerSession //para varios clientes convertir esto en un mapa [ClientId]JoinerSession
+	sessions   map[common.ClientId]*JoinerService //para varios clientes convertir esto en un mapa [ClientId]JoinerService
 }
 
-func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
+func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
 	if err != nil {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	return &Joiner{
+	return &JoinerController{
 		joinerId:   joinerId,
 		middleware: middleware,
-		sessions:   map[common.ClientId]*JoinerSession{},
+		sessions:   map[common.ClientId]*JoinerService{},
 	}, nil
 }
 
-func (j *Joiner) Start() {
+func (j *JoinerController) Start() {
 	defer j.stop()
 
-	// Sigterm , sigint
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	moviesChan, err := j.middleware.GetChanWithTopicToRecv(moviesExchange, fmt.Sprintf(moviestopic, j.joinerId))
-	//moviesChan, err := j.middleware.GetChanToRecv(fmt.Sprintf(moviesToJoinWithTopic, j.joinerId))
 	if err != nil {
 		slog.Error("Error creating channel", slog.String("queue", moviesExchange), slog.String("error", err.Error()))
 		return
@@ -82,7 +80,7 @@ func (j *Joiner) Start() {
 	j.run(ctx, moviesChan, reviewsChan, creditChan, q3ToReduce, q4ToReduce)
 }
 
-func (j *Joiner) run(
+func (j *JoinerController) run(
 	ctx context.Context,
 	_moviesChan, _reviewsChan, _creditChan <-chan common.Message,
 	q3ToReduce, q4ToReduce chan<- []byte,
@@ -92,7 +90,6 @@ func (j *Joiner) run(
 	reviews := dummyChan
 	credits := dummyChan
 	for {
-		clientId := common.ClientId("") //TODO: Esto se deberia tomar del header del mensaje
 		select {
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping joiner")
@@ -103,6 +100,7 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
+			clientId := batch.GetClientId()
 			session := j.getSession(clientId)
 			session.SaveMovies(batch)
 			if session.AllMoviesReceived() {
@@ -121,6 +119,7 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
+			clientId := batch.GetClientId()
 			session := j.getSession(clientId)
 			session.NotifyReview(batch.Header)
 			reviewXMovies := session.join(batch.Data)
@@ -147,6 +146,7 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
+			clientId := batch.GetClientId()
 			session := j.getSession(clientId)
 			session.NotifyCredit(batch.Header)
 
@@ -173,15 +173,15 @@ func (j *Joiner) run(
 	}
 }
 
-func (j *Joiner) getSession(clientId common.ClientId) *JoinerSession {
+func (j *JoinerController) getSession(clientId common.ClientId) *JoinerService {
 	if _, ok := j.sessions[clientId]; !ok {
 		slog.Info("New client detected. creating session", slog.String("clientId", string(clientId)))
-		j.sessions[clientId] = NewJoinerSession()
+		j.sessions[clientId] = NewJoinerService()
 	}
 	return j.sessions[clientId]
 }
 
-func (j *Joiner) cleanSession(id common.ClientId) {
+func (j *JoinerController) cleanSession(id common.ClientId) {
 	if j.sessions[id].IsDone() {
 		slog.Info("Done for client", slog.String("clientId", string(id)))
 		delete(j.sessions, id)
@@ -189,7 +189,7 @@ func (j *Joiner) cleanSession(id common.ClientId) {
 	}
 }
 
-func (j *Joiner) stop() {
+func (j *JoinerController) stop() {
 	if err := j.middleware.Close(); err != nil {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
