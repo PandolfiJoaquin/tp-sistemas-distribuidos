@@ -24,7 +24,7 @@ const (
 type Joiner struct {
 	joinerId   int
 	middleware *common.Middleware
-	sessions   map[string]*JoinerSession //para varios clientes convertir esto en un mapa [ClientId]JoinerSession
+	sessions   map[common.ClientId]*JoinerSession //para varios clientes convertir esto en un mapa [ClientId]JoinerSession
 }
 
 func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
@@ -37,7 +37,7 @@ func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
 	return &Joiner{
 		joinerId:   joinerId,
 		middleware: middleware,
-		sessions:   map[string]*JoinerSession{"": NewJoinerSession()},
+		sessions:   map[common.ClientId]*JoinerSession{},
 	}, nil
 }
 
@@ -92,6 +92,7 @@ func (j *Joiner) run(
 	reviews := dummyChan
 	credits := dummyChan
 	for {
+		clientId := common.ClientId("") //TODO: Esto se deberia tomar del header del mensaje
 		select {
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping joiner")
@@ -102,8 +103,9 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			j.sessions[""].SaveMovies(batch)
-			if j.sessions[""].AllMoviesReceived() {
+			session := j.getSession(clientId)
+			session.SaveMovies(batch)
+			if session.AllMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
 				reviews = _reviewsChan
 				credits = _creditChan
@@ -119,8 +121,9 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			j.sessions[""].NotifyReview(batch.Header)
-			reviewXMovies := j.sessions[""].join(batch.Data)
+			session := j.getSession(clientId)
+			session.NotifyReview(batch.Header)
+			reviewXMovies := session.join(batch.Data)
 			reviewsXMoviesBatch := common.Batch[common.MovieReview]{
 				Header: batch.Header,
 				Data:   reviewXMovies,
@@ -136,7 +139,7 @@ func (j *Joiner) run(
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
-			j.cleanSession()
+			j.cleanSession(clientId)
 			continue
 		case msg := <-credits:
 			var batch common.Batch[common.Credit]
@@ -144,9 +147,10 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			j.sessions[""].NotifyCredit(batch.Header)
+			session := j.getSession(clientId)
+			session.NotifyCredit(batch.Header)
 
-			actors := j.sessions[""].filterCredits(batch.Data)
+			actors := session.filterCredits(batch.Data)
 			actorsBatch := common.Batch[common.Credit]{
 				Header: batch.Header,
 				Data:   actors,
@@ -162,18 +166,26 @@ func (j *Joiner) run(
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
-			j.cleanSession()
+			j.cleanSession(clientId)
 			continue
 		}
 
 	}
 }
 
-func (j *Joiner) cleanSession() {
-	if j.sessions[""].IsDone() {
-		slog.Info("Done for client", slog.String("clientId", ""))
-		delete(j.sessions, "")
-		slog.Info("Successfully deleted session", slog.String("clientId", ""))
+func (j *Joiner) getSession(clientId common.ClientId) *JoinerSession {
+	if _, ok := j.sessions[clientId]; !ok {
+		slog.Info("New client detected. creating session", slog.String("clientId", string(clientId)))
+		j.sessions[clientId] = NewJoinerSession()
+	}
+	return j.sessions[clientId]
+}
+
+func (j *Joiner) cleanSession(id common.ClientId) {
+	if j.sessions[id].IsDone() {
+		slog.Info("Done for client", slog.String("clientId", string(id)))
+		delete(j.sessions, id)
+		slog.Info("Successfully deleted session", slog.String("clientId", string(id)))
 	}
 }
 
