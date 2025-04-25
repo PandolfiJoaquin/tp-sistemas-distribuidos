@@ -17,15 +17,14 @@ const (
 	reviewsTopic    = "reviews-to-join-%d"
 	creditExchange  = "credits-exchange"
 	creditTopic     = "credits-to-join-%d"
+	q3ToReduceQueue = "q3-to-reduce"
+	q4ToReduceQueue = "q4-to-reduce"
 )
-
-const q3ToReduceQueue = "q3-to-reduce"
-const q4ToReduceQueue = "q4-to-reduce"
 
 type Joiner struct {
 	joinerId   int
 	middleware *common.Middleware
-	session    *JoinerSession //para varios clientes convertir esto en un mapa [ClientId]JoinerSession
+	sessions   map[string]*JoinerSession //para varios clientes convertir esto en un mapa [ClientId]JoinerSession
 }
 
 func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
@@ -38,7 +37,7 @@ func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
 	return &Joiner{
 		joinerId:   joinerId,
 		middleware: middleware,
-		session:    NewJoinerSession(),
+		sessions:   map[string]*JoinerSession{"": NewJoinerSession()},
 	}, nil
 }
 
@@ -103,8 +102,8 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			j.session.SaveMovies(batch)
-			if j.session.AllMoviesReceived() {
+			j.sessions[""].SaveMovies(batch)
+			if j.sessions[""].AllMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
 				reviews = _reviewsChan
 				credits = _creditChan
@@ -120,8 +119,8 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			j.session.NotifyReview(batch.Header)
-			reviewXMovies := j.join(batch.Data)
+			j.sessions[""].NotifyReview(batch.Header)
+			reviewXMovies := j.sessions[""].join(batch.Data)
 			reviewsXMoviesBatch := common.Batch[common.MovieReview]{
 				Header: batch.Header,
 				Data:   reviewXMovies,
@@ -137,6 +136,7 @@ func (j *Joiner) run(
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
+			j.cleanSession()
 			continue
 		case msg := <-credits:
 			var batch common.Batch[common.Credit]
@@ -144,9 +144,9 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			j.session.NotifyCredit(batch.Header)
+			j.sessions[""].NotifyCredit(batch.Header)
 
-			actors := j.filterCredits(batch.Data)
+			actors := j.sessions[""].filterCredits(batch.Data)
 			actorsBatch := common.Batch[common.Credit]{
 				Header: batch.Header,
 				Data:   actors,
@@ -162,29 +162,19 @@ func (j *Joiner) run(
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
+			j.cleanSession()
 			continue
 		}
 
 	}
 }
 
-func (j *Joiner) join(reviews []common.Review) []common.MovieReview {
-	joinedReviews := common.Map(reviews, j.joinReview)
-	return common.Flatten(joinedReviews)
-}
-
-func (j *Joiner) joinReview(r common.Review) []common.MovieReview {
-
-	movies := j.session.GetMovies()
-	moviesForReview := common.Filter(movies, func(m common.Movie) bool { return m.ID == r.MovieID })
-	reviewXMovies := common.Map(moviesForReview, func(m common.Movie) common.MovieReview {
-		return common.MovieReview{
-			MovieID: m.ID,
-			Title:   m.Title,
-			Rating:  r.Rating,
-		}
-	})
-	return reviewXMovies
+func (j *Joiner) cleanSession() {
+	if j.sessions[""].IsDone() {
+		slog.Info("Done for client", slog.String("clientId", ""))
+		delete(j.sessions, "")
+		slog.Info("Successfully deleted session", slog.String("clientId", ""))
+	}
 }
 
 func (j *Joiner) stop() {
@@ -192,17 +182,4 @@ func (j *Joiner) stop() {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
 	slog.Info("joiner stopped")
-}
-
-func (j *Joiner) filterCredits(data []common.Credit) []common.Credit {
-	movies := j.session.GetMovies()
-	movieIds := common.Map(movies, func(m common.Movie) string { return m.ID })
-	ids := make(map[string]bool)
-	for _, id := range movieIds {
-		ids[id] = true
-	}
-	actors := common.Filter(data, func(c common.Credit) bool {
-		return ids[c.MovieId]
-	})
-	return actors
 }
