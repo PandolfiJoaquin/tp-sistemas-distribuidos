@@ -210,7 +210,7 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 					slog.Error("error marshalling response", slog.String("error", err.Error()))
 				}
 				r.connection.ChanToSend <- response
-				slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.ID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.ID))
+				slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.MovieID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.MovieID))
 				resetValues()
 			}
 
@@ -395,8 +395,8 @@ func calculateBestAndWorstMovie(movies map[string]common.MovieAvgRating) common.
 		slog.Warn("best or worst movie is empty")
 	}
 
-	bestMovieWithTitle := common.MovieWithTitle{ID: bestMovie, Title: movies[bestMovie].Title, Rating: float32(bestRatingAvg)}
-	worstMovieWithTitle := common.MovieWithTitle{ID: worstMovie, Title: movies[worstMovie].Title, Rating: float32(worstRatingAvg)}
+	bestMovieWithTitle := common.MovieReview{MovieID: bestMovie, Title: movies[bestMovie].Title, Rating: bestRatingAvg}
+	worstMovieWithTitle := common.MovieReview{MovieID: worstMovie, Title: movies[worstMovie].Title, Rating: worstRatingAvg}
 	return common.BestAndWorstMovies{BestMovie: bestMovieWithTitle, WorstMovie: worstMovieWithTitle}
 }
 
