@@ -119,9 +119,10 @@ func (f *ProductionFilter) start(ctx context.Context) {
 			batch, err := f.processQueryMessage(msg, f.filterByProductionQ1)
 			if err != nil {
 				slog.Error("error processing query message", slog.String("error", err.Error()))
-			}
-			if err := f.sendBatch(f.query1Connection.ChanToSend, batch); err != nil {
-				slog.Error("error sending batch", slog.String("error", err.Error()))
+			} else {
+				if err := f.sendBatch(f.query1Connection.ChanToSend, batch); err != nil {
+					slog.Error("error sending batch", slog.String("error", err.Error()))
+				}
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -130,9 +131,10 @@ func (f *ProductionFilter) start(ctx context.Context) {
 			batch, err := f.processQueryMessage(msg, f.filterByProductionQ2)
 			if err != nil {
 				slog.Error("error processing query message", slog.String("error", err.Error()))
-			}
-			if err := f.sendBatch(f.query2Connection.ChanToSend, batch); err != nil {
-				slog.Error("error sending batch", slog.String("error", err.Error()))
+			} else {
+				if err := f.sendBatch(f.query2Connection.ChanToSend, batch); err != nil {
+					slog.Error("error sending batch", slog.String("error", err.Error()))
+				}
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -141,9 +143,10 @@ func (f *ProductionFilter) start(ctx context.Context) {
 			batch, err := f.processQueryMessage(msg, f.filterByProductionQ3)
 			if err != nil {
 				slog.Error("error processing query message", slog.String("error", err.Error()))
-			}
-			if err := f.sendBatchToShards(f.query3ShardsConnections, batch); err != nil {
-				slog.Error("error sending batch to shards", slog.String("error", err.Error()))
+			} else {
+				if err := f.sendBatchToShards(f.query3ShardsConnections, batch); err != nil {
+					slog.Error("error sending batch to shards", slog.String("error", err.Error()))
+				}
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
