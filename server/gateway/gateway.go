@@ -115,76 +115,30 @@ func (g *Gateway) listen() {
 	}
 }
 
-func (g *Gateway) receiveMovies() error {
+func receiveData[T any](toPreprocess chan<- []byte, batchType string, client *net.Conn) error {
 	total := 0
 	for {
-		movies, err := communication.RecvMovies(g.client)
+		batch, err := communication.RecvBatch[T](*client)
 		if err != nil {
-			return fmt.Errorf("error receiving movies: %w", err)
+			return fmt.Errorf("error receiving %s: %w", batchType, err)
 		}
 
-		err = g.publishBatch(movies, "movies")
+		err = publishBatch(batch, batchType, toPreprocess)
 		if err != nil {
-			return fmt.Errorf("error publishing movies batch: %w", err)
+			return fmt.Errorf("error publishing %s batch: %w", batchType, err)
 		}
 
-		total += int(movies.Header.Weight)
+		total += int(batch.Header.Weight)
 
-		if movies.IsEof() {
+		if batch.IsEof() {
 			break
 		}
 	}
-	slog.Info("Total movies received", slog.Int("total", total))
+	slog.Info("Total %s received", slog.String("type", batchType), slog.Int("total", total))
 	return nil
 }
 
-func (g *Gateway) receiveReviews() error {
-	total := 0
-	for {
-		reviews, err := communication.RecvReviews(g.client)
-		if err != nil {
-			return fmt.Errorf("error receiving reviews: %w", err)
-		}
-
-		err = g.publishBatch(reviews, "reviews")
-		if err != nil {
-			return fmt.Errorf("error publishing reviews batch: %w", err)
-		}
-
-		total += int(reviews.Header.Weight)
-
-		if reviews.IsEof() {
-			break
-		}
-	}
-	slog.Info("Total reviews received", slog.Int("total", total))
-	return nil
-}
-
-func (g *Gateway) receiveCredits() error {
-	total := 0
-	for {
-		credits, err := communication.RecvCredits(g.client)
-		if err != nil {
-			return fmt.Errorf("error receiving credits: %w", err)
-		}
-
-		err = g.publishBatch(credits, "credits")
-		if err != nil {
-			return fmt.Errorf("error publishing credits batch: %w", err)
-		}
-
-		total += int(credits.Header.Weight)
-
-		if credits.IsEof() {
-			break
-		}
-	}
-	slog.Info("Total credits received", slog.Int("total", total))
-	return nil
-}
-
-func (g *Gateway) publishBatch(batch models.RawBatch, batchType string) error {
+func publishBatch[T any](batch models.RawBatch[T], batchType string, toPreprocess chan<- []byte) error {
 	bodyBytes, err := json.Marshal(batch)
 	if err != nil {
 		return fmt.Errorf("error marshalling batch: %w", err)
@@ -200,13 +154,14 @@ func (g *Gateway) publishBatch(batch models.RawBatch, batchType string) error {
 		return fmt.Errorf("error marshalling raw batch: %w", err)
 	}
 
-	g.toPreprocess <- batchToSend
+	toPreprocess <- batchToSend
 	return nil
 }
 
 func (g *Gateway) handleConnection(deadChan chan bool) {
 	slog.Info("Client connected", slog.String("address", g.client.RemoteAddr().String()))
-	err := g.receiveMovies()
+
+	err := receiveData[models.RawMovie](g.toPreprocess, "movies", &g.client)
 	if err != nil {
 		if g.running {
 			if !errors.Is(err, io.EOF) {
@@ -218,7 +173,7 @@ func (g *Gateway) handleConnection(deadChan chan bool) {
 		return
 	}
 
-	err = g.receiveReviews()
+	err = receiveData[models.RawReview](g.toPreprocess, "reviews", &g.client)
 	if err != nil {
 		if g.running {
 			if !errors.Is(err, io.EOF) {
@@ -230,7 +185,7 @@ func (g *Gateway) handleConnection(deadChan chan bool) {
 		return
 	}
 
-	err = g.receiveCredits()
+	err = receiveData[models.RawCredits](g.toPreprocess, "credits", &g.client)
 	if err != nil {
 		if g.running {
 			if !errors.Is(err, io.EOF) {
@@ -514,31 +469,21 @@ func (g *Gateway) publishCleanupBatch() error {
 		TotalWeight: -2,
 	}
 
-	rawMovies := models.RawMovieBatch{
+	emptyBatch := models.RawBatch[any]{ // no data
 		Header: cleanHeader,
-		Movies: nil,
 	}
 
-	err := g.publishBatch(rawMovies, "movies")
+	err := publishBatch(emptyBatch, "movies", g.toPreprocess)
 	if err != nil {
 		return fmt.Errorf("error publishing movies batch: %w", err)
 	}
 
-	rawReviews := models.RawReviewBatch{
-		Header:  cleanHeader,
-		Reviews: nil,
-	}
-	err = g.publishBatch(rawReviews, "reviews")
+	err = publishBatch(emptyBatch, "reviews", g.toPreprocess)
 	if err != nil {
 		return fmt.Errorf("error publishing reviews batch: %w", err)
 	}
 
-	rawCredits := models.RawCreditBatch{
-		Header:  cleanHeader,
-		Credits: nil,
-	}
-
-	err = g.publishBatch(rawCredits, "credits")
+	err = publishBatch(emptyBatch, "credits", g.toPreprocess)
 	if err != nil {
 		return fmt.Errorf("error publishing credits batch: %w", err)
 	}

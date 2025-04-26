@@ -7,100 +7,8 @@ import (
 	"pkg/models"
 )
 
-func SendMovies(conn net.Conn, movies []models.RawMovie) error {
-	batch := models.RawMovieBatch{
-		Header: models.Header{
-			Weight:      uint32(len(movies)),
-			TotalWeight: -1,
-		},
-		Movies: movies,
-	}
-
-	if err := sendBatch(conn, &batch); err != nil {
-		return err
-	}
-	return nil
-}
-
-// TODO: Merge eofs into one (with RawBatch)
-func SendMovieEof(conn net.Conn, total int32) error {
-	batch := models.RawMovieBatch{
-		Header: models.Header{
-			TotalWeight: total,
-			Weight:      0,
-		},
-	}
-
-	if err := sendBatch(conn, &batch); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func RecvMovies(conn net.Conn) (models.RawMovieBatch, error) {
-	batch, err := recvMovieBatch(conn)
-	if err != nil {
-		return batch, err
-	}
-	return batch, nil
-}
-
-func SendReviews(conn net.Conn, reviews []models.RawReview) error {
-	batch := models.RawReviewBatch{
-		Header: models.Header{
-			Weight:      uint32(len(reviews)),
-			TotalWeight: -1,
-		},
-		Reviews: reviews,
-	}
-
-	if err := sendBatch(conn, &batch); err != nil {
-		return err
-	}
-	return nil
-}
-
-func SendReviewEof(conn net.Conn, total int32) error {
-	batch := models.RawReviewBatch{
-		Header: models.Header{
-			TotalWeight: total,
-			Weight:      0,
-		},
-	}
-
-	if err := sendBatch(conn, &batch); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func RecvReviews(conn net.Conn) (models.RawReviewBatch, error) {
-	batch, err := recvReviewBatch(conn)
-	if err != nil {
-		return batch, err
-	}
-	return batch, nil
-}
-
-func SendCredits(conn net.Conn, credits []models.RawCredits) error {
-	batch := models.RawCreditBatch{
-		Header: models.Header{
-			Weight:      uint32(len(credits)),
-			TotalWeight: -1,
-		},
-		Credits: credits,
-	}
-
-	if err := sendBatch(conn, batch); err != nil {
-		return err
-	}
-	return nil
-}
-
-func SendCreditsEof(conn net.Conn, total int32) error {
-	batch := models.RawCreditBatch{
+func SendBatchEOF(conn net.Conn, total int32) error {
+	batch := models.RawBatch[any]{ //Doesn't matter type as it is empty
 		Header: models.Header{
 			TotalWeight: total,
 			Weight:      0,
@@ -114,11 +22,30 @@ func SendCreditsEof(conn net.Conn, total int32) error {
 	return nil
 }
 
-func RecvCredits(conn net.Conn) (models.RawCreditBatch, error) {
-	batch, err := recvCreditBatch(conn)
+func SendData[T any](conn net.Conn, data []T) error {
+	batch := models.RawBatch[T]{
+		Header: models.Header{
+			Weight:      uint32(len(data)),
+			TotalWeight: -1,
+		},
+		Data: data,
+	}
+
+	if err := sendBatch(conn, batch); err != nil {
+		return err
+	}
+	return nil
+}
+
+func RecvBatch[T any](conn net.Conn) (models.RawBatch[T], error) {
+	var batch models.RawBatch[T]
+	var err error
+
+	batch, err = recvBatch[T](conn)
 	if err != nil {
 		return batch, err
 	}
+
 	return batch, nil
 }
 
@@ -135,6 +62,7 @@ func SendQueryEof(conn net.Conn, queryID int) error {
 	return nil
 }
 
+// SendQueryResults TODO: Do generics in results
 func SendQueryResults(conn net.Conn, queryID int, payload []models.QueryResult) error {
 	itemsJSON, err := json.Marshal(payload)
 	if err != nil {
