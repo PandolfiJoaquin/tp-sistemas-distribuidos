@@ -11,19 +11,17 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-type queuesNames struct {
-	previousQueue string
-	nextQueue     string
-}
-
-var queriesQueues = map[int]queuesNames{
-	1: {previousQueue: "filter-year-q1", nextQueue: "filter-production-q1"},
-	3: {previousQueue: "filter-year-q3q4", nextQueue: "filter-production-q3q4"},
-}
+const (
+	previousQueueQuery1     = "filter-year-q1"
+	previousQueueQuery3And4 = "filter-year-q3q4"
+	nextQueueQuery1         = "filter-production-q1"
+	nextQueueQuery3And4     = "filter-production-q3q4"
+)
 
 type YearFilter struct {
-	middleware  *common.Middleware
-	connections map[int]connection
+	middleware       *common.Middleware
+	query1Connection connection
+	query3Connection connection
 }
 
 type connection struct {
@@ -37,36 +35,30 @@ func NewYearFilter(rabbitUser, rabbitPass string) (*YearFilter, error) {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
 
-	connections, err := initializeConnections(middleware)
+	query1Connection, err := initializeConnection(middleware, previousQueueQuery1, nextQueueQuery1)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing connections: %w", err)
 	}
 
-	return &YearFilter{middleware: middleware, connections: connections}, nil
+	query3And4Connection, err := initializeConnection(middleware, previousQueueQuery3And4, nextQueueQuery3And4)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing connections: %w", err)
+	}
+
+	return &YearFilter{middleware: middleware, query1Connection: query1Connection, query3Connection: query3And4Connection}, nil
 }
 
-func initializeConnection(middleware *common.Middleware, previousQueue, nextQueue string) (connection, error) {
+func initializeConnection(middleware *common.Middleware, previousQueue string, nextQueue string) (connection, error) {
 	previousChan, err := middleware.GetChanToRecv(previousQueue)
 	if err != nil {
 		return connection{}, fmt.Errorf("error getting channel %s to receive: %w", previousQueue, err)
 	}
+
 	nextChan, err := middleware.GetChanToSend(nextQueue)
 	if err != nil {
 		return connection{}, fmt.Errorf("error getting channel %s to send: %w", nextQueue, err)
 	}
 	return connection{previousChan, nextChan}, nil
-}
-
-func initializeConnections(middleware *common.Middleware) (map[int]connection, error) {
-	connections := make(map[int]connection)
-	for queryNum, queuesNames := range queriesQueues {
-		connection, err := initializeConnection(middleware, queuesNames.previousQueue, queuesNames.nextQueue)
-		if err != nil {
-			return nil, fmt.Errorf("error initializing connection for %s: %w", queuesNames.previousQueue, err)
-		}
-		connections[queryNum] = connection
-	}
-	return connections, nil
 }
 
 func (f *YearFilter) Start() {
@@ -85,15 +77,15 @@ func (f *YearFilter) start(ctx context.Context) {
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping year filter")
 			return
-		case msg := <-f.connections[1].ChanToRecv:
-			if err := f.processQueryMessage(1, msg, f.year2000sFilter); err != nil {
+		case msg := <-f.query1Connection.ChanToRecv:
+			if err := f.processQueryMessage(f.query1Connection.ChanToSend, msg, f.year2000sFilter); err != nil {
 				slog.Error("error processing q1 message", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging q1 message", slog.String("error", err.Error()))
 			}
-		case msg := <-f.connections[3].ChanToRecv:
-			if err := f.processQueryMessage(3, msg, f.yearAfter2000sFilter); err != nil {
+		case msg := <-f.query3Connection.ChanToRecv:
+			if err := f.processQueryMessage(f.query3Connection.ChanToSend, msg, f.yearAfter2000sFilter); err != nil {
 				slog.Error("error processing q3/q4 message", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
@@ -103,12 +95,12 @@ func (f *YearFilter) start(ctx context.Context) {
 	}
 }
 
-func (f *YearFilter) processQueryMessage(queryNum int, msg common.Message, filterFunc func(common.Movie) bool) error {
+func (f *YearFilter) processQueryMessage(chanToSend chan<- []byte, msg common.Message, filterFunc func(common.Movie) bool) error {
 	batch, err := f.filterMessage(msg, filterFunc)
 	if err != nil {
 		return fmt.Errorf("error filtering message: %w", err)
 	}
-	if err := f.sendBatch(queryNum, batch); err != nil {
+	if err := f.sendBatch(chanToSend, batch); err != nil {
 		return fmt.Errorf("error sending batch: %w", err)
 	}
 	return nil
@@ -129,12 +121,12 @@ func (f *YearFilter) filterMessage(msg common.Message, filterFunc func(common.Mo
 	return batch, nil
 }
 
-func (f *YearFilter) sendBatch(queryNum int, batch common.Batch[common.Movie]) error {
+func (f *YearFilter) sendBatch(chanToSend chan<- []byte, batch common.Batch[common.Movie]) error {
 	response, err := json.Marshal(batch)
 	if err != nil {
 		return fmt.Errorf("error marshalling batch: %w", err)
 	}
-	f.connections[queryNum].ChanToSend <- response
+	chanToSend <- response
 	return nil
 }
 
