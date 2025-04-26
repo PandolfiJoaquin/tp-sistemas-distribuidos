@@ -199,7 +199,7 @@ func (r *Reducer) processQuery4Message(msg common.Message) error {
 }
 
 func (r *Reducer) processQuery5Message(msg common.Message) error {
-	var batch common.Batch[common.MovieWithSentimentOverview]
+	var batch common.Batch[common.MovieWithSentiment]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		return fmt.Errorf("error unmarshalling query 5 message: %w", err)
 	}
@@ -296,7 +296,7 @@ func (r *Reducer) reduceQ4(batch common.Batch[common.Credit]) (common.Batch[comm
 	}, nil
 }
 
-func (r *Reducer) reduceQ5(batch common.Batch[common.MovieWithSentimentOverview]) (common.Batch[common.SentimentProfitRatioAccumulator], error) {
+func (r *Reducer) reduceQ5(batch common.Batch[common.MovieWithSentiment]) (common.Batch[common.SentimentProfitRatioAccumulator], error) {
 	// me llega un mensaje de MovieWithSentimentOverview y tengo que reducirlo a un AvgMovieProfitRatioBySentiment, me viene filtrado
 	positiveProfitRatio := common.ProfitRatioAccumulator{}
 	negativeProfitRatio := common.ProfitRatioAccumulator{}
