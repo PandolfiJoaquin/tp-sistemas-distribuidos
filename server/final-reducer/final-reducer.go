@@ -29,7 +29,8 @@ type FinalReducer struct {
 	middleware  *common.Middleware
 	connection  connection
 	queryNum    int
-	amtOfShards int
+	joinerShards int
+	sessions    map[string]*ClientSession
 }
 
 type connection struct {
@@ -52,13 +53,14 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 		middleware:  middleware,
 		connection:  connection,
 		queryNum:    queryNum,
-		amtOfShards: amtOfShards,
+		joinerShards: amtOfShards,
+		sessions:    make(map[string]*ClientSession),
 	}, nil
 }
 
 func initializeConnectionForQuery(queryNum int, middleware *common.Middleware) (connection, error) {
-	queuesNames := queriesQueues[queryNum]
-	if queuesNames.previousQueue == "" || queuesNames.nextQueue == "" {
+	queuesNames, ok := queriesQueues[queryNum]
+	if !ok {
 		return connection{}, fmt.Errorf("query number %d not found", queryNum)
 	}
 
@@ -101,16 +103,6 @@ func (r *FinalReducer) Start() {
 }
 
 func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
-	countries := make(map[pkg.Country]uint64)
-	currentWeight := uint32(0)
-	eofWeight := int32(0)
-
-	resetValues := func() {
-		countries = make(map[pkg.Country]uint64)
-		currentWeight = 0
-		eofWeight = 0
-	}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -126,18 +118,26 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 				continue
 			}
 
+			clientID := batch.Header.GetClientID()
+			if _, ok := r.sessions[clientID]; !ok {
+				r.sessions[clientID] = NewClientSession(clientID, 1)
+				r.sessions[clientID].SetData(make(map[pkg.Country]uint64))
+			}
+			countries := r.sessions[clientID].GetData().(map[pkg.Country]uint64)
+
 			// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
 			for _, countryBudget := range batch.Data {
 				countries[countryBudget.Country] += countryBudget.Budget
 			}
 
-			currentWeight += batch.Header.Weight
+			r.sessions[clientID].SetData(countries)
 
+			r.sessions[clientID].AddCurrentWeight(batch.Header.Weight)
 			if batch.IsEof() {
-				eofWeight = int32(batch.Header.TotalWeight)
+				r.sessions[clientID].SetEofWeight(int32(batch.Header.TotalWeight))
 			}
 
-			if int32(currentWeight) == eofWeight && eofWeight != 0 {
+			if r.sessions[clientID].IsFinished() {
 				top5Countries := calculateTop5Countries(countries)
 				response, err := json.Marshal(top5Countries)
 				if err != nil {
@@ -145,7 +145,7 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 				}
 				r.connection.ChanToSend <- response
 				slog.Info("sent query2 final response")
-				resetValues()
+				delete(r.sessions, clientID)
 			}
 
 			if err := msg.Ack(); err != nil {
@@ -156,16 +156,6 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
-	movies := make(map[string]common.MovieAvgRating)
-	currentWeight := uint32(0)
-	eofWeight := int32(0)
-
-	resetValues := func() {
-		movies = make(map[string]common.MovieAvgRating)
-		currentWeight = 0
-		eofWeight = 0
-	}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -178,6 +168,13 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 				continue
 			}
 
+			clientID := batch.Header.GetClientID()
+			if _, ok := r.sessions[clientID]; !ok {
+				r.sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
+				r.sessions[clientID].SetData(make(map[string]common.MovieAvgRating))
+			}
+			movies := r.sessions[clientID].GetData().(map[string]common.MovieAvgRating)
+
 			for _, movieRating := range batch.Data {
 				if currentRating, ok := movies[movieRating.MovieID]; !ok {
 					movies[movieRating.MovieID] = movieRating
@@ -188,22 +185,20 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 				}
 			}
 
-			currentWeight += batch.Header.Weight
+			r.sessions[clientID].SetData(movies)
 
+			r.sessions[clientID].AddCurrentWeight(batch.Header.Weight)
 			if batch.IsEof() {
-				if eofWeight != 0 {
+				if r.sessions[clientID].GetEofWeight() != 0 {
 					if err := msg.Ack(); err != nil {
 						return
 					}
 					continue
 				}
-				eofWeight = batch.Header.TotalWeight * int32(r.amtOfShards)
-			}
-			if int32(currentWeight) > eofWeight && eofWeight != 0 {
-				slog.Error("current weight is greater than eof weight", slog.Any("current weight", int32(currentWeight)), slog.Any("eof weight", eofWeight))
+				r.sessions[clientID].SetEofWeight(int32(batch.Header.TotalWeight))
 			}
 
-			if int32(currentWeight) == eofWeight {
+			if r.sessions[clientID].IsFinished() {
 				bestAndWorstMovies := calculateBestAndWorstMovie(movies)
 				response, err := json.Marshal(bestAndWorstMovies)
 				if err != nil {
@@ -211,7 +206,7 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 				}
 				r.connection.ChanToSend <- response
 				slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.MovieID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.MovieID))
-				resetValues()
+				delete(r.sessions, clientID)
 			}
 
 			if err := msg.Ack(); err != nil {
@@ -222,16 +217,6 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
-	actorMovies := make(map[string]common.ActorMoviesAmount)
-	currentWeight := uint32(0)
-	eofWeight := int32(0)
-
-	resetValues := func() {
-		actorMovies = make(map[string]common.ActorMoviesAmount)
-		currentWeight = 0
-		eofWeight = 0
-	}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -241,11 +226,15 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 			var batch common.Batch[common.ActorMoviesAmount]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
-				if err := msg.Ack(); err != nil {
-					slog.Error("error acknowledging message", slog.String("error", err.Error()))
-				}
 				continue
 			}
+
+			clientID := batch.Header.GetClientID()
+			if _, ok := r.sessions[clientID]; !ok {
+				r.sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
+				r.sessions[clientID].SetData(make(map[string]common.ActorMoviesAmount))
+			}
+			actorMovies := r.sessions[clientID].GetData().(map[string]common.ActorMoviesAmount)
 
 			// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
 			for _, actorMoviesAmount := range batch.Data {
@@ -257,19 +246,20 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 				}
 			}
 
-			currentWeight += batch.Header.Weight
+			r.sessions[clientID].SetData(actorMovies)
 
+			r.sessions[clientID].AddCurrentWeight(batch.Header.Weight)
 			if batch.IsEof() {
-				if eofWeight != 0 {
+				if r.sessions[clientID].GetEofWeight() != 0 {
 					if err := msg.Ack(); err != nil {
 						return
 					}
 					continue
 				}
-				eofWeight = batch.Header.TotalWeight * int32(r.amtOfShards)
+				r.sessions[clientID].SetEofWeight(int32(batch.Header.TotalWeight))
 			}
 
-			if int32(currentWeight) == eofWeight && eofWeight != 0 {
+			if r.sessions[clientID].IsFinished() {
 				top10Actors := calculateTop10Actors(actorMovies)
 				response, err := json.Marshal(top10Actors)
 				if err != nil {
@@ -277,7 +267,7 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 				}
 				r.connection.ChanToSend <- response
 				slog.Info("sent query4 final response", slog.Any("top10 actors", top10Actors))
-				resetValues()
+				delete(r.sessions, clientID)
 			}
 
 			if err := msg.Ack(); err != nil {
@@ -288,15 +278,6 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
-	sentimentProfitRatios := common.SentimentProfitRatioAccumulator{}
-	currentWeight := uint32(0)
-	eofWeight := int32(0)
-
-	resetValues := func() {
-		sentimentProfitRatios = common.SentimentProfitRatioAccumulator{}
-		currentWeight = 0
-		eofWeight = 0
-	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -312,6 +293,13 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 				continue
 			}
 
+			clientID := batch.Header.GetClientID()
+			if _, ok := r.sessions[clientID]; !ok {
+				r.sessions[clientID] = NewClientSession(clientID, 1)
+				r.sessions[clientID].SetData(common.SentimentProfitRatioAccumulator{})
+			}
+			sentimentProfitRatios := r.sessions[clientID].GetData().(common.SentimentProfitRatioAccumulator)
+
 			// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
 			for _, sentimentProfitRatio := range batch.Data {
 				sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum
@@ -324,13 +312,14 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 				}
 			}
 
-			currentWeight += batch.Header.Weight
+			r.sessions[clientID].SetData(sentimentProfitRatios)
+
+			r.sessions[clientID].AddCurrentWeight(batch.Header.Weight)
 			if batch.IsEof() {
-				eofWeight = int32(batch.Header.TotalWeight)
-				slog.Info("eof weight", slog.Any("eof weight", eofWeight))
+				r.sessions[clientID].SetEofWeight(int32(batch.Header.TotalWeight))
 			}
 
-			if int32(currentWeight) == eofWeight && eofWeight != 0 {
+			if r.sessions[clientID].IsFinished() {
 				sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
 				response, err := json.Marshal(sentimentProfitRatioAverage)
 				if err != nil {
@@ -338,7 +327,7 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 				}
 				r.connection.ChanToSend <- response
 				slog.Info("sent query5 final response", slog.Float64("positive avg profit ratio", sentimentProfitRatioAverage.PositiveAvgProfitRatio), slog.Float64("negative avg profit ratio", sentimentProfitRatioAverage.NegativeAvgProfitRatio))
-				resetValues()
+				delete(r.sessions, clientID)
 			}
 
 			if err := msg.Ack(); err != nil {
