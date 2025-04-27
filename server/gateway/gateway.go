@@ -410,14 +410,14 @@ func (g *Gateway) handleResults3(msg common.Message) ([]models.QueryResult, erro
 	q3Result := []models.QueryResult{
 		models.Q3Result{
 			Best: models.Q3Movie{
-				ID:     bestAndWorstMovies.BestMovie.ID,
+				ID:     bestAndWorstMovies.BestMovie.MovieID,
 				Title:  bestAndWorstMovies.BestMovie.Title,
-				Rating: bestAndWorstMovies.BestMovie.Rating,
+				Rating: float32(bestAndWorstMovies.BestMovie.Rating),
 			},
 			Worst: models.Q3Movie{
-				ID:    bestAndWorstMovies.WorstMovie.ID,
-				Title: bestAndWorstMovies.WorstMovie.Title,
-				Rating: bestAndWorstMovies.WorstMovie.Rating,
+				ID:     bestAndWorstMovies.WorstMovie.MovieID,
+				Title:  bestAndWorstMovies.WorstMovie.Title,
+				Rating: float32(bestAndWorstMovies.WorstMovie.Rating),
 			},
 		},
 	}
