@@ -134,7 +134,7 @@ func receiveData[T any](toPreprocess chan<- []byte, batchType string, client *ne
 			break
 		}
 	}
-	slog.Info("Total %s received", slog.String("type", batchType), slog.Int("total", total))
+	slog.Info("Total received", slog.String("type", batchType), slog.Int("total", total))
 	return nil
 }
 
@@ -290,51 +290,21 @@ func (g *Gateway) processMessages(deadChan chan bool) {
 	g.done = 0
 }
 
-func (g *Gateway) handleResult1(msg common.Message) error {
+func (g *Gateway) handleResult1(msg common.Message) (*models.TotalQueryResults, error) {
 	batch, err := g.consumeBatch(msg.Body)
 	if err != nil {
-		return fmt.Errorf("error consuming results: %w", err)
+		return nil, fmt.Errorf("error consuming results: %w", err)
 	}
 
-	if !(len(batch.Data) == 0 && !batch.IsEof()) {
-		err = g.processResult1(batch)
-		if err != nil {
-			return fmt.Errorf("error processing result: %w", err)
-		}
+	if len(batch.Data) == 0 && !batch.IsEof() {
+		return nil, nil
 	}
 
-	if err := msg.Ack(); err != nil {
-		return fmt.Errorf("error acknowledging message: %w", err)
-	}
-
-	return nil
+	results := MovieToQResult(batch)
+	return &results, err
 }
 
-func (g *Gateway) processResult1(batch common.Batch[common.Movie]) error {
-	if batch.IsEof() {
-		slog.Info("EOF message received", slog.Any("headers", batch.Header))
-		err := communication.SendQueryEof(g.client, 1)
-		if err != nil {
-			return fmt.Errorf("error sending EOF: %w", err)
-		}
-		g.done++
-	} else {
-		q1Movies := make([]models.QueryResult, len(batch.Data))
-		for i, movie := range batch.Data {
-			q1Movies[i] = models.Q1Movie{
-				Title:  movie.Title,
-				Genres: movie.Genres,
-			}
-		}
-		err := communication.SendQueryResults(g.client, 1, q1Movies)
-		if err != nil {
-			return fmt.Errorf("error sending query results: %w", err)
-		}
-	}
-	return nil
-}
-
-func (g *Gateway) handleResults2(msg common.Message) ([]models.QueryResult, error) {
+func (g *Gateway) handleResults2(msg common.Message) (*models.TotalQueryResults, error) {
 	var top5Countries common.Top5Countries
 	if err := json.Unmarshal(msg.Body, &top5Countries); err != nil {
 		return nil, fmt.Errorf("error unmarshalling top 5 countries: %w", err)
@@ -346,59 +316,34 @@ func (g *Gateway) handleResults2(msg common.Message) ([]models.QueryResult, erro
 
 	slog.Info("Top 5 countries", slog.Any("top5Countries", top5Countries))
 
-	q2Result := []models.QueryResult{
-		models.Q2Country{Country: top5Countries.Countries[0].Country, Budget: top5Countries.Countries[0].Budget},
-		models.Q2Country{Country: top5Countries.Countries[1].Country, Budget: top5Countries.Countries[1].Budget},
-		models.Q2Country{Country: top5Countries.Countries[2].Country, Budget: top5Countries.Countries[2].Budget},
-		models.Q2Country{Country: top5Countries.Countries[3].Country, Budget: top5Countries.Countries[3].Budget},
-		models.Q2Country{Country: top5Countries.Countries[4].Country, Budget: top5Countries.Countries[4].Budget},
-	}
-	return q2Result, nil
+	results := Top5CountriesToQResult(top5Countries)
+	return &results, nil
 }
 
-func (g *Gateway) handleResults3(msg common.Message) ([]models.QueryResult, error) {
+func (g *Gateway) handleResults3(msg common.Message) (*models.TotalQueryResults, error) {
 	var bestAndWorstMovies common.BestAndWorstMovies
 	if err := json.Unmarshal(msg.Body, &bestAndWorstMovies); err != nil {
 		return nil, fmt.Errorf("error unmarshalling best and worst movies: %w", err)
 	}
 	slog.Info("Best and worst movies", slog.Any("bestAndWorstMovies", bestAndWorstMovies))
-	q3Result := []models.QueryResult{
-		models.Q3Result{
-			Best: models.Q3Movie{
-				ID:     bestAndWorstMovies.BestMovie.MovieID,
-				Title:  bestAndWorstMovies.BestMovie.Title,
-				Rating: float32(bestAndWorstMovies.BestMovie.Rating),
-			},
-			Worst: models.Q3Movie{
-				ID:     bestAndWorstMovies.WorstMovie.MovieID,
-				Title:  bestAndWorstMovies.WorstMovie.Title,
-				Rating: float32(bestAndWorstMovies.WorstMovie.Rating),
-			},
-		},
-	}
-	return q3Result, nil
+
+	results := BestAndWorstToQResult(bestAndWorstMovies)
+	return &results, nil
 }
 
-func (g *Gateway) handleResults4(msg common.Message) ([]models.QueryResult, error) {
+func (g *Gateway) handleResults4(msg common.Message) (*models.TotalQueryResults, error) {
 	var top10Actors common.Top10Actors
 	if err := json.Unmarshal(msg.Body, &top10Actors); err != nil {
 		return nil, fmt.Errorf("error unmarshalling top 10 actors: %w", err)
 	}
 
 	slog.Info("Top 10 actors", slog.Any("top10Actors", top10Actors))
-	q4Result := make([]models.QueryResult, len(top10Actors.TopActors))
-	for i, actor := range top10Actors.TopActors {
-		q4Result[i] = models.Q4Actors{
-			ActorId:     actor.ActorID,
-			ActorName:   actor.ActorName,
-			Appearances: actor.MoviesAmount,
-		}
-	}
 
-	return q4Result, nil
+	results := Top10ActorsToQResult(top10Actors)
+	return &results, nil
 }
 
-func (g *Gateway) handleResults5(msg common.Message) ([]models.QueryResult, error) {
+func (g *Gateway) handleResults5(msg common.Message) (*models.TotalQueryResults, error) {
 	var sentimentProfitRatio common.SentimentProfitRatioAverage
 	if err := json.Unmarshal(msg.Body, &sentimentProfitRatio); err != nil {
 		return nil, fmt.Errorf("error unmarshalling sentiment profit ratio: %w", err)
@@ -406,27 +351,16 @@ func (g *Gateway) handleResults5(msg common.Message) ([]models.QueryResult, erro
 
 	slog.Info("received query 5 results", slog.Any("sentiment profit ratio", sentimentProfitRatio))
 
-	q5Result := []models.QueryResult{
-		models.Q5Avg{
-			PositiveAvgProfitRatio: sentimentProfitRatio.PositiveAvgProfitRatio,
-			NegativeAvgProfitRatio: sentimentProfitRatio.NegativeAvgProfitRatio,
-		},
-	}
-
-	return q5Result, nil
+	results := SentimentToQResult(sentimentProfitRatio)
+	return &results, nil
 }
 
 func (g *Gateway) handleResult(msg common.Message, query int) error {
-	var results []models.QueryResult
+	var results *models.TotalQueryResults
 	var err error
 	switch query {
 	case 1:
-		// Case 1 is weird, TODO: change it
-		err = g.handleResult1(msg)
-		if err != nil {
-			return fmt.Errorf("error handling results in query %d err: %s", query, err)
-		}
-		return nil
+		results, err = g.handleResult1(msg)
 	case 2:
 		results, err = g.handleResults2(msg)
 	case 3:
@@ -441,12 +375,16 @@ func (g *Gateway) handleResult(msg common.Message, query int) error {
 		return fmt.Errorf("error handling results in query %d err: %s", query, err)
 	}
 
-	err = communication.SendQueryResults(g.client, query, results)
-	if err != nil {
-		return fmt.Errorf("error sending query results: %w", err)
+	if results != nil { // can be nil due to empty results in query 1
+		err = communication.SendQueryResults(g.client, *results)
+		if err != nil {
+			return fmt.Errorf("error sending query results: %w", err)
+		}
+		if results.Last {
+			g.done++
+			slog.Info("Total queries processed", slog.Int("total", int(g.done)), slog.Int("query", query))
+		}
 	}
-
-	g.done++
 
 	if err := msg.Ack(); err != nil {
 		return fmt.Errorf("error acknowledging message: %w", err)

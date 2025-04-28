@@ -113,7 +113,7 @@ func recvBatch[T any](conn net.Conn) (models.RawBatch[T], error) {
 	return batch, nil
 }
 
-func sendResults(conn net.Conn, results models.Results) error {
+func sendResults(conn net.Conn, results models.RawQueryResults) error {
 	data, err := json.Marshal(results)
 	if err != nil {
 		return fmt.Errorf("error marshalling results: %w", err)
@@ -127,8 +127,8 @@ func sendResults(conn net.Conn, results models.Results) error {
 	return nil
 }
 
-func recvResults(conn net.Conn) (models.Results, error) {
-	var results models.Results
+func recvResults(conn net.Conn) (models.RawQueryResults, error) {
+	var results models.RawQueryResults
 
 	sizeBuf, err := RecvAll(conn, size)
 	if err != nil {

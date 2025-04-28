@@ -49,41 +49,30 @@ func RecvBatch[T any](conn net.Conn) (models.RawBatch[T], error) {
 	return batch, nil
 }
 
-func SendQueryEof(conn net.Conn, queryID int) error {
-	results := models.Results{
-		QueryID: queryID,
-	}
-
-	err := sendResults(conn, results)
+func SendQueryResults(conn net.Conn, results models.TotalQueryResults) error {
+	itemsJson, err := json.Marshal(results.Items)
 	if err != nil {
-		return fmt.Errorf("error sending query response: %w", err)
+		return fmt.Errorf("error marshalling query results: %w", err)
 	}
 
-	return nil
-}
+	rawResults := models.RawQueryResults{
+		QueryId: results.QueryId,
+		Items:   itemsJson,
+		Last:    results.Last,
+	}
 
-// SendQueryResults TODO: Do generics in results
-func SendQueryResults(conn net.Conn, queryID int, payload []models.QueryResult) error {
-	itemsJSON, err := json.Marshal(payload)
+	err = sendResults(conn, rawResults)
 	if err != nil {
-		return fmt.Errorf("error sending query response: %w", err)
-	}
-
-	// wraps in a results struct
-	results := models.Results{
-		QueryID: queryID,
-		Items:   itemsJSON,
-	}
-
-	err = sendResults(conn, results)
-	if err != nil {
-		return fmt.Errorf("error sending query response: %w", err)
+		return fmt.Errorf("error sending query responose: %w", err)
 	}
 
 	return nil
 }
 
 func unmarshalSlice[T models.QueryResult](data []byte) ([]models.QueryResult, error) {
+	if data == nil {
+		return nil, nil
+	}
 	var items []T
 	if err := json.Unmarshal(data, &items); err != nil {
 		return nil, err
@@ -103,15 +92,9 @@ func RecvQueryResults(conn net.Conn) (models.TotalQueryResults, error) {
 		return totalResults, fmt.Errorf("error receiving query response: %w", err)
 	}
 
-	if results.Items == nil {
-		return models.TotalQueryResults{
-			QueryId: results.QueryID,
-			Items:   nil,
-		}, nil
-	}
-
 	var resultsArr []models.QueryResult
-	switch results.QueryID {
+	// Must unmarshal the items to the correct type
+	switch results.QueryId {
 	case 1:
 		resultsArr, err = unmarshalSlice[models.Q1Movie](results.Items)
 	case 2:
@@ -123,18 +106,15 @@ func RecvQueryResults(conn net.Conn) (models.TotalQueryResults, error) {
 	case 5:
 		resultsArr, err = unmarshalSlice[models.Q5Avg](results.Items)
 	default:
-		return totalResults, fmt.Errorf("unknown query id: %d", results.QueryID)
+		return totalResults, fmt.Errorf("unknown query id: %d", results.QueryId)
 	}
 
 	if err != nil {
 		return totalResults, fmt.Errorf("error unmarshalling query response: %w", err)
 	}
 
-	totalResults.QueryId = results.QueryID
+	totalResults.QueryId = results.QueryId
 	totalResults.Items = resultsArr
+	totalResults.Last = results.Last
 	return totalResults, nil
-}
-
-func IsQueryEof(results models.TotalQueryResults) bool {
-	return len(results.Items) == 0
 }

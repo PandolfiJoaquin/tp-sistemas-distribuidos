@@ -195,13 +195,8 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
 				return
 			}
 
-			if communication.IsQueryEof(results) {
+			if results.Last {
 				queriesReceived = append(queriesReceived, true)
-				continue
-			}
-
-			if results.QueryId != 1 {
-				queriesReceived = append(queriesReceived, false)
 			}
 
 			for _, result := range results.Items {
