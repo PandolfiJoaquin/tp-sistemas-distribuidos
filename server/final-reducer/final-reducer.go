@@ -95,7 +95,7 @@ func (r *FinalReducer) Start() {
 		r.startReceivingQ4(ctx)
 	} else if r.queryNum == 5 {
 		slog.Info("starting final reducer for query 5")
-		r.startReceivingQ5a(ctx)
+		r.startReceivingQ5(ctx)
 	} else {
 		slog.Error("query number not found", slog.Int("query number", r.queryNum))
 		return
@@ -148,7 +148,12 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 			r.sessions[clientID].SetData(make(map[pkg.Country]uint64))
 		}
 
-		countries := r.sessions[clientID].GetData().(map[pkg.Country]uint64)
+		countries, ok := r.sessions[clientID].GetData().(map[pkg.Country]uint64)
+		if !ok {
+			slog.Error("error getting data", slog.String("error", "data is not of required type: map[pkg.Country]uint64"))
+			return
+		}
+
 		for _, countryBudget := range batch.Data {
 			countries[countryBudget.Country] += countryBudget.Budget
 		}
@@ -167,7 +172,12 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 			r.sessions[clientID].SetData(make(map[string]common.MovieAvgRating))
 		}
 
-		movies := r.sessions[clientID].GetData().(map[string]common.MovieAvgRating)
+		movies, ok := r.sessions[clientID].GetData().(map[string]common.MovieAvgRating)
+		if !ok {
+			slog.Error("error getting data", slog.String("error", "data is not of required type: map[string]common.MovieAvgRating"))
+			return
+		}
+
 		for _, movieRating := range batch.Data {
 			if currentRating, ok := movies[movieRating.MovieID]; !ok {
 				movies[movieRating.MovieID] = movieRating
@@ -192,7 +202,12 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 			r.sessions[clientID].SetData(make(map[string]common.ActorMoviesAmount))
 		}
 
-		actorMovies := r.sessions[clientID].GetData().(map[string]common.ActorMoviesAmount)
+		actorMovies, ok := r.sessions[clientID].GetData().(map[string]common.ActorMoviesAmount)
+		if !ok {
+			slog.Error("error getting data", slog.String("error", "data is not of required type: map[string]common.ActorMoviesAmount"))
+			return
+		}
+
 		for _, actorMoviesAmount := range batch.Data {
 			if currentMoviesAmount, ok := actorMovies[actorMoviesAmount.ActorID]; !ok {
 				actorMovies[actorMoviesAmount.ActorID] = actorMoviesAmount
@@ -208,7 +223,8 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 	}
 }
 
-func (r *FinalReducer) startReceivingQ5a(ctx context.Context) {
+func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
+	//TODO: add sessions here instead of in the struct and use generics
 	err := startReceiving(ctx, r.connection.ChanToRecv, r.sessions, r.finishAndSendBatchForQuery5, func(batch common.Batch[common.SentimentProfitRatioAccumulator]) {
 		clientID := batch.Header.GetClientID()
 		if _, ok := r.sessions[clientID]; !ok {
@@ -216,7 +232,11 @@ func (r *FinalReducer) startReceivingQ5a(ctx context.Context) {
 			r.sessions[clientID].SetData(common.SentimentProfitRatioAccumulator{})
 		}
 
-		sentimentProfitRatios := r.sessions[clientID].GetData().(common.SentimentProfitRatioAccumulator)
+		sentimentProfitRatios, ok := r.sessions[clientID].GetData().(common.SentimentProfitRatioAccumulator)
+		if !ok {
+			slog.Error("error getting data", slog.String("error", "data is not of required type: common.SentimentProfitRatioAccumulator"))
+			return
+		}
 
 		for _, sentimentProfitRatio := range batch.Data {
 			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum
