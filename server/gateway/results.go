@@ -37,15 +37,15 @@ func Top5CountriesToQResult(top5 common.Top5Countries) models.TotalQueryResults 
 
 func BestAndWorstToQResult(bestAndWorse common.BestAndWorstMovies) models.TotalQueryResults {
 	best := models.Q3Movie{
-		ID:     bestAndWorse.BestMovie.ID,
+		ID:     bestAndWorse.BestMovie.MovieID,
 		Title:  bestAndWorse.BestMovie.Title,
-		Rating: bestAndWorse.BestMovie.Rating,
+		Rating: float32(bestAndWorse.BestMovie.Rating),
 	}
 
 	worst := models.Q3Movie{
-		ID:     bestAndWorse.WorstMovie.ID,
+		ID:     bestAndWorse.WorstMovie.MovieID,
 		Title:  bestAndWorse.WorstMovie.Title,
-		Rating: bestAndWorse.WorstMovie.Rating,
+		Rating: float32(bestAndWorse.WorstMovie.Rating),
 	}
 
 	return models.TotalQueryResults{
