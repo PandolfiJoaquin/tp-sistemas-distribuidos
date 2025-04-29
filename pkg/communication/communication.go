@@ -7,9 +7,10 @@ import (
 	"net"
 	"pkg/models"
 )
+
 const (
 	MaxPacketSize = 1024 * 32 // 32 KB
-	size = 4
+	size          = 4
 )
 
 func RecvAll(conn net.Conn, size int) ([]byte, error) {
@@ -51,62 +52,46 @@ func sendFixedSize(conn net.Conn, data []byte) error {
 	return nil
 }
 
-
-
-func sendBatch(conn net.Conn, batch models.RawBatch) error {
-    data, err := json.Marshal(batch)
-    if err != nil {
-        return fmt.Errorf("error marshalling batch: %w", err)
-    }
+func sendBatch[T any](conn net.Conn, batch models.RawBatch[T]) error {
+	data, err := json.Marshal(batch)
+	if err != nil {
+		return fmt.Errorf("error marshalling batch: %w", err)
+	}
 
 	// Adding the header
-    header := make([]byte, size)
-    binary.BigEndian.PutUint32(header, uint32(len(data)))
-    current := append([]byte(nil), header...)
+	header := make([]byte, size)
+	binary.BigEndian.PutUint32(header, uint32(len(data)))
+	current := append([]byte(nil), header...)
 
-    for offset := 0; offset < len(data); offset += MaxPacketSize{
-        end := offset + MaxPacketSize 
-        if end > len(data) {
-            end = len(data)
-        }
-        chunk := data[offset:end]
+	for offset := 0; offset < len(data); offset += MaxPacketSize {
+		end := offset + MaxPacketSize
+		if end > len(data) {
+			end = len(data)
+		}
+		chunk := data[offset:end]
 		// Sends current if its size + chunk size is greater than MaxPacketSize
-        if len(current)+len(chunk) > MaxPacketSize{
-            if err := SendAll(conn, current); err != nil {
-                return fmt.Errorf("error sending batch: %w", err)
-            }
+		if len(current)+len(chunk) > MaxPacketSize {
+			if err := SendAll(conn, current); err != nil {
+				return fmt.Errorf("error sending batch: %w", err)
+			}
 			// reset
-            current = []byte{}
-        }
+			current = []byte{}
+		}
 
-        current = append(current, chunk...)
-    }
+		current = append(current, chunk...)
+	}
 
-    if len(current) > 0 {
-        if err := SendAll(conn, current); err != nil {
-            return fmt.Errorf("error sending final batch: %w", err)
-        }
-    }
+	if len(current) > 0 {
+		if err := SendAll(conn, current); err != nil {
+			return fmt.Errorf("error sending final batch: %w", err)
+		}
+	}
 
-    return nil
+	return nil
 }
 
-
-
-// func sendBatch(conn net.Conn, batch models.RawBatch) error {
-// 	data, err := json.Marshal(batch)
-// 	if err != nil {
-// 		return fmt.Errorf("error marshalling batch: %w", err)
-// 	}
-// 	err = sendFixedSize(conn, data)
-// 	if err != nil {
-// 		return fmt.Errorf("error sending batch: %w", err)
-// 	}
-// 	return nil
-// }
-
-func recvMovieBatch(conn net.Conn) (models.RawMovieBatch, error) {
-	var batch models.RawMovieBatch
+func recvBatch[T any](conn net.Conn) (models.RawBatch[T], error) {
+	var batch models.RawBatch[T]
 
 	sizeBuf, err := RecvAll(conn, size)
 	if err != nil {
@@ -128,53 +113,7 @@ func recvMovieBatch(conn net.Conn) (models.RawMovieBatch, error) {
 	return batch, nil
 }
 
-func recvReviewBatch(conn net.Conn) (models.RawReviewBatch, error) {
-	var batch models.RawReviewBatch
-
-	sizeBuf, err := RecvAll(conn, size)
-	if err != nil {
-		return batch, fmt.Errorf("error reading size: %w", err)
-	}
-
-	size := binary.BigEndian.Uint32(sizeBuf)
-
-	// Read the actual message
-	dataBuf, err := RecvAll(conn, int(size))
-	if err != nil {
-		return batch, fmt.Errorf("error reading data: %w", err)
-	}
-
-	if err := json.Unmarshal(dataBuf, &batch); err != nil {
-		return batch, fmt.Errorf("error unmarshalling batch: %w", err)
-	}
-
-	return batch, nil
-}
-
-func recvCreditBatch(conn net.Conn) (models.RawCreditBatch, error) {
-	var batch models.RawCreditBatch
-
-	sizeBuf, err := RecvAll(conn, size)
-	if err != nil {
-		return batch, fmt.Errorf("error reading size: %w", err)
-	}
-
-	size := binary.BigEndian.Uint32(sizeBuf)
-
-	// Read the actual message
-	dataBuf, err := RecvAll(conn, int(size))
-	if err != nil {
-		return batch, fmt.Errorf("error reading data: %w", err)
-	}
-
-	if err := json.Unmarshal(dataBuf, &batch); err != nil {
-		return batch, fmt.Errorf("error unmarshalling batch: %w", err)
-	}
-
-	return batch, nil
-}
-
-func sendResults(conn net.Conn, results models.Results) error {
+func sendResults(conn net.Conn, results models.RawQueryResults) error {
 	data, err := json.Marshal(results)
 	if err != nil {
 		return fmt.Errorf("error marshalling results: %w", err)
@@ -188,8 +127,8 @@ func sendResults(conn net.Conn, results models.Results) error {
 	return nil
 }
 
-func recvResults(conn net.Conn) (models.Results, error) {
-	var results models.Results
+func recvResults(conn net.Conn) (models.RawQueryResults, error) {
+	var results models.RawQueryResults
 
 	sizeBuf, err := RecvAll(conn, size)
 	if err != nil {

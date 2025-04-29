@@ -9,30 +9,44 @@ import (
 	"pkg/models"
 )
 
-// TODO: ver si se puede hacer una interface
+type BatchReader[T any] interface {
+	ReadBatch() ([]T, error)
+	Close() error
+	Finished() bool
+	TotalRead() int
+}
 
-// MoviesReader is a struct that reads movies from a CSV file.
-
-type MoviesReader struct {
-	Finished  bool
-	Reader    *csv.Reader
+type baseReader struct {
+	finished  bool
+	reader    *csv.Reader
 	file      *os.File
 	batchSize int
 	fields    []string
-	Total     int
+	total     int
 }
 
-func NewMoviesReader(path string, batchSize int) (*MoviesReader, error) {
+func (br *baseReader) Finished() bool {
+	return br.finished
+}
+
+func (br *baseReader) Close() error {
+	if br.file != nil {
+		return br.file.Close()
+	}
+	return nil
+}
+
+func (br *baseReader) TotalRead() int {
+	return br.total
+}
+
+func newBaseReader(path string, batchSize int) (*baseReader, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %v", err)
 	}
 
 	csvReader := csv.NewReader(file)
-	if csvReader == nil {
-		return nil, fmt.Errorf("error creating CSV reader")
-	}
-
 	csvReader.LazyQuotes = true
 	csvReader.FieldsPerRecord = -1 // Allow variable number of fields
 
@@ -41,54 +55,111 @@ func NewMoviesReader(path string, batchSize int) (*MoviesReader, error) {
 		return nil, fmt.Errorf("error reading header line: %v", err)
 	}
 
-	reader := &MoviesReader{
-		Reader:    csvReader,
+	return &baseReader{
+		reader:    csvReader,
 		file:      file,
 		batchSize: batchSize,
 		fields:    fields,
-	}
-
-	return reader, nil
+	}, nil
 }
 
-func (mr *MoviesReader) ReadMovie() (*models.RawMovie, error) {
-	expectedFields := len(mr.fields)
+type MoviesReader struct {
+	*baseReader
+}
 
-	if mr.Finished {
-		return nil, nil
-	}
-
-	record, err := mr.Reader.Read()
+func NewMoviesReader(path string, batchSize int) (BatchReader[models.RawMovie], error) {
+	base, err := newBaseReader(path, batchSize)
 	if err != nil {
-		if errors.Is(err, io.EOF) {
-			mr.Finished = true
-			return nil, nil
-		} else {
-			return nil, err
-		}
+		return nil, err
 	}
+	return &MoviesReader{baseReader: base}, nil
+}
 
-	// If we read a record but its field count is off, try to join with more rows.
-	if len(record) != expectedFields {
-		record, err = joinRecords(mr.Reader, record, expectedFields)
+func (mr *MoviesReader) ReadBatch() ([]models.RawMovie, error) {
+	var movies []models.RawMovie
+
+	for len(movies) < mr.batchSize {
+		movie, err := readAndParse(mr.baseReader, parseMovie)
 		if err != nil {
-			return nil, err
+			if errors.Is(err, ErrInvalidMovie) {
+				continue // drop invalid movies, don't count toward batch
+			}
+			return nil, err // actual error
 		}
+		if movie == nil {
+			break // EOF
+		}
+		movies = append(movies, *movie)
 	}
 
-	movie, err := parseMovie(record)
-	if err != nil {
-		if errors.Is(err, ErrInvalidMovie) {
-			return nil, err
-		}
-		fmt.Printf("Broken record: %v\n", record)
-		return nil, fmt.Errorf("error parsing movie: %v", err)
-	}
-
-	mr.Total++
-	return movie, nil
+	return movies, nil
 }
 
+type ReviewReader struct {
+	*baseReader
+}
+
+func NewReviewReader(path string, batchSize int) (BatchReader[models.RawReview], error) {
+	base, err := newBaseReader(path, batchSize)
+	if err != nil {
+		return nil, err
+	}
+	return &ReviewReader{baseReader: base}, nil
+}
+
+func (rr *ReviewReader) ReadBatch() ([]models.RawReview, error) {
+	var reviews []models.RawReview
+
+	for len(reviews) < rr.batchSize {
+		review, err := readAndParse(rr.baseReader, parseReview)
+		if err != nil {
+			if errors.Is(err, ErrInvalidReview) {
+				continue // drop invalid reviews, don't count toward batch
+			}
+			return nil, err // actual error
+		}
+		if review == nil {
+			break // EOF
+		}
+		reviews = append(reviews, *review)
+	}
+
+	return reviews, nil
+}
+
+type CreditsReader struct {
+	*baseReader
+}
+
+func NewCreditsReader(path string, batchSize int) (BatchReader[models.RawCredits], error) {
+	base, err := newBaseReader(path, batchSize)
+	if err != nil {
+		return nil, err
+	}
+	return &CreditsReader{baseReader: base}, nil
+}
+
+func (cr *CreditsReader) ReadBatch() ([]models.RawCredits, error) {
+	var credits []models.RawCredits
+
+	for len(credits) < cr.batchSize {
+		credit, err := readAndParse(cr.baseReader, parseCredits)
+		if err != nil {
+			if errors.Is(err, ErrInvalidCredit) {
+				continue // drop invalid credits, don't count toward batch
+			}
+			return nil, err // actual error
+		}
+		if credit == nil {
+			break // EOF
+		}
+		credits = append(credits, *credit)
+	}
+
+	return credits, nil
+}
+
+// Aux function to join records that are split across multiple lines
 func joinRecords(r *csv.Reader, current []string, expectedFields int) ([]string, error) {
 	// Keep joining records until we have at least expectedFields fields.
 	joined := current
@@ -110,239 +181,37 @@ func joinRecords(r *csv.Reader, current []string, expectedFields int) ([]string,
 	return joined, nil
 }
 
-func (mr *MoviesReader) Close() {
-	if mr.file != nil {
-		err := mr.file.Close()
-		if err != nil {
-			return
-		}
-	}
-}
+func readAndParse[T any](reader *baseReader, parseFunc func([]string) (*T, error)) (*T, error) {
+	expectedFields := len(reader.fields)
 
-func (mr *MoviesReader) ReadMovies() ([]models.RawMovie, error) {
-	var movies []models.RawMovie
-
-	for len(movies) < mr.batchSize {
-		movie, err := mr.ReadMovie()
-		if err != nil {
-			if errors.Is(err, ErrInvalidMovie) {
-				continue // drop invalid movies, don't count toward batch
-			}
-			return nil, err // actual error
-		}
-		if movie == nil {
-			break // EOF
-		}
-		movies = append(movies, *movie)
-	}
-
-	return movies, nil
-}
-
-type ReviewReader struct {
-	Finished  bool
-	Reader    *csv.Reader
-	file      *os.File
-	batchSize int
-	fields    []string
-	Total     int
-}
-
-func NewReviewReader(path string, batchSize int) (*ReviewReader, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("error opening file: %v", err)
-	}
-
-	csvReader := csv.NewReader(file)
-	if csvReader == nil {
-		return nil, fmt.Errorf("error creating CSV reader")
-	}
-
-	csvReader.LazyQuotes = true
-	csvReader.FieldsPerRecord = -1 // Allow variable number of fields
-
-	fields, err := csvReader.Read() // Read the header line
-	if err != nil {
-		return nil, fmt.Errorf("error reading header line: %v", err)
-	}
-
-	reader := &ReviewReader{
-		Reader:    csvReader,
-		file:      file,
-		batchSize: batchSize,
-		fields:    fields,
-	}
-
-	return reader, nil
-}
-
-func (rr *ReviewReader) ReadReview() (*models.RawReview, error) {
-	expectedFields := len(rr.fields)
-
-	if rr.Finished {
+	if reader.Finished() {
 		return nil, nil
 	}
 
-	record, err := rr.Reader.Read()
+	record, err := reader.reader.Read()
 	if err != nil {
 		if errors.Is(err, io.EOF) {
-			rr.Finished = true
+			reader.finished = true
 			return nil, nil
 		} else {
 			return nil, err
 		}
 	}
 
-	// If we read a record but its field count is off, try to join with more rows.
 	if len(record) != expectedFields {
-		record, err = joinRecords(rr.Reader, record, expectedFields)
+		record, err = joinRecords(reader.reader, record, expectedFields)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	review, err := parseReview(record)
+	parsedRecord, err := parseFunc(record)
 	if err != nil {
-		if errors.Is(err, ErrInvalidReview) {
-			return nil, err
-		}
-		return nil, fmt.Errorf("error parsing review: %v", err)
+		return nil, err
 	}
 
-	rr.Total++
-	return review, nil
-}
+	reader.total++
 
-func (rr *ReviewReader) ReadReviews() ([]models.RawReview, error) {
-	var reviews []models.RawReview
+	return parsedRecord, nil
 
-	for len(reviews) < rr.batchSize {
-		review, err := rr.ReadReview()
-		if err != nil {
-			if errors.Is(err, ErrInvalidReview) {
-				continue // drop invalid reviews, don't count toward batch
-			}
-			return nil, err // actual error
-		}
-		if review == nil {
-			break // EOF
-		}
-		reviews = append(reviews, *review)
-	}
-
-	return reviews, nil
-}
-
-func (rr *ReviewReader) Close() {
-	if rr.file != nil {
-		err := rr.file.Close()
-		if err != nil {
-			return
-		}
-	}
-}
-
-type CreditsReader struct {
-	Finished  bool
-	Reader    *csv.Reader
-	file      *os.File
-	batchSize int
-	fields    []string
-	Total     int
-}
-
-func NewCreditsReader(path string, batchSize int) (*CreditsReader, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("error opening file: %v", err)
-	}
-
-	csvReader := csv.NewReader(file)
-	if csvReader == nil {
-		return nil, fmt.Errorf("error creating CSV reader")
-	}
-
-	csvReader.LazyQuotes = true
-	csvReader.FieldsPerRecord = -1 // Allow variable number of fields
-
-	fields, err := csvReader.Read() // Read the header line
-	if err != nil {
-		return nil, fmt.Errorf("error reading header line: %v", err)
-	}
-
-	reader := &CreditsReader{
-		Reader:    csvReader,
-		file:      file,
-		batchSize: batchSize,
-		fields:    fields,
-	}
-
-	return reader, nil
-}
-
-func (cr *CreditsReader) ReadCredit() (*models.RawCredits, error) {
-	expectedFields := len(cr.fields)
-
-	if cr.Finished {
-		return nil, nil
-	}
-
-	record, err := cr.Reader.Read()
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			cr.Finished = true
-			return nil, nil
-		} else {
-			return nil, err
-		}
-	}
-
-	// If we read a record but its field count is off, try to join with more rows.
-	if len(record) != expectedFields {
-		record, err = joinRecords(cr.Reader, record, expectedFields)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	credit, err := parseCredits(record)
-	if err != nil {
-		if errors.Is(err, ErrInvalidCredit) {
-			return nil, err
-		}
-		return nil, fmt.Errorf("error parsing credit: %v", err)
-	}
-
-	cr.Total++
-	return credit, nil
-}
-
-func (cr *CreditsReader) ReadCredits() ([]models.RawCredits, error) {
-	var credits []models.RawCredits
-
-	for len(credits) < cr.batchSize {
-		credit, err := cr.ReadCredit()
-		if err != nil {
-			if errors.Is(err, ErrInvalidCredit) {
-				continue // drop invalid credits, don't count toward batch
-			}
-			return nil, err // actual error
-		}
-		if credit == nil {
-			break // EOF
-		}
-		credits = append(credits, *credit)
-	}
-
-	return credits, nil
-}
-
-func (cr *CreditsReader) Close() {
-	if cr.file != nil {
-		err := cr.file.Close()
-		if err != nil {
-			return
-		}
-	}
 }
