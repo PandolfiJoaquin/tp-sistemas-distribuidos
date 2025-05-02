@@ -82,7 +82,7 @@ func (s *JoinerService) LogState() {
 		slog.Any("reviewsToExpect", s.reviewsToExpect))
 }
 
-func (s *JoinerService) join(reviews []common.Review) []common.MovieReview {
+func (s *JoinerService) Join(reviews []common.Review) []common.MovieReview {
 	joinedReviews := common.Map(reviews, s.joinReview)
 	return common.Flatten(joinedReviews)
 }
