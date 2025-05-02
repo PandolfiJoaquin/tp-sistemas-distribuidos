@@ -6,11 +6,12 @@ import (
 )
 
 type ToProcessMsg struct {
-	Type string          `json:"type"`
-	Body json.RawMessage `json:"body"`
+	Type     string          `json:"type"`
+	ClientId string          `json:"client_id"`
+	Body     json.RawMessage `json:"body"`
 }
 
-//Query 2
+// Query 2
 type CountryBudget struct {
 	Country pkg.Country `json:"country"`
 	Budget  uint64      `json:"budget"`
@@ -20,7 +21,7 @@ type Top5Countries struct {
 	Countries []CountryBudget `json:"countries"`
 }
 
-//Query 3
+// Query 3
 type MovieAvgRating struct {
 	MovieID     string  `json:"movie_id"`
 	Title       string  `json:"title"`
@@ -33,7 +34,7 @@ type BestAndWorstMovies struct {
 	WorstMovie MovieReview `json:"worst_movie"`
 }
 
-//Query 4
+// Query 4
 type ActorMoviesAmount struct {
 	ActorID      string `json:"actor_id"`
 	ActorName    string `json:"actor_name"`
@@ -44,7 +45,7 @@ type Top10Actors struct {
 	TopActors []ActorMoviesAmount `json:"top_actors"`
 }
 
-//Query 5
+// Query 5
 type ProfitRatioAccumulator struct {
 	ProfitRatioSum   float64 `json:"profit_ratio_sum"`
 	ProfitRatioCount uint32  `json:"profit_ratio_count"`

@@ -6,7 +6,7 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-func preprocessMovies(batch models.RawBatch[models.RawMovie]) common.Batch[common.Movie] {
+func preprocessMovies(batch models.RawBatch[models.RawMovie], id string) common.Batch[common.Movie] {
 	movies := make([]common.Movie, 0)
 
 	for _, movie := range batch.Data {
@@ -26,12 +26,12 @@ func preprocessMovies(batch models.RawBatch[models.RawMovie]) common.Batch[commo
 		})
 	}
 
-	res := makeBatchMsg[common.Movie](batch.Header.Weight, movies, batch.Header.TotalWeight)
+	res := makeBatchMsg[common.Movie](batch.Header.Weight, movies, batch.Header.TotalWeight, id)
 
 	return res
 }
 
-func preprocessReviews(batch models.RawBatch[models.RawReview]) common.Batch[common.Review] {
+func preprocessReviews(batch models.RawBatch[models.RawReview], id string) common.Batch[common.Review] {
 	reviews := make([]common.Review, 0)
 
 	for _, review := range batch.Data {
@@ -45,12 +45,12 @@ func preprocessReviews(batch models.RawBatch[models.RawReview]) common.Batch[com
 			Rating:  rating,
 		})
 	}
-	res := makeBatchMsg[common.Review](batch.Header.Weight, reviews, batch.Header.TotalWeight)
+	res := makeBatchMsg[common.Review](batch.Header.Weight, reviews, batch.Header.TotalWeight, id)
 
 	return res
 }
 
-func preprocessCredits(batch models.RawBatch[models.RawCredits]) common.Batch[common.Credit] {
+func preprocessCredits(batch models.RawBatch[models.RawCredits], id string) common.Batch[common.Credit] {
 	credits := make([]common.Credit, 0)
 
 	for _, credit := range batch.Data {
@@ -70,7 +70,7 @@ func preprocessCredits(batch models.RawBatch[models.RawCredits]) common.Batch[co
 		})
 	}
 
-	res := makeBatchMsg[common.Credit](batch.Header.Weight, credits, batch.Header.TotalWeight)
+	res := makeBatchMsg[common.Credit](batch.Header.Weight, credits, batch.Header.TotalWeight, id)
 
 	return res
 }

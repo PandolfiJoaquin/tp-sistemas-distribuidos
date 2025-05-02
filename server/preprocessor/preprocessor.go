@@ -162,9 +162,9 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 
 		var payload any
 		if mb.IsEof() {
-			payload = makeEOFBatch[common.Movie](mb.Header.TotalWeight)
+			payload = makeEOFBatch[common.Movie](mb.Header.TotalWeight, msg.ClientId)
 		} else {
-			payload = preprocessMovies(mb)
+			payload = preprocessMovies(mb, msg.ClientId)
 		}
 
 		data, err := json.Marshal(payload)
@@ -183,7 +183,7 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 			return fmt.Errorf("reviews unmarshal: %w", err)
 		}
 
-		batch := preprocessReviews(rb)
+		batch := preprocessReviews(rb, msg.ClientId)
 		if err := sendBatchMap(
 			batch,
 			p.shards,
@@ -200,7 +200,7 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 			return fmt.Errorf("credits unmarshal: %w", err)
 		}
 
-		batch := preprocessCredits(cb)
+		batch := preprocessCredits(cb, msg.ClientId)
 		if err := sendBatchMap(
 			batch,
 			p.shards,
@@ -218,21 +218,23 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 	return nil
 }
 
-func makeEOFBatch[T any](totalWeight int32) common.Batch[T] {
+func makeEOFBatch[T any](totalWeight int32, id string) common.Batch[T] {
 	return common.Batch[T]{
 		Header: common.Header{
 			Weight:      0,
 			TotalWeight: totalWeight,
+			ClientID:    id,
 		},
 		Data: []T{},
 	}
 }
 
-func makeBatchMsg[T any](weight uint32, data []T, totalWeight int32) common.Batch[T] {
+func makeBatchMsg[T any](weight uint32, data []T, totalWeight int32, clientID string) common.Batch[T] {
 	return common.Batch[T]{
 		Header: common.Header{
 			Weight:      weight,
 			TotalWeight: totalWeight,
+			ClientID:    clientID,
 		},
 		Data: data,
 	}
