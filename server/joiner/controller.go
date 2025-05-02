@@ -24,8 +24,8 @@ const (
 type JoinerController struct {
 	joinerId            int
 	middleware          *common.Middleware
-	sessions            map[common.ClientId]*JoinerService
-	storedReviewBatches map[common.ClientId][]common.Batch[common.Review]
+	sessions            map[string]*JoinerService
+	storedReviewBatches map[string][]common.Batch[common.Review]
 }
 
 func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
@@ -38,8 +38,8 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 	return &JoinerController{
 		joinerId:            joinerId,
 		middleware:          middleware,
-		sessions:            map[common.ClientId]*JoinerService{},
-		storedReviewBatches: map[common.ClientId][]common.Batch[common.Review]{},
+		sessions:            map[string]*JoinerService{},
+		storedReviewBatches: map[string][]common.Batch[common.Review]{},
 	}, nil
 }
 
@@ -82,7 +82,7 @@ func (j *JoinerController) Start() {
 	j.run(ctx, moviesChan, reviewsChan, creditChan, q3ToReduce, q4ToReduce)
 }
 
-func (j *JoinerController) joinReviewBatch(clientId common.ClientId, batch common.Batch[common.Review], q3ToReduce chan<- []byte) {
+func (j *JoinerController) joinReviewBatch(clientId string, batch common.Batch[common.Review], q3ToReduce chan<- []byte) {
 	session := j.getSession(clientId)
 	session.NotifyReview(batch.Header)
 
@@ -99,11 +99,11 @@ func (j *JoinerController) joinReviewBatch(clientId common.ClientId, batch commo
 	q3ToReduce <- response
 }
 
-func (j *JoinerController) storeReviewBatch(clientId common.ClientId, batch common.Batch[common.Review]) {
+func (j *JoinerController) storeReviewBatch(clientId string, batch common.Batch[common.Review]) {
 	j.storedReviewBatches[clientId] = append(j.storedReviewBatches[clientId], batch)
 }
 
-func (j *JoinerController) joinStoredReviewBatches(clientId common.ClientId, q3ToReduce chan<- []byte) {
+func (j *JoinerController) joinStoredReviewBatches(clientId string, q3ToReduce chan<- []byte) {
 	slog.Info("joining stored review batches", slog.String("clientId", string(clientId)))
 	batches := j.storedReviewBatches[clientId]
 	j.storedReviewBatches[clientId] = []common.Batch[common.Review]{}
@@ -203,7 +203,7 @@ func (j *JoinerController) run(
 	}
 }
 
-func (j *JoinerController) getSession(clientId common.ClientId) *JoinerService {
+func (j *JoinerController) getSession(clientId string) *JoinerService {
 	if _, ok := j.sessions[clientId]; !ok {
 		slog.Info("New client detected. creating session", slog.String("clientId", string(clientId)))
 		j.sessions[clientId] = NewJoinerService()
@@ -211,7 +211,7 @@ func (j *JoinerController) getSession(clientId common.ClientId) *JoinerService {
 	return j.sessions[clientId]
 }
 
-func (j *JoinerController) cleanSession(id common.ClientId) {
+func (j *JoinerController) cleanSession(id string) {
 	if j.sessions[id].IsDone() {
 		slog.Info("Done for client", slog.String("clientId", string(id)))
 		delete(j.sessions, id)
