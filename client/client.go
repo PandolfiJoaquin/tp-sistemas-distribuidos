@@ -19,7 +19,7 @@ import (
 
 const (
 	MoviePath        = "archive/movies_metadata.csv"
-	ReviewPath       = "archive/ratings.csv"
+	ReviewPath       = "archive/ratings_small.csv"
 	CreditsPath      = "archive/credits.csv"
 	OutputPathFormat = "results/queries-results-%d.txt"
 	TotalQueries     = 5
