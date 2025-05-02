@@ -133,7 +133,7 @@ func (j *JoinerController) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			clientId := batch.GetClientId()
+			clientId := batch.GetClientID()
 			session := j.getSession(clientId)
 			session.SaveMovies(batch)
 			if session.AllMoviesReceived() {
@@ -152,7 +152,7 @@ func (j *JoinerController) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			clientId := batch.GetClientId()
+			clientId := batch.GetClientID()
 			session := j.getSession(clientId)
 
 			if !session.AllMoviesReceived() {
@@ -177,7 +177,7 @@ func (j *JoinerController) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			clientId := batch.GetClientId()
+			clientId := batch.GetClientID()
 			session := j.getSession(clientId)
 			session.NotifyCredit(batch.Header)
 
