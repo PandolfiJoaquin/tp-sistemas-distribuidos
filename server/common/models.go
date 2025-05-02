@@ -5,6 +5,7 @@ import (
 )
 
 type Sentiment int
+
 const (
 	Positive Sentiment = iota
 	Negative

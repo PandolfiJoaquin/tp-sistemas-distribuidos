@@ -5,6 +5,11 @@ import (
 	"strconv"
 )
 
+type ResultWithId struct {
+	Id      string            `json:"id"`
+	Results TotalQueryResults `json:"results"`
+}
+
 type TotalQueryResults struct {
 	QueryId int           `json:"query_id"`
 	Items   []QueryResult `json:"items"`

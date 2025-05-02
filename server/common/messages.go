@@ -19,6 +19,7 @@ type CountryBudget struct {
 
 type Top5Countries struct {
 	Countries []CountryBudget `json:"countries"`
+	ClientId  string          `json:"client_id"`
 }
 
 // Query 3
@@ -32,6 +33,7 @@ type MovieAvgRating struct {
 type BestAndWorstMovies struct {
 	BestMovie  MovieReview `json:"best_movie"`
 	WorstMovie MovieReview `json:"worst_movie"`
+	ClientId   string      `json:"client_id"`
 }
 
 // Query 4
@@ -43,6 +45,7 @@ type ActorMoviesAmount struct {
 
 type Top10Actors struct {
 	TopActors []ActorMoviesAmount `json:"top_actors"`
+	ClientId  string              `json:"client_id"`
 }
 
 // Query 5
@@ -59,4 +62,5 @@ type SentimentProfitRatioAccumulator struct {
 type SentimentProfitRatioAverage struct {
 	PositiveAvgProfitRatio float64 `json:"positive_avg_profit_ratio"`
 	NegativeAvgProfitRatio float64 `json:"negative_avg_profit_ratio"`
+	ClientId               string  `json:"client_id"`
 }

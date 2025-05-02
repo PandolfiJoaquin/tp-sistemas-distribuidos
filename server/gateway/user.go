@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	//"github.com/google/uuid"
+	"github.com/google/uuid"
 	"io"
 	"log/slog"
 	"net"
@@ -24,7 +24,7 @@ type Client struct {
 
 func NewClient(conn net.Conn, toPreprocess *chan<- []byte) *Client {
 	return &Client{
-		id:           "martu",
+		id:           uuid.NewString(),
 		conn:         conn,
 		dead:         false,
 		recvChannel:  make(chan *models.TotalQueryResults),
@@ -92,7 +92,6 @@ func (c *Client) recvHandler() {
 		}
 		select {
 		case results := <-c.recvChannel:
-			slog.Info("received results", slog.Any("results", results), slog.String("id", c.id))
 			if results.Last {
 				c.done++
 			}
