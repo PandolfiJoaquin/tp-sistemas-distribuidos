@@ -156,7 +156,6 @@ func (j *JoinerController) run(
 			session := j.getSession(clientId)
 
 			if !session.AllMoviesReceived() {
-				slog.Info("Not all movies received. storing in memory")
 				j.storeReviewBatch(clientId, batch)
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))

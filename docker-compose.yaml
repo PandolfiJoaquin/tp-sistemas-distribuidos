@@ -364,6 +364,9 @@ services:
       dockerfile: ./client/Dockerfile
     environment:
       - CLI_ID=1
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway
     volumes:
@@ -376,6 +379,39 @@ services:
       dockerfile: ./client/Dockerfile
     environment:
       - CLI_ID=2
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client3:
+    container_name: client3
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=3
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client4:
+    container_name: client4
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=4
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway
     volumes:

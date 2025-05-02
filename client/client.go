@@ -18,9 +18,6 @@ import (
 )
 
 const (
-	MoviePath        = "archive/movies_metadata.csv"
-	ReviewPath       = "archive/ratings_small.csv"
-	CreditsPath      = "archive/credits.csv"
 	OutputPathFormat = "results/queries-results-%d.txt"
 	TotalQueries     = 5
 )
@@ -28,16 +25,22 @@ const (
 type ClientConfig struct {
 	Id             int
 	ServerAddress  string
+	MoviesFile     string
+	ReviewsFile    string
+	CreditsFile    string
 	MaxBatchMovie  int
 	MaxBatchReview int
 	MaxBatchCredit int
 	sleep          int
 }
 
-func NewClientConfig(id int, serverAddress string, maxBatchMovie, maxBatchReview, maxBatchCredits, sleep int) ClientConfig {
+func NewClientConfig(id int, serverAddress, moviesFile, reviewsFile, creditsFile string, maxBatchMovie, maxBatchReview, maxBatchCredits, sleep int) ClientConfig {
 	return ClientConfig{
 		Id:             id,
 		ServerAddress:  serverAddress,
+		MoviesFile:     moviesFile,
+		ReviewsFile:    reviewsFile,
+		CreditsFile:    creditsFile,
 		MaxBatchMovie:  maxBatchMovie,
 		MaxBatchReview: maxBatchReview,
 		MaxBatchCredit: maxBatchCredits,
@@ -113,22 +116,18 @@ func (c *Client) Start() {
 }
 
 func (c *Client) sendAllData() {
-	MovieSender := NewSender(&c.conn, MoviePath, c.config.MaxBatchMovie, utils.NewMoviesReader, "movies")
+	MovieSender := NewSender(&c.conn, c.config.MoviesFile, c.config.MaxBatchMovie, utils.NewMoviesReader, "movies")
 	if err := MovieSender.Send(); err != nil {
 		c.checkSendError(err, "error sending movies")
 		return
 	}
-	reviewPath := ReviewPath
-	if c.config.Id == 2 {
-		reviewPath = "archive/ratings.csv"
-	}
-	ReviewSender := NewSender(&c.conn, reviewPath, c.config.MaxBatchReview, utils.NewReviewReader, "reviews")
+	ReviewSender := NewSender(&c.conn, c.config.ReviewsFile, c.config.MaxBatchReview, utils.NewReviewReader, "reviews")
 	if err := ReviewSender.Send(); err != nil {
 		c.checkSendError(err, "error sending reviews")
 		return
 	}
 
-	CreditsSender := NewSender(&c.conn, CreditsPath, c.config.MaxBatchCredit, utils.NewCreditsReader, "credits")
+	CreditsSender := NewSender(&c.conn, c.config.CreditsFile, c.config.MaxBatchCredit, utils.NewCreditsReader, "credits")
 	if err := CreditsSender.Send(); err != nil {
 		c.checkSendError(err, "error sending credits")
 		return

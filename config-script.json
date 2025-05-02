@@ -1,5 +1,5 @@
 {
-  "clients": 2,
+  "clients": 4,
   "joiners": 5,
   "nodes": {
     "preprocessor": 3,
