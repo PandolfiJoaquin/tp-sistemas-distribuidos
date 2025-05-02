@@ -126,6 +126,7 @@ def create_compose(cfg):
         compose += JOINER_NODE.format(idx=j)
 
     # Clients
+    print(f"   • clients ×{clients}")
     for c in range(1, clients+1):
         compose += CLIENT_NODE.format(idx=c)
 

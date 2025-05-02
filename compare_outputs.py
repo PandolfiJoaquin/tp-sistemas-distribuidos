@@ -1,3 +1,7 @@
+import os
+import glob
+
+
 def compare_results(actual_file_path, expected_results):
     """
     Compare actual query results with expected results.
@@ -58,10 +62,11 @@ def compare_results(actual_file_path, expected_results):
     
     return comparison
 
-def print_comparison(comparison):
+def print_comparison(comparison, file_name):
     """Print the comparison results in a readable format."""
+    print(f"\n=== Comparing results from {file_name} ===")
     for query_num, result in comparison.items():
-        print(f"Query {query_num}:")
+        print(f"\nQuery {query_num}:")
         if query_num == 5:
             print("For query 5 there is no expected results, got:")
             for item in result["actual"]:
@@ -136,7 +141,14 @@ if __name__ == "__main__":
         5: []
     }
     
-    file_path = "client-results/queries-results-1.txt"
-    # Compare results
-    comparison = compare_results(file_path, expected)
-    print_comparison(comparison)
+    # Get all result files in the client-results directory
+    result_files = glob.glob("client-results/queries-results-*.txt")
+    
+    # Sort files to process them in order
+    result_files.sort()
+    
+    # Compare results for each file
+    for file_path in result_files:
+        file_name = os.path.basename(file_path)
+        comparison = compare_results(file_path, expected)
+        print_comparison(comparison, file_name)

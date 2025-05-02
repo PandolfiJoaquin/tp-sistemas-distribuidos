@@ -157,6 +157,8 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 		for _, countryBudget := range batch.Data {
 			countries[countryBudget.Country] += countryBudget.Budget
 		}
+		//TODO: Por que anda si no hice setData?
+
 	})
 
 	if err != nil {
@@ -187,6 +189,8 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 				movies[movieRating.MovieID] = currentRating
 			}
 		}
+		//TODO: Por que anda si no hice setData?
+
 	})
 
 	if err != nil {
@@ -216,6 +220,8 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 				actorMovies[actorMoviesAmount.ActorID] = currentMoviesAmount
 			}
 		}
+
+		//TODO: Por que anda si no hice setData?
 	})
 
 	if err != nil {
@@ -239,6 +245,7 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 		}
 
 		for _, sentimentProfitRatio := range batch.Data {
+			slog.Info("adding sentiment profit ratio", slog.Any("sentiment profit ratio", sentimentProfitRatio))
 			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum
 			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount
 			sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioSum
@@ -248,6 +255,8 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 				slog.Debug("ALOT positive sentiment profit ratio", slog.Any("count", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount), slog.Any("sum", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum))
 			}
 		}
+
+		r.sessions[clientID].SetData(sentimentProfitRatios)
 	})
 
 	if err != nil {
@@ -259,6 +268,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
 	slog.Info("finishing and sending batch for query 2", slog.String("client id", clientId))
 	countries := r.sessions[clientId].GetData().(map[pkg.Country]uint64)
 	top5Countries := calculateTop5Countries(countries)
+	top5Countries.ClientId = clientId
 	response, err := json.Marshal(top5Countries)
 	if err != nil {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
@@ -272,6 +282,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
 	slog.Info("finishing and sending batch for query 3", slog.String("client id", clientId))
 	movies := r.sessions[clientId].GetData().(map[string]common.MovieAvgRating)
 	bestAndWorstMovies := calculateBestAndWorstMovie(movies)
+	bestAndWorstMovies.ClientId = clientId
 	response, err := json.Marshal(bestAndWorstMovies)
 	if err != nil {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
@@ -285,6 +296,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
 	slog.Info("finishing and sending batch for query 4", slog.String("client id", clientId))
 	actorMovies := r.sessions[clientId].GetData().(map[string]common.ActorMoviesAmount)
 	top10Actors := calculateTop10Actors(actorMovies)
+	top10Actors.ClientId = clientId
 	response, err := json.Marshal(top10Actors)
 	if err != nil {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
@@ -298,6 +310,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
 	slog.Info("finishing and sending batch for query 5", slog.String("client id", clientId))
 	sentimentProfitRatios := r.sessions[clientId].GetData().(common.SentimentProfitRatioAccumulator)
 	sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
+	sentimentProfitRatioAverage.ClientId = clientId
 	response, err := json.Marshal(sentimentProfitRatioAverage)
 	if err != nil {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))

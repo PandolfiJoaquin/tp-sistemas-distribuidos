@@ -369,3 +369,15 @@ services:
     volumes:
       - ./archive/:/home/app/archive/
       - ./client-results/:/home/app/results/
+
+  client2:
+    container_name: client2
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=2
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/

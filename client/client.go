@@ -113,18 +113,22 @@ func (c *Client) Start() {
 }
 
 func (c *Client) sendAllData() {
-	MovieSender := NewSender[models.RawMovie](&c.conn, MoviePath, c.config.MaxBatchMovie, utils.NewMoviesReader, "movies")
+	MovieSender := NewSender(&c.conn, MoviePath, c.config.MaxBatchMovie, utils.NewMoviesReader, "movies")
 	if err := MovieSender.Send(); err != nil {
 		c.checkSendError(err, "error sending movies")
 		return
 	}
-	ReviewSender := NewSender[models.RawReview](&c.conn, ReviewPath, c.config.MaxBatchReview, utils.NewReviewReader, "reviews")
+	reviewPath := ReviewPath
+	if c.config.Id == 2 {
+		reviewPath = "archive/ratings.csv"
+	}
+	ReviewSender := NewSender(&c.conn, reviewPath, c.config.MaxBatchReview, utils.NewReviewReader, "reviews")
 	if err := ReviewSender.Send(); err != nil {
 		c.checkSendError(err, "error sending reviews")
 		return
 	}
 
-	CreditsSender := NewSender[models.RawCredits](&c.conn, CreditsPath, c.config.MaxBatchCredit, utils.NewCreditsReader, "credits")
+	CreditsSender := NewSender(&c.conn, CreditsPath, c.config.MaxBatchCredit, utils.NewCreditsReader, "credits")
 	if err := CreditsSender.Send(); err != nil {
 		c.checkSendError(err, "error sending credits")
 		return
