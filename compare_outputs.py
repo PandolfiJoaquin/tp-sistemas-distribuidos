@@ -1,6 +1,8 @@
 import os
 import glob
 
+tabulation = "   "
+
 
 def compare_results(actual_file_path, expected_results):
     """
@@ -64,32 +66,41 @@ def compare_results(actual_file_path, expected_results):
 
 def print_comparison(comparison, file_name):
     """Print the comparison results in a readable format."""
-    print(f"\n=== Comparing results from {file_name} ===")
+    # print(f"\n=== Comparing results from {file_name} ===")
+    error_in_query = False
+
     for query_num, result in comparison.items():
-        print(f"\nQuery {query_num}:")
-        if query_num == 5:
-            print("For query 5 there is no expected results, got:")
-            for item in result["actual"]:
-                print(f"  - {item}")
-            continue
-            
+        if not result["matches"]:
+            error_in_query = True
+
+    if not error_in_query:
+        print(f"{file_name}: ✅")
+        return True
+    print(f"{file_name}: ❌")
+    for query_num, result in comparison.items():
+        print(f"{tabulation}Query {query_num}: ", end="")
+
         if result["matches"]:
-            print("✅ Results match!")
+            print(f"{tabulation}Results match: ✅")
         else:
-            print("❌ Results don't match")
+            error_in_query = True
+            print(f"{tabulation}Results don't match: ❌")
             if result["missing"]:
-                print("Missing results:")
+                print(f"{tabulation}Missing results:")
                 for item in result["missing"]:
                     print(f"  - {item}")
             if result["extra"]:
-                print("Extra results:")
+                print(f"{tabulation}Extra results:")
                 for item in result["extra"]:
                     print(f"  - {item}")
+
+    if error_in_query:
+        return False
 
 # Example usage:
 if __name__ == "__main__":
     # Expected results exactly matching the current file
-    expected = {
+    expected_reviews_big = {
         1: [
             "La Cienaga | Genres: [Comedy, Drama]",
             "Burnt Money | Genres: [Crime]",
@@ -138,17 +149,76 @@ if __name__ == "__main__":
             "Actor: Arturo Goetz | Appearances: 6",
             "Actor: Diego Peretti | Appearances: 6"
         ],
-        5: []
+        5: [
+            "Positive Avg Profit Ratio: 3587.09 | Negative Avg Profit Ratio: 25945.69"
+        ]
+    }
+    expected_reviews_small = {
+        1: [
+            "La Cienaga | Genres: [Comedy, Drama]",
+            "Burnt Money | Genres: [Crime]",
+            "The City of No Limits | Genres: [Thriller, Drama]",
+            "Nicotina | Genres: [Drama, Action, Comedy, Thriller]",
+            "Lost Embrace | Genres: [Drama, Foreign]",
+            "Whisky | Genres: [Comedy, Drama, Foreign]",
+            "The Holy Girl | Genres: [Drama, Foreign]",
+            "The Aura | Genres: [Crime, Drama, Thriller]",
+            "Bombón: The Dog | Genres: [Drama]",
+            "Rolling Family | Genres: [Drama, Comedy]",
+            "The Method | Genres: [Drama, Thriller]",
+            "Every Stewardess Goes to Heaven | Genres: [Drama, Romance, Foreign]",
+            "Tetro | Genres: [Drama, Mystery]",
+            "The Secret in Their Eyes | Genres: [Crime, Drama, Mystery, Romance]",
+            "Liverpool | Genres: [Drama]",
+            "The Headless Woman | Genres: [Drama, Mystery, Thriller]",
+            "The Last Summer of La Boyita | Genres: [Drama]",
+            "The Appeared | Genres: [Horror, Thriller, Mystery]",
+            "The Fish Child | Genres: [Drama, Thriller, Romance, Foreign]",
+            "Cleopatra | Genres: [Drama, Comedy, Foreign]",
+            "Roma | Genres: [Drama, Foreign]",
+            "Conversations with Mother | Genres: [Comedy, Drama, Foreign]",
+            "The Education of Fairies | Genres: [Drama]",
+            "The Good Life | Genres: [Drama]"
+        ],
+        2: [
+            "United States of America | Budget: 120153886644",
+            "France | Budget: 2256831838",
+            "United Kingdom | Budget: 1611604610",
+            "India | Budget: 1169682797",
+            "Japan | Budget: 832585873"
+        ],
+        3: [
+            "Best Movie: ID: 80717 | Title: Violeta Went to Heaven | Rating: 5.00 | Worst Movie: ID: 69278 | Title: Phase 7 | Rating: 2.75"
+        ],
+        4: [
+            "Actor: Ricardo Darín | Appearances: 17",
+            "Actor: Leonardo Sbaraglia | Appearances: 7",
+            "Actor: Alejandro Awada | Appearances: 7",
+            "Actor: Inés Efron | Appearances: 7",
+            "Actor: Valeria Bertuccelli | Appearances: 7",
+            "Actor: Pablo Echarri | Appearances: 6",
+            "Actor: Rodrigo de la Serna | Appearances: 6",
+            "Actor: Rafael Spregelburd | Appearances: 6",
+            "Actor: Arturo Goetz | Appearances: 6",
+            "Actor: Diego Peretti | Appearances: 6"
+        ],
+        5: [
+            "Positive Avg Profit Ratio: 3587.09 | Negative Avg Profit Ratio: 25945.69"
+        ]
     }
     
     # Get all result files in the client-results directory
     result_files = glob.glob("client-results/queries-results-*.txt")
     
     # Sort files to process them in order
-    result_files.sort()
+    result_files.sort(key=lambda x: int(x.split('-')[-1].split('.')[0]))
     
     # Compare results for each file
-    for file_path in result_files:
+    result = True
+    for c in range(len(result_files)):
+        file_path = result_files[c]
         file_name = os.path.basename(file_path)
-        comparison = compare_results(file_path, expected)
-        print_comparison(comparison, file_name)
+        comparison = compare_results(file_path, expected_results=expected_reviews_big if (c+1) % 2 == 1 else expected_reviews_small)
+        result &= print_comparison(comparison, file_name)
+    if not result:
+        exit(8)

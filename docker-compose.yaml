@@ -417,3 +417,543 @@ services:
     volumes:
       - ./archive/:/home/app/archive/
       - ./client-results/:/home/app/results/
+
+  client5:
+    container_name: client5
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=5
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client6:
+    container_name: client6
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=6
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client7:
+    container_name: client7
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=7
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client8:
+    container_name: client8
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=8
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client9:
+    container_name: client9
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=9
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client10:
+    container_name: client10
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=10
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client11:
+    container_name: client11
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=11
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client12:
+    container_name: client12
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=12
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client13:
+    container_name: client13
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=13
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client14:
+    container_name: client14
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=14
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client15:
+    container_name: client15
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=15
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client16:
+    container_name: client16
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=16
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client17:
+    container_name: client17
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=17
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client18:
+    container_name: client18
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=18
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client19:
+    container_name: client19
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=19
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client20:
+    container_name: client20
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=20
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client21:
+    container_name: client21
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=21
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client22:
+    container_name: client22
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=22
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client23:
+    container_name: client23
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=23
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client24:
+    container_name: client24
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=24
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client25:
+    container_name: client25
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=25
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client26:
+    container_name: client26
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=26
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client27:
+    container_name: client27
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=27
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client28:
+    container_name: client28
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=28
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client29:
+    container_name: client29
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=29
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client30:
+    container_name: client30
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=30
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client31:
+    container_name: client31
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=31
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client32:
+    container_name: client32
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=32
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client33:
+    container_name: client33
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=33
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client34:
+    container_name: client34
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=34
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client35:
+    container_name: client35
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=35
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client36:
+    container_name: client36
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=36
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client37:
+    container_name: client37
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=37
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client38:
+    container_name: client38
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=38
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client39:
+    container_name: client39
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=39
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client40:
+    container_name: client40
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=40
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
