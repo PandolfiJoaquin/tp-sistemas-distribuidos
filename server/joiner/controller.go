@@ -104,12 +104,12 @@ func (j *JoinerController) storeReviewBatch(clientId string, batch common.Batch[
 }
 
 func (j *JoinerController) joinStoredReviewBatches(clientId string, q3ToReduce chan<- []byte) {
-	slog.Info("joining stored review batches", slog.String("clientId", string(clientId)))
+	slog.Info("joining stored review batches", slog.String("clientId", clientId))
 	batches := j.storedReviewBatches[clientId]
 	j.storedReviewBatches[clientId] = []common.Batch[common.Review]{}
 	for _, batch := range batches {
 		j.joinReviewBatch(clientId, batch, q3ToReduce)
-		j.cleanSession(clientId)
+		j.exorciseSession(clientId)
 	}
 }
 
@@ -140,7 +140,7 @@ func (j *JoinerController) run(
 				slog.Info("Received all movies. starting to pop reviews")
 				reviews = _reviewsChan
 				credits = _creditChan
-				go j.joinStoredReviewBatches(clientId, q3ToReduce) // Joins all reviews stored
+				j.joinStoredReviewBatches(clientId, q3ToReduce) // Joins all reviews stored
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -164,12 +164,12 @@ func (j *JoinerController) run(
 			}
 
 			j.joinReviewBatch(clientId, batch, q3ToReduce)
-			
+
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
-			j.cleanSession(clientId)
-			
+			j.exorciseSession(clientId)
+
 		case msg := <-credits:
 			var batch common.Batch[common.Credit]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
@@ -196,7 +196,7 @@ func (j *JoinerController) run(
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
-			j.cleanSession(clientId)
+			j.exorciseSession(clientId)
 		}
 
 	}
@@ -210,11 +210,12 @@ func (j *JoinerController) getSession(clientId string) *JoinerService {
 	return j.sessions[clientId]
 }
 
-func (j *JoinerController) cleanSession(id string) {
+// if the session is done, delete it
+func (j *JoinerController) exorciseSession(id string) {
 	if j.sessions[id].IsDone() {
-		slog.Info("Done for client", slog.String("clientId", string(id)))
+		slog.Info("Done for client", slog.String("clientId", id))
 		delete(j.sessions, id)
-		slog.Info("Successfully deleted session", slog.String("clientId", string(id)))
+		slog.Info("Successfully deleted session", slog.String("clientId", id))
 	}
 }
 

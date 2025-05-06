@@ -7,4 +7,3 @@ run:
 	fi
 	docker compose down -v 
 	docker compose up --build -d --remove-orphans
-	docker compose logs -f client1
