@@ -6,21 +6,23 @@ import (
 )
 
 type ToProcessMsg struct {
-	Type string          `json:"type"`
-	Body json.RawMessage `json:"body"`
+	Type     string          `json:"type"`
+	ClientId string          `json:"client_id"`
+	Body     json.RawMessage `json:"body"`
 }
 
-//Query 2
+// Query 2
 type CountryBudget struct {
 	Country pkg.Country `json:"country"`
 	Budget  uint64      `json:"budget"`
 }
 
 type Top5Countries struct {
+	ClientId  string          `json:"client_id"`
 	Countries []CountryBudget `json:"countries"`
 }
 
-//Query 3
+// Query 3
 type MovieAvgRating struct {
 	MovieID     string  `json:"movie_id"`
 	Title       string  `json:"title"`
@@ -29,11 +31,12 @@ type MovieAvgRating struct {
 }
 
 type BestAndWorstMovies struct {
+	ClientId   string      `json:"client_id"`
 	BestMovie  MovieReview `json:"best_movie"`
 	WorstMovie MovieReview `json:"worst_movie"`
 }
 
-//Query 4
+// Query 4
 type ActorMoviesAmount struct {
 	ActorID      string `json:"actor_id"`
 	ActorName    string `json:"actor_name"`
@@ -41,10 +44,11 @@ type ActorMoviesAmount struct {
 }
 
 type Top10Actors struct {
+	ClientId  string              `json:"client_id"`
 	TopActors []ActorMoviesAmount `json:"top_actors"`
 }
 
-//Query 5
+// Query 5
 type ProfitRatioAccumulator struct {
 	ProfitRatioSum   float64 `json:"profit_ratio_sum"`
 	ProfitRatioCount uint32  `json:"profit_ratio_count"`
@@ -56,6 +60,7 @@ type SentimentProfitRatioAccumulator struct {
 }
 
 type SentimentProfitRatioAverage struct {
+	ClientId               string  `json:"client_id"`
 	PositiveAvgProfitRatio float64 `json:"positive_avg_profit_ratio"`
 	NegativeAvgProfitRatio float64 `json:"negative_avg_profit_ratio"`
 }
