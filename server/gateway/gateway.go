@@ -96,7 +96,8 @@ func (g *Gateway) middlewareSetup() error {
 }
 
 func (g *Gateway) listen() {
-	for g.running { // TODO: REAP DEAD CLIENTS
+	for g.running {
+		g.reapDeadClients()
 		slog.Info("Waiting for client connection")
 		conn, err := g.listener.Accept()
 		if err != nil {
@@ -144,15 +145,27 @@ func (g *Gateway) Start() {
 
 	wg.Add(2)
 	go g.signalHandler(wg)
-	go g.processMessages()
+	go g.processMessages(wg)
 	g.listen()
 	wg.Wait()
 
-	// TODO: Do shutdown of all clients
+	g.closeClients()
+
 	slog.Info("Gateway shut down")
 }
 
-func (g *Gateway) processMessages() {
+func (g *Gateway) closeClients() {
+	for id, client := range g.clients {
+		if !client.IsDead() {
+			slog.Info("Closing client connection", slog.String("id", id))
+			client.Close()
+		}
+		delete(g.clients, id)
+	}
+}
+
+func (g *Gateway) processMessages(wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
 		var err error
 		select {
@@ -174,6 +187,15 @@ func (g *Gateway) processMessages() {
 		if err != nil {
 			slog.Error("error processing message", slog.String("error", err.Error()))
 			return
+		}
+	}
+}
+
+func (g *Gateway) reapDeadClients() {
+	for id, client := range g.clients {
+		if client.IsDead() {
+			slog.Info("Client is dead", slog.String("id", id))
+			delete(g.clients, id)
 		}
 	}
 }
@@ -294,7 +316,6 @@ func (g *Gateway) handleResult(msg common.Message, query int) error {
 		if !client.IsDead() {
 			client.sendResult(&results.Results)
 		}
-
 	}
 
 	if err := msg.Ack(); err != nil {
