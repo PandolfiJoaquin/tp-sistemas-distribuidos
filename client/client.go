@@ -136,7 +136,7 @@ func (c *Client) sendAllData() {
 
 func (c *Client) checkSendError(err error, msg string) {
 	// ignore EOF and closed errors (detection happens in recv)
-	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, syscall.EPIPE) {
+	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
 		slog.Error(msg, slog.String("error", err.Error()))
 	}
 }
@@ -187,7 +187,7 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
 
 			results, err := communication.RecvQueryResults(c.conn)
 			if err != nil {
-				if errors.Is(err, io.EOF) {
+				if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) {
 					slog.Info("Server closed connection")
 					return
 				}

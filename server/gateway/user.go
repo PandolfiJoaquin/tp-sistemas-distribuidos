@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"pkg/communication"
 	"pkg/models"
+	"syscall"
 	"tp-sistemas-distribuidos/server/common"
 )
 
@@ -20,19 +22,25 @@ type Client struct {
 	recvChannel  chan *models.TotalQueryResults
 	toPreprocess *chan<- []byte
 	done         uint8
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 func NewClient(conn net.Conn, toPreprocess *chan<- []byte) *Client {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
 		id:           uuid.NewString(),
 		conn:         conn,
 		dead:         false,
 		recvChannel:  make(chan *models.TotalQueryResults),
 		toPreprocess: toPreprocess,
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 }
 
 func (c *Client) Run() {
+	defer c.Close()
 	go c.sendHandler()
 	c.recvHandler()
 }
@@ -43,8 +51,10 @@ func (c *Client) sendResult(results *models.TotalQueryResults) {
 
 func (c *Client) Close() {
 	if err := c.conn.Close(); err != nil {
-		// Handle error
+		slog.Error("Failed to close connection", slog.String("error", err.Error()))
 	}
+	c.dead = true
+	c.cancel()
 }
 
 func (c *Client) IsDead() bool {
@@ -55,31 +65,19 @@ func (c *Client) sendHandler() {
 
 	err := receiveData[models.RawMovie](*c.toPreprocess, "movies", &c.conn, c.id)
 	if err != nil {
-		if !errors.Is(err, io.EOF) {
-			slog.Error("error receiving movies", slog.String("error", err.Error()), slog.String("id", c.id))
-		} else {
-			c.dead = true
-		}
+		c.checkSendError(err, "error receiving movies")
 		return
 	}
 
 	err = receiveData[models.RawReview](*c.toPreprocess, "reviews", &c.conn, c.id)
 	if err != nil {
-		if !errors.Is(err, io.EOF) {
-			slog.Error("error receiving reviews", slog.String("error", err.Error()), slog.String("id", c.id))
-		} else {
-			c.dead = true
-		}
+		c.checkSendError(err, "error receiving reviews")
 		return
 	}
 
 	err = receiveData[models.RawCredits](*c.toPreprocess, "credits", &c.conn, c.id)
 	if err != nil {
-		if !errors.Is(err, io.EOF) {
-			slog.Error("error receiving reviews", slog.String("error", err.Error()), slog.String("id", c.id))
-		} else {
-			c.dead = true
-		}
+		c.checkSendError(err, "error receiving credits")
 		return
 	}
 }
@@ -91,17 +89,24 @@ func (c *Client) recvHandler() {
 			break
 		}
 		select {
+		case <-c.ctx.Done():
 		case results := <-c.recvChannel:
 			if results.Last {
 				c.done++
 			}
 			err := communication.SendQueryResults(c.conn, *results)
 			if err != nil {
-				slog.Error("error sending query results", slog.String("error", err.Error()), slog.String("id", c.id))
+				if errors.Is(err, io.EOF) {
+					slog.Info("Client Disconnected", slog.String("id", c.id))
+				} else if errors.Is(err, net.ErrClosed) {
+					slog.Error("Client Conn was already closed", slog.String("id", c.id))
+				} else {
+					slog.Error("error sending query results", slog.String("error", err.Error()), slog.String("id", c.id))
+				}
+				return
 			}
 		}
 	}
-
 }
 
 func (c *Client) GetId() string {
@@ -150,4 +155,12 @@ func publishBatch[T any](batch models.RawBatch[T], batchType string, toPreproces
 
 	toPreprocess <- batchToSend
 	return nil
+}
+
+func (c *Client) checkSendError(err error, msg string) {
+	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, syscall.EPIPE) {
+		slog.Error(msg, slog.String("error", err.Error()))
+	} else {
+		c.dead = true
+	}
 }
