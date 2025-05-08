@@ -154,10 +154,10 @@ func (g *Gateway) Start() {
 	slog.Info("Gateway shut down")
 }
 
-func (g *Gateway) closeClients(){
+func (g *Gateway) closeClients() {
 	for id, client := range g.clients {
-		slog.Info("Closing client connection", slog.String("id", id))
 		if !client.IsDead() {
+			slog.Info("Closing client connection", slog.String("id", id))
 			client.Close()
 		}
 		delete(g.clients, id)
