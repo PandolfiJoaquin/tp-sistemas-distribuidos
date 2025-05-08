@@ -42,41 +42,6 @@ CLIENT_NODE = """
       - ./client-results/:/home/app/results/
 """
 
-FINAL_REDUCER_NODE = """
-  final-reducer-q{idx}:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-        NODE: final-reducer
-    container_name: final-reducer-q{idx}
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-      - QUERY_NUM={idx}
-      - JOINER_SHARDS={joiners}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
-"""
-
-JOINER_NODE = """
-  joiner-{idx}:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-        NODE: joiner
-    container_name: joiner-{idx}
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_ID={idx}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
-"""
-
 RABBITMQ_SERVICE = """
   rabbitmq:
     image: rabbitmq:3-management
@@ -96,10 +61,27 @@ RABBITMQ_SERVICE = """
       retries: 3
 """
 
+def get_node_env(node_type, node_id=None, joiners=None):
+    """Generate environment variables for a node based on its type"""
+    env_vars = []
+    
+    if node_type == "final-reducer":
+        env_vars.extend([
+            f"\n      - QUERY_NUM={node_id}",
+            f"\n      - JOINER_SHARDS={joiners}"
+        ])
+    elif node_type == "joiner":
+        env_vars.append(f"\n      - JOINER_ID={node_id}")
+    elif node_type in NEEDS_SHARDS:
+        env_vars.append(f"\n      - JOINER_SHARDS={joiners}")
+    
+    return "".join(env_vars)
+
 def create_compose(cfg):
     clients = cfg["clients"]
     joiners = cfg["joiners"]
     nodes    = cfg["nodes"]    # dict: { "preprocessor": n, "production-filter": m, ... }
+    files    = cfg["files"]    # dict: { "movies": [paths], "reviews": [paths], ... }
 
     compose = "name: tp-dist\nservices:\n"
 
@@ -117,22 +99,47 @@ def create_compose(cfg):
     for node, count in nodes.items():
         for i in range(1, count+1):
             svc_name = f"{node}-{i}" if count > 1 else node
-            extra = f"\n      - JOINER_SHARDS={joiners}" if node in NEEDS_SHARDS else ""
-            compose += BASE_NODE.format(svc_name=svc_name, node=node, extra_env=extra)
+            extra_env = get_node_env(node, joiners=joiners)
+            compose += BASE_NODE.format(
+                svc_name=svc_name,
+                node=node,
+                extra_env=extra_env
+            )
 
     # Final Reducer
     for q in range(2, QUERY_AMNT+1):
-        compose += FINAL_REDUCER_NODE.format(idx=q, joiners=joiners)
+        svc_name = f"final-reducer-q{q}"
+        extra_env = get_node_env("final-reducer", node_id=q, joiners=joiners)
+        compose += BASE_NODE.format(
+            svc_name=svc_name,
+            node="final-reducer",
+            extra_env=extra_env
+        )
 
     # Joiners
     for j in range(1, joiners+1):
-        compose += JOINER_NODE.format(idx=j)
+        svc_name = f"joiner-{j}"
+        extra_env = get_node_env("joiner", node_id=j)
+        compose += BASE_NODE.format(
+            svc_name=svc_name,
+            node="joiner",
+            extra_env=extra_env
+        )
 
     # Clients
     print(f"   • clients ×{clients}")
     for c in range(1, clients+1):
-        review_file = "archive/ratings.csv" if c % 2 == 1 else "archive/ratings_small.csv" # Multiples of 2 use small dataset
-        compose += CLIENT_NODE.format(idx=c, movies_file="archive/movies_metadata.csv", reviews_file=review_file, credits_file="archive/credits.csv")
+        # Cycle through the file arrays using modulo
+        movies_file = files["movies"][(c-1) % len(files["movies"])]
+        reviews_file = files["reviews"][(c-1) % len(files["reviews"])]
+        credits_file = files["credits"][(c-1) % len(files["credits"])]
+        
+        compose += CLIENT_NODE.format(
+            idx=c,
+            movies_file=movies_file,
+            reviews_file=reviews_file,
+            credits_file=credits_file
+        )
 
     with open(YAML_FILE, "w") as f:
         f.write(compose)
@@ -152,9 +159,17 @@ def main():
         print(f"Error al leer config.json: {e}")
         sys.exit(1)
 
-    for key in ("clients", "joiners", "nodes"):
+    for key in ("clients", "joiners", "nodes", "files"):
         if key not in cfg:
             print(f"Falta la clave '{key}' en el JSON")
+            sys.exit(1)
+        
+    for file_type, file_list in cfg["files"].items():
+        if not isinstance(file_list, list):
+            print(f"Error: '{file_type}' debe ser una lista de archivos")
+            sys.exit(1)
+        if len(file_list) == 0:
+            print(f"Error: '{file_type}' no puede estar vacío")
             sys.exit(1)
 
     create_compose(cfg)
