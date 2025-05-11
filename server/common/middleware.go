@@ -25,8 +25,9 @@ type Middleware struct {
 	ch   *amqp.Channel
 }
 
-func NewMiddleware(rabbitUser string, rabbitPass string) (*Middleware, error) {
-	conn, err := amqp.Dial("amqp://" + rabbitUser + ":" + rabbitPass + "@rabbitmq:5672/")
+func NewMiddleware(rabbitUser string, rabbitPass string, host string) (*Middleware, error) {
+	slog.Info("creating middleware", slog.String("dialing", "amqp://"+rabbitUser+":"+rabbitPass+"@"+host+":5672"))
+	conn, err := amqp.Dial("amqp://" + rabbitUser + ":" + rabbitPass + "@" + host + ":5672")
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %s", err)
 	}
@@ -34,7 +35,6 @@ func NewMiddleware(rabbitUser string, rabbitPass string) (*Middleware, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open a channel: %s", err)
 	}
-
 	return &Middleware{conn: conn, ch: ch}, nil
 }
 

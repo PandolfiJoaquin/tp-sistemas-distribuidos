@@ -13,6 +13,8 @@ import (
 	pkg "pkg/models"
 )
 
+const rabbitHost = "rabbitmq"
+
 type queuesNames struct {
 	previousQueue string
 	nextQueue     string
@@ -39,7 +41,7 @@ type connection struct {
 }
 
 func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards int) (*FinalReducer, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
+	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
