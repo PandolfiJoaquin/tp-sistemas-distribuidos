@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	nextStep = "to-preprocess"
+	rabbitHost = "rabbitmq"
+	nextStep   = "to-preprocess"
 )
 
 type GatewayConfig struct {
@@ -68,7 +69,7 @@ func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
 }
 
 func (g *Gateway) middlewareSetup() error {
-	middleware, err := common.NewMiddleware(g.config.RabbitUser, g.config.RabbitPass)
+	middleware, err := common.NewMiddleware(g.config.RabbitUser, g.config.RabbitPass, rabbitHost)
 	if err != nil {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
 		return err

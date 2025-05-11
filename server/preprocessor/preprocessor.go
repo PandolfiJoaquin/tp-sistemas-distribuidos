@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	rabbitHost      = "rabbitmq"
 	toPreProcess    = "to-preprocess"
 	filterMoviesQ1  = "filter-year-q1"
 	filterMoviesQ2  = "filter-production-q2"
@@ -64,7 +65,7 @@ func NewPreprocessor(rabbitUser string, rabbitPass string, shards int) *Preproce
 
 func (p *Preprocessor) middlewareSetup() error {
 	// Setup middleware connection
-	middleware, err := common.NewMiddleware(p.config.RabbitUser, p.config.RabbitPass)
+	middleware, err := common.NewMiddleware(p.config.RabbitUser, p.config.RabbitPass, rabbitHost)
 	if err != nil {
 		return fmt.Errorf("error creating middleware: %s", err)
 	}

@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	rabbitHost              = "rabbitmq"
 	previousQueueQuery1     = "filter-year-q1"
 	previousQueueQuery3And4 = "filter-year-q3q4"
 	nextQueueQuery1         = "filter-production-q1"
@@ -30,7 +31,7 @@ type connection struct {
 }
 
 func NewYearFilter(rabbitUser, rabbitPass string) (*YearFilter, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
+	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}

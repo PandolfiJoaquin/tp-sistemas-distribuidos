@@ -14,6 +14,7 @@ import (
 
 const (
 	previousQueue = "sentiment-analyzer"
+	rabbitHost    = "rabbitmq"
 	nextQueue     = "q5-to-reduce"
 )
 
@@ -23,7 +24,7 @@ type Analyzer struct {
 }
 
 func NewAnalyzer(rabbitUser, rabbitPass string) (*Analyzer, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
+	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}

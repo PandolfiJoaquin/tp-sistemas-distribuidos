@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	rabbitHost      = "rabbitmq" //"127.0.0.1"
 	moviesExchange  = "movies-exchange"
 	moviestopic     = "movies-to-join-%d"
 	reviewsExchange = "reviews-exchange"
@@ -29,7 +30,7 @@ type JoinerController struct {
 }
 
 func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
+	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
 		return nil, err

@@ -24,6 +24,7 @@ import (
 // }
 
 const (
+	rabbitHost      = "rabbitmq"
 	previousQueueQ2 = "q2-to-reduce"
 	nextQueueQ2     = "q2-to-final-reduce"
 	previousQueueQ3 = "q3-to-reduce"
@@ -48,7 +49,7 @@ type connection struct {
 }
 
 func NewReducer(rabbitUser, rabbitPass string) (*Reducer, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
+	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
