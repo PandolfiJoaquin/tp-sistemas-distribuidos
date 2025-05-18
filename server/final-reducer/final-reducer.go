@@ -14,6 +14,7 @@ import (
 )
 
 const rabbitHost = "rabbitmq"
+const persistencyPath = "data/"
 
 type queuesNames struct {
 	previousQueue string
@@ -33,6 +34,7 @@ type FinalReducer struct {
 	queryNum     int
 	joinerShards int
 	sessions     map[string]*ClientSession
+	persistencyHandler *common.PersistencyHandler
 }
 
 type connection struct {
@@ -41,6 +43,8 @@ type connection struct {
 }
 
 func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards int) (*FinalReducer, error) {
+	persistencyHandler := common.NewPersistencyHandler(persistencyPath)
+
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
@@ -57,6 +61,7 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 		queryNum:     queryNum,
 		joinerShards: amtOfShards,
 		sessions:     make(map[string]*ClientSession),
+		persistencyHandler: persistencyHandler,
 	}, nil
 }
 
@@ -116,11 +121,6 @@ func startReceiving[T any](ctx context.Context, chanToRecv <-chan common.Message
 				continue
 			}
 
-			if batch.Header.GetClientID() == "" {
-				slog.Warn("client id is empty, using 1")
-				batch.Header.ClientID = "1"
-			}
-
 			processBatch(batch)
 
 			clientID := batch.GetClientID()
@@ -129,6 +129,8 @@ func startReceiving[T any](ctx context.Context, chanToRecv <-chan common.Message
 				slog.Info("setting eof weight", slog.String("client id", clientID), slog.Any("eof weight", int32(batch.Header.TotalWeight)))
 				sessions[clientID].SetEofWeight(int32(batch.Header.TotalWeight))
 			}
+
+			// r.persistencyHandler.Save(clientID, sessions[clientID]) //TODO: save session
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))

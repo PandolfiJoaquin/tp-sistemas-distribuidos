@@ -20,16 +20,20 @@ const (
 	creditTopic     = "credits-to-join-%d"
 	q3ToReduceQueue = "q3-to-reduce"
 	q4ToReduceQueue = "q4-to-reduce"
+	persistencyPath = "data/"
 )
 
 type JoinerController struct {
 	joinerId            int
 	middleware          *common.Middleware
-	sessions            map[string]*JoinerService
+	sessions            map[string]*JoinerSession
 	storedReviewBatches map[string][]common.Batch[common.Review]
+	persistencyHandler  *common.PersistencyHandler
 }
 
 func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
+	persistencyHandler := common.NewPersistencyHandler(persistencyPath)
+	
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
@@ -39,8 +43,9 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 	return &JoinerController{
 		joinerId:            joinerId,
 		middleware:          middleware,
-		sessions:            map[string]*JoinerService{},
+		sessions:            map[string]*JoinerSession{},
 		storedReviewBatches: map[string][]common.Batch[common.Review]{},
+		persistencyHandler:  persistencyHandler,
 	}, nil
 }
 
@@ -85,7 +90,7 @@ func (j *JoinerController) Start() {
 
 func (j *JoinerController) joinReviewBatch(clientId string, batch common.Batch[common.Review], q3ToReduce chan<- []byte) {
 	session := j.getSession(clientId)
-	session.NotifyReview(batch.Header)
+	session.UpdateReviewsWeights(batch.Header)
 
 	reviewXMovies := session.Join(batch.Data)
 	reviewsXMoviesBatch := common.Batch[common.MovieReview]{
@@ -136,13 +141,19 @@ func (j *JoinerController) run(
 			}
 			clientId := batch.GetClientID()
 			session := j.getSession(clientId)
-			session.SaveMovies(batch)
+
+			session.UpdateMoviesWeights(batch.Header)
+			session.SaveMovies(batch.Data)
+
 			if session.AllMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
 				reviews = _reviewsChan
 				credits = _creditChan
 				j.joinStoredReviewBatches(clientId, q3ToReduce) // Joins all reviews stored
 			}
+
+			//j.persistencyHandler.Save(id, j.sessions[id]) //TODO: save session
+
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
@@ -166,6 +177,8 @@ func (j *JoinerController) run(
 
 			j.joinReviewBatch(clientId, batch, q3ToReduce)
 
+			// j.persistencyHandler.Save(clientId, session) //TODO: save session
+
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
@@ -179,7 +192,7 @@ func (j *JoinerController) run(
 			}
 			clientId := batch.GetClientID()
 			session := j.getSession(clientId)
-			session.NotifyCredit(batch.Header)
+			session.UpdateCreditsWeights(batch.Header)
 
 			actors := session.filterCredits(batch.Data)
 			actorsBatch := common.Batch[common.Credit]{
@@ -194,19 +207,20 @@ func (j *JoinerController) run(
 			}
 			q4ToReduce <- response
 
+			// j.persistencyHandler.Save(clientId, session) //TODO: save session
+
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
 			j.exorciseSession(clientId)
 		}
-
 	}
 }
 
-func (j *JoinerController) getSession(clientId string) *JoinerService {
+func (j *JoinerController) getSession(clientId string) *JoinerSession {
 	if _, ok := j.sessions[clientId]; !ok {
 		slog.Info("New client detected. creating session", slog.String("clientId", string(clientId)))
-		j.sessions[clientId] = NewJoinerService()
+		j.sessions[clientId] = NewJoinerSession()
 	}
 	return j.sessions[clientId]
 }

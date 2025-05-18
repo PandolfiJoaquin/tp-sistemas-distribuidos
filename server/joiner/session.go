@@ -5,7 +5,7 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-type JoinerService struct {
+type JoinerSession struct {
 	movies          []common.Movie
 	moviesReceived  uint32
 	reviewsReceived uint32
@@ -15,8 +15,8 @@ type JoinerService struct {
 	creditsToExpect int32
 }
 
-func NewJoinerService() *JoinerService {
-	return &JoinerService{
+func NewJoinerSession() *JoinerSession {
+	return &JoinerSession{
 		movies:          []common.Movie{},
 		moviesReceived:  0,
 		reviewsReceived: 0,
@@ -27,28 +27,31 @@ func NewJoinerService() *JoinerService {
 	}
 }
 
-func (s *JoinerService) SaveMovies(batch common.Batch[common.Movie]) {
-	if batch.IsEof() {
-		slog.Info("movies Eof received", slog.Any("header", batch.Header))
-		s.moviesToExpect = batch.TotalWeight
+func (s *JoinerSession) UpdateMoviesWeights(header common.Header) {
+	if header.IsEof() {
+		slog.Info("movies Eof received", slog.Any("header", header))
+		s.moviesToExpect = header.TotalWeight
 		return
 	}
-	s.movies = append(s.movies, batch.Data...)
-	s.moviesReceived += batch.Weight
+	s.moviesReceived += header.Weight
 }
 
-func (s *JoinerService) GetMovies() []common.Movie {
+func (s *JoinerSession) SaveMovies(movies []common.Movie) {
+	s.movies = append(s.movies, movies...)
+}
+
+func (s *JoinerSession) GetMovies() []common.Movie {
 	return s.movies
 }
 
-func (s *JoinerService) AllMoviesReceived() bool {
+func (s *JoinerSession) AllMoviesReceived() bool {
 	if s.moviesReceived > uint32(s.moviesToExpect) {
 		slog.Error("total weight received is greater than total weight", slog.Any("moviesReceived", s.moviesReceived), slog.Any("moviesToExpect", s.moviesToExpect))
 	}
 	return s.moviesReceived == uint32(s.moviesToExpect)
 }
 
-func (s *JoinerService) NotifyCredit(header common.Header) {
+func (s *JoinerSession) UpdateCreditsWeights(header common.Header) {
 	if header.IsEof() {
 		slog.Info("credits Eof received", slog.Any("header", header), slog.Any("creditsReceived", s.creditsReceived), slog.Any("reviewsReceived", s.reviewsReceived))
 		s.creditsToExpect = header.TotalWeight
@@ -57,7 +60,7 @@ func (s *JoinerService) NotifyCredit(header common.Header) {
 	}
 }
 
-func (s *JoinerService) NotifyReview(header common.Header) {
+func (s *JoinerSession) UpdateReviewsWeights(header common.Header) {
 	if header.IsEof() {
 		slog.Info("reviews Eof received", slog.Any("header", header), slog.Any("creditsReceived", s.creditsReceived), slog.Any("reviewsReceived", s.reviewsReceived))
 		s.reviewsToExpect = header.TotalWeight
@@ -66,14 +69,14 @@ func (s *JoinerService) NotifyReview(header common.Header) {
 	}
 }
 
-func (s *JoinerService) IsDone() bool {
+func (s *JoinerSession) IsDone() bool {
 	return s.creditsReceived == uint32(s.creditsToExpect) &&
 		s.reviewsReceived == uint32(s.reviewsToExpect)
 }
 
-func (s *JoinerService) LogState() {
+func (s *JoinerSession) LogState() {
 	slog.Info(
-		"JoinerService",
+		"JoinerSession",
 		slog.Any("moviesReceived", s.moviesReceived),
 		slog.Any("moviesToExpect", s.moviesToExpect),
 		slog.Any("creditsReceived", s.creditsReceived),
@@ -82,12 +85,12 @@ func (s *JoinerService) LogState() {
 		slog.Any("reviewsToExpect", s.reviewsToExpect))
 }
 
-func (s *JoinerService) Join(reviews []common.Review) []common.MovieReview {
+func (s *JoinerSession) Join(reviews []common.Review) []common.MovieReview {
 	joinedReviews := common.Map(reviews, s.joinReview)
 	return common.Flatten(joinedReviews)
 }
 
-func (s *JoinerService) joinReview(r common.Review) []common.MovieReview {
+func (s *JoinerSession) joinReview(r common.Review) []common.MovieReview {
 
 	movies := s.GetMovies()
 	moviesForReview := common.Filter(movies, func(m common.Movie) bool { return m.ID == r.MovieID })
@@ -101,7 +104,7 @@ func (s *JoinerService) joinReview(r common.Review) []common.MovieReview {
 	return reviewXMovies
 }
 
-func (s *JoinerService) filterCredits(data []common.Credit) []common.Credit {
+func (s *JoinerSession) filterCredits(data []common.Credit) []common.Credit {
 	movies := s.GetMovies()
 	movieIds := common.Map(movies, func(m common.Movie) string { return m.ID })
 	ids := make(map[string]bool)
