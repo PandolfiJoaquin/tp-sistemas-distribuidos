@@ -11,21 +11,36 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-type queuesNames struct {
-	previousQueue string
-	nextQueue     string
-}
+// type queuesNames struct {
+// 	previousQueue string
+// 	nextQueue     string
+// }
 
-var queriesQueues = map[int]queuesNames{
-	2: {previousQueue: "q2-to-reduce", nextQueue: "q2-to-final-reduce"},
-	3: {previousQueue: "q3-to-reduce", nextQueue: "q3-to-final-reduce"},
-	4: {previousQueue: "q4-to-reduce", nextQueue: "q4-to-final-reduce"},
-	5: {previousQueue: "q5-to-reduce", nextQueue: "q5-to-final-reduce"},
-}
+// var queriesQueues = map[int]queuesNames{
+// 	2: {previousQueue: "q2-to-reduce", nextQueue: "q2-to-final-reduce"},
+// 	3: {previousQueue: "q3-to-reduce", nextQueue: "q3-to-final-reduce"},
+// 	4: {previousQueue: "q4-to-reduce", nextQueue: "q4-to-final-reduce"},
+// 	5: {previousQueue: "q5-to-reduce", nextQueue: "q5-to-final-reduce"},
+// }
+
+const (
+	rabbitHost      = "rabbitmq"
+	previousQueueQ2 = "q2-to-reduce"
+	nextQueueQ2     = "q2-to-final-reduce"
+	previousQueueQ3 = "q3-to-reduce"
+	nextQueueQ3     = "q3-to-final-reduce"
+	previousQueueQ4 = "q4-to-reduce"
+	nextQueueQ4     = "q4-to-final-reduce"
+	previousQueueQ5 = "q5-to-reduce"
+	nextQueueQ5     = "q5-to-final-reduce"
+)
 
 type Reducer struct {
-	middleware  *common.Middleware
-	connections map[int]connection
+	middleware       *common.Middleware
+	query2Connection connection
+	query3Connection connection
+	query4Connection connection
+	query5Connection connection
 }
 
 type connection struct {
@@ -34,17 +49,38 @@ type connection struct {
 }
 
 func NewReducer(rabbitUser, rabbitPass string) (*Reducer, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
+	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
 
-	connections, err := initializeConnections(middleware)
+	query2Connection, err := initializeConnection(middleware, previousQueueQ2, nextQueueQ2)
 	if err != nil {
-		return nil, fmt.Errorf("error initializing connections: %w", err)
+		return nil, fmt.Errorf("error initializing query 2 connection: %w", err)
 	}
 
-	return &Reducer{middleware: middleware, connections: connections}, nil
+	query3Connection, err := initializeConnection(middleware, previousQueueQ3, nextQueueQ3)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing query 3 connection: %w", err)
+	}
+
+	query4Connection, err := initializeConnection(middleware, previousQueueQ4, nextQueueQ4)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing query 4 connection: %w", err)
+	}
+
+	query5Connection, err := initializeConnection(middleware, previousQueueQ5, nextQueueQ5)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing query 5 connection: %w", err)
+	}
+
+	return &Reducer{
+		middleware:       middleware,
+		query2Connection: query2Connection,
+		query3Connection: query3Connection,
+		query4Connection: query4Connection,
+		query5Connection: query5Connection,
+	}, nil
 }
 
 func initializeConnection(middleware *common.Middleware, previousQueue, nextQueue string) (connection, error) {
@@ -57,18 +93,6 @@ func initializeConnection(middleware *common.Middleware, previousQueue, nextQueu
 		return connection{}, fmt.Errorf("error getting channel %s to send: %w", nextQueue, err)
 	}
 	return connection{previousChan, nextChan}, nil
-}
-
-func initializeConnections(middleware *common.Middleware) (map[int]connection, error) {
-	connections := make(map[int]connection)
-	for queryNum, queuesNames := range queriesQueues {
-		connection, err := initializeConnection(middleware, queuesNames.previousQueue, queuesNames.nextQueue)
-		if err != nil {
-			return nil, fmt.Errorf("error initializing connection for %s: %w", queuesNames.previousQueue, err)
-		}
-		connections[queryNum] = connection
-	}
-	return connections, nil
 }
 
 func (r *Reducer) Start() {
@@ -87,30 +111,50 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping")
 			return
-		case msg := <-r.connections[2].ChanToRecv:
-			if err := r.processQuery2Message(msg); err != nil {
+		case msg := <-r.query2Connection.ChanToRecv:
+			reduced, err := reduceMessage(msg, r.reduceQ2)
+			if err != nil {
 				slog.Error("error processing query2 message", slog.String("error", err.Error()))
+			} else {
+				if err := sendResponse(reduced, r.query2Connection.ChanToSend); err != nil {
+					slog.Error("error sending response", slog.String("error", err.Error()))
+				}
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query2 message", slog.String("error", err.Error()))
 			}
-		case msg := <-r.connections[3].ChanToRecv:
-			if err := r.processQuery3Message(msg); err != nil {
+		case msg := <-r.query3Connection.ChanToRecv:
+			reduced, err := reduceMessage(msg, r.reduceQ3)
+			if err != nil {
 				slog.Error("error processing query3 message", slog.String("error", err.Error()))
+			} else {
+				if err := sendResponse(reduced, r.query3Connection.ChanToSend); err != nil {
+					slog.Error("error sending response", slog.String("error", err.Error()))
+				}
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query3 message", slog.String("error", err.Error()))
 			}
-		case msg := <-r.connections[4].ChanToRecv:
-			if err := r.processQuery4Message(msg); err != nil {
+		case msg := <-r.query4Connection.ChanToRecv:
+			reduced, err := reduceMessage(msg, r.reduceQ4)
+			if err != nil {
 				slog.Error("error processing query4 message", slog.String("error", err.Error()))
+			} else {
+				if err := sendResponse(reduced, r.query4Connection.ChanToSend); err != nil {
+					slog.Error("error sending response", slog.String("error", err.Error()))
+				}
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query4 message", slog.String("error", err.Error()))
 			}
-		case msg := <-r.connections[5].ChanToRecv:
-			if err := r.processQuery5Message(msg); err != nil {
+		case msg := <-r.query5Connection.ChanToRecv:
+			reduced, err := reduceMessage(msg, r.reduceQ5)
+			if err != nil {
 				slog.Error("error processing query5 message", slog.String("error", err.Error()))
+			} else {
+				if err := sendResponse(reduced, r.query5Connection.ChanToSend); err != nil {
+					slog.Error("error sending response", slog.String("error", err.Error()))
+				}
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query5 message", slog.String("error", err.Error()))
@@ -119,106 +163,32 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 	}
 }
 
-// TODO: Futuro refactor: poner esta func y sacar las 5 de processQueryXMessage (no lo hago porque no puedo testear que funcione el codigo)
-
-// func processMessage[T any](msg common.Message, reduceFunc func(common.Batch[T]) (any, error), sendChan chan<- []byte) error {
-// 	var batch common.Batch[T]
-// 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
-// 		return fmt.Errorf("error unmarshalling message: %w", err)
-// 	}
-
-// 	reduced, err := reduceFunc(batch)
-// 	if err != nil {
-// 		return fmt.Errorf("error reducing message: %w", err)
-// 	}
-
-// 	response, err := json.Marshal(reduced)
-// 	if err != nil {
-// 		return fmt.Errorf("error marshalling response: %w", err)
-// 	}
-
-// 	sendChan <- response
-// 	return nil
-// }
-
-func (r *Reducer) processQuery2Message(msg common.Message) error {
-	var batch common.Batch[common.Movie]
+func reduceMessage[T any, R any](msg common.Message, reduceFunc func(common.Batch[T]) (R, error)) (R, error) {
+	var batch common.Batch[T]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
-		return fmt.Errorf("error unmarshalling query 2 message: %w", err)
+		var zero R
+		return zero, fmt.Errorf("error unmarshalling message: %w", err)
 	}
-	reduced, err := r.reduceQ2(batch)
+
+	reduced, err := reduceFunc(batch)
 	if err != nil {
-		return fmt.Errorf("error processing query2 message: %w", err)
+		var zero R
+		return zero, fmt.Errorf("error reducing message: %w", err)
 	}
-	response, err := json.Marshal(reduced)
-	if err != nil {
-		return fmt.Errorf("error marshalling response: %w", err)
-	}
-	r.connections[2].ChanToSend <- response
-	return nil
+
+	return reduced, nil
 }
 
-func (r *Reducer) processQuery3Message(msg common.Message) error {
-	var batch common.Batch[common.MovieReview]
-	if err := json.Unmarshal(msg.Body, &batch); err != nil {
-		return fmt.Errorf("error unmarshalling query 3 message: %w", err)
-	}
-
-	reduced, err := r.reduceQ3(batch)
-	if err != nil {
-		return fmt.Errorf("error processing query3 message: %w", err)
-	}
-	response, err := json.Marshal(reduced)
+func sendResponse[T any](response T, sendChan chan<- []byte) error {
+	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		return fmt.Errorf("error marshalling response: %w", err)
 	}
-	if reduced.IsEof() {
-		slog.Info("EOF received for q3 in reducer")
-	}
-	r.connections[3].ChanToSend <- response
-	return nil
-}
-
-func (r *Reducer) processQuery4Message(msg common.Message) error {
-	var batch common.Batch[common.Credit]
-	if err := json.Unmarshal(msg.Body, &batch); err != nil {
-		return fmt.Errorf("error unmarshalling query 4 message: %w", err)
-	}
-
-	reduced, err := r.reduceQ4(batch)
-	if err != nil {
-		return fmt.Errorf("error processing query4 message: %w", err)
-	}
-	response, err := json.Marshal(reduced)
-	if err != nil {
-		return fmt.Errorf("error marshalling response: %w", err)
-	}
-
-	r.connections[4].ChanToSend <- response
-	return nil
-}
-
-func (r *Reducer) processQuery5Message(msg common.Message) error {
-	var batch common.Batch[common.MovieWithSentimentOverview]
-	if err := json.Unmarshal(msg.Body, &batch); err != nil {
-		return fmt.Errorf("error unmarshalling query 5 message: %w", err)
-	}
-
-	reduced, err := r.reduceQ5(batch)
-	if err != nil {
-		return fmt.Errorf("error processing query5 message: %w", err)
-	}
-	response, err := json.Marshal(reduced)
-	if err != nil {
-		return fmt.Errorf("error marshalling response: %w", err)
-	}
-
-	r.connections[5].ChanToSend <- response
+	sendChan <- responseBytes
 	return nil
 }
 
 func (r *Reducer) reduceQ2(batch common.Batch[common.Movie]) (common.Batch[common.CountryBudget], error) {
-	// me llega un mensaje de peliculas y tengo que reducirlo a un map con cada entrada (pais, $$), me viene filtrado
 	countries := make(map[pkg.Country]uint64)
 	for _, movie := range batch.Data {
 		if len(movie.ProductionCountries) > 1 {
@@ -239,7 +209,6 @@ func (r *Reducer) reduceQ2(batch common.Batch[common.Movie]) (common.Batch[commo
 }
 
 func (r *Reducer) reduceQ3(batch common.Batch[common.MovieReview]) (common.Batch[common.MovieAvgRating], error) {
-	// me llega un mensaje de peliculasXReviews y tengo que reducirlo a un map con cada entrada (peli, sum(ratings), cant_reviews), me viene filtrado
 	movieRatings := make(map[string]common.MovieAvgRating)
 	for _, movieRating := range batch.Data {
 		if currentRating, ok := movieRatings[movieRating.MovieID]; !ok {
@@ -268,7 +237,6 @@ func (r *Reducer) reduceQ3(batch common.Batch[common.MovieReview]) (common.Batch
 }
 
 func (r *Reducer) reduceQ4(batch common.Batch[common.Credit]) (common.Batch[common.ActorMoviesAmount], error) {
-	// me llega un mensaje de Credit y tengo que reducirlo a un map con cada entrada (actor, sum(pelis)), me viene filtrado
 	actorMovies := make(map[string]common.ActorMoviesAmount)
 	for _, credit := range batch.Data {
 		for _, actor := range credit.Actors {
@@ -296,8 +264,7 @@ func (r *Reducer) reduceQ4(batch common.Batch[common.Credit]) (common.Batch[comm
 	}, nil
 }
 
-func (r *Reducer) reduceQ5(batch common.Batch[common.MovieWithSentimentOverview]) (common.Batch[common.SentimentProfitRatioAccumulator], error) {
-	// me llega un mensaje de MovieWithSentimentOverview y tengo que reducirlo a un AvgMovieProfitRatioBySentiment, me viene filtrado
+func (r *Reducer) reduceQ5(batch common.Batch[common.MovieWithSentiment]) (common.Batch[common.SentimentProfitRatioAccumulator], error) {
 	positiveProfitRatio := common.ProfitRatioAccumulator{}
 	negativeProfitRatio := common.ProfitRatioAccumulator{}
 	for _, movieWithSentiment := range batch.Data {

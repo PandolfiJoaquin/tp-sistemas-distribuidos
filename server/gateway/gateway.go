@@ -3,13 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"os/signal"
-	"pkg/communication"
 	"pkg/models"
 	"sync"
 	"syscall"
@@ -17,7 +14,8 @@ import (
 )
 
 const (
-	nextStep = "to-preprocess"
+	rabbitHost = "rabbitmq"
+	nextStep   = "to-preprocess"
 )
 
 type GatewayConfig struct {
@@ -40,10 +38,9 @@ type Gateway struct {
 	toPreprocess  chan<- []byte
 	config        GatewayConfig
 	listener      net.Listener
-	client        net.Conn
+	clients       map[string]*Client
 	running       bool
 	ctx           context.Context
-	done          uint8
 }
 
 func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
@@ -52,6 +49,7 @@ func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
 		config:        config,
 		running:       true,
 		resultsQueues: make(map[int]<-chan common.Message),
+		clients:       make(map[string]*Client),
 	}
 
 	listener, err := net.Listen("tcp", ":"+port)
@@ -71,7 +69,7 @@ func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
 }
 
 func (g *Gateway) middlewareSetup() error {
-	middleware, err := common.NewMiddleware(g.config.RabbitUser, g.config.RabbitPass)
+	middleware, err := common.NewMiddleware(g.config.RabbitUser, g.config.RabbitPass, rabbitHost)
 	if err != nil {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
 		return err
@@ -100,6 +98,7 @@ func (g *Gateway) middlewareSetup() error {
 
 func (g *Gateway) listen() {
 	for g.running {
+		g.reapDeadClients()
 		slog.Info("Waiting for client connection")
 		conn, err := g.listener.Accept()
 		if err != nil {
@@ -108,138 +107,11 @@ func (g *Gateway) listen() {
 			}
 			return
 		}
-		deadChan := make(chan bool)
-		g.client = conn
-		go g.handleConnection(deadChan) //Handle connection will always finish before the next accept
-		g.processMessages(deadChan)
-	}
-}
-
-func (g *Gateway) receiveMovies() error {
-	total := 0
-	for {
-		movies, err := communication.RecvMovies(g.client)
-		if err != nil {
-			return fmt.Errorf("error receiving movies: %w", err)
-		}
-
-		err = g.publishBatch(movies, "movies")
-		if err != nil {
-			return fmt.Errorf("error publishing movies batch: %w", err)
-		}
-
-		total += int(movies.Header.Weight)
-
-		if movies.IsEof() {
-			break
-		}
-	}
-	slog.Info("Total movies received", slog.Int("total", total))
-	return nil
-}
-
-func (g *Gateway) receiveReviews() error {
-	total := 0
-	for {
-		reviews, err := communication.RecvReviews(g.client)
-		if err != nil {
-			return fmt.Errorf("error receiving reviews: %w", err)
-		}
-
-		err = g.publishBatch(reviews, "reviews")
-		if err != nil {
-			return fmt.Errorf("error publishing reviews batch: %w", err)
-		}
-
-		total += int(reviews.Header.Weight)
-
-		if reviews.IsEof() {
-			break
-		}
-	}
-	slog.Info("Total reviews received", slog.Int("total", total))
-	return nil
-}
-
-func (g *Gateway) receiveCredits() error {
-	total := 0
-	for {
-		credits, err := communication.RecvCredits(g.client)
-		if err != nil {
-			return fmt.Errorf("error receiving credits: %w", err)
-		}
-
-		err = g.publishBatch(credits, "credits")
-		if err != nil {
-			return fmt.Errorf("error publishing credits batch: %w", err)
-		}
-
-		total += int(credits.Header.Weight)
-
-		if credits.IsEof() {
-			break
-		}
-	}
-	slog.Info("Total credits received", slog.Int("total", total))
-	return nil
-}
-
-func (g *Gateway) publishBatch(batch models.RawBatch, batchType string) error {
-	bodyBytes, err := json.Marshal(batch)
-	if err != nil {
-		return fmt.Errorf("error marshalling batch: %w", err)
-	}
-
-	rawBatch := common.ToProcessMsg{
-		Type: batchType,
-		Body: bodyBytes,
-	}
-
-	batchToSend, err := json.Marshal(rawBatch)
-	if err != nil {
-		return fmt.Errorf("error marshalling raw batch: %w", err)
-	}
-
-	g.toPreprocess <- batchToSend
-	return nil
-}
-
-func (g *Gateway) handleConnection(deadChan chan bool) {
-	slog.Info("Client connected", slog.String("address", g.client.RemoteAddr().String()))
-	err := g.receiveMovies()
-	if err != nil {
-		if g.running {
-			if !errors.Is(err, io.EOF) {
-				slog.Error("error receiving movies", slog.String("error", err.Error()))
-			} else {
-				deadChan <- true
-			}
-		}
-		return
-	}
-
-	err = g.receiveReviews()
-	if err != nil {
-		if g.running {
-			if !errors.Is(err, io.EOF) {
-				slog.Error("error receiving reviews", slog.String("error", err.Error()))
-			} else {
-				deadChan <- true
-			}
-		}
-		return
-	}
-
-	err = g.receiveCredits()
-	if err != nil {
-		if g.running {
-			if !errors.Is(err, io.EOF) {
-				slog.Error("error receiving credits", slog.String("error", err.Error()))
-			} else {
-				deadChan <- true
-			}
-		}
-		return
+		client := NewClient(conn, &g.toPreprocess)
+		slog.Info("Client connected", slog.String("address", conn.RemoteAddr().String()))
+		g.clients[client.GetId()] = client
+		fmt.Printf("Client %s connected\n", client.GetId())
+		go client.Run()
 	}
 }
 
@@ -272,42 +144,32 @@ func (g *Gateway) Start() {
 	g.ctx = ctx
 	defer cancel()
 
-	wg.Add(1)
+	wg.Add(2)
 	go g.signalHandler(wg)
+	go g.processMessages(wg)
 	g.listen()
 	wg.Wait()
+
+	g.closeClients()
 
 	slog.Info("Gateway shut down")
 }
 
-const TotalQueries uint8 = 5
-
-func (g *Gateway) processMessages(deadChan chan bool) {
-	defer func(client net.Conn) {
-		err := client.Close()
-		if err != nil {
-			if !errors.Is(err, net.ErrClosed) {
-				slog.Error("error closing client connection in process", slog.String("error", err.Error()))
-			}
-			return
+func (g *Gateway) closeClients() {
+	for id, client := range g.clients {
+		if !client.IsDead() {
+			slog.Info("Closing client connection", slog.String("id", id))
+			client.Close()
 		}
-		slog.Info("client connection closed", slog.String("address", client.RemoteAddr().String()))
-	}(g.client)
+		delete(g.clients, id)
+	}
+}
 
+func (g *Gateway) processMessages(wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
-		if g.done == TotalQueries {
-			slog.Info("All queries processed for client", slog.String("address", g.client.RemoteAddr().String()))
-			break
-		}
 		var err error
 		select {
-		case <-deadChan:
-			slog.Info("Client Disconnected while sending data")
-			err := g.publishCleanupBatch()
-			if err != nil {
-				slog.Error("error publishing cleanup batch", slog.String("error", err.Error()))
-			}
-			return
 		case <-g.ctx.Done():
 			return
 
@@ -324,62 +186,41 @@ func (g *Gateway) processMessages(deadChan chan bool) {
 		}
 
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				slog.Info("Client disconnected", slog.String("address", g.client.RemoteAddr().String()))
-			} else {
-				slog.Error("error processing message", slog.String("error", err.Error()))
-			}
+			slog.Error("error processing message", slog.String("error", err.Error()))
 			return
 		}
 	}
-	g.done = 0
 }
 
-func (g *Gateway) handleResult1(msg common.Message) error {
+func (g *Gateway) reapDeadClients() {
+	for id, client := range g.clients {
+		if client.IsDead() {
+			slog.Info("Client is dead", slog.String("id", id))
+			delete(g.clients, id)
+		}
+	}
+}
+
+func (g *Gateway) handleResult1(msg common.Message) (*models.ResultWithId, error) {
 	batch, err := g.consumeBatch(msg.Body)
 	if err != nil {
-		return fmt.Errorf("error consuming results: %w", err)
+		return nil, fmt.Errorf("error consuming results: %w", err)
 	}
 
-	if !(len(batch.Data) == 0 && !batch.IsEof()) {
-		err = g.processResult1(batch)
-		if err != nil {
-			return fmt.Errorf("error processing result: %w", err)
-		}
+	if len(batch.Data) == 0 && !batch.IsEof() {
+		return nil, nil
 	}
 
-	if err := msg.Ack(); err != nil {
-		return fmt.Errorf("error acknowledging message: %w", err)
+	results := MovieToQResult(batch)
+	resultsWithId := models.ResultWithId{
+		Id:      batch.Header.ClientID,
+		Results: results,
 	}
 
-	return nil
+	return &resultsWithId, err
 }
 
-func (g *Gateway) processResult1(batch common.Batch[common.Movie]) error {
-	if batch.IsEof() {
-		slog.Info("EOF message received", slog.Any("headers", batch.Header))
-		err := communication.SendQueryEof(g.client, 1)
-		if err != nil {
-			return fmt.Errorf("error sending EOF: %w", err)
-		}
-		g.done++
-	} else {
-		q1Movies := make([]models.QueryResult, len(batch.Data))
-		for i, movie := range batch.Data {
-			q1Movies[i] = models.Q1Movie{
-				Title:  movie.Title,
-				Genres: movie.Genres,
-			}
-		}
-		err := communication.SendQueryResults(g.client, 1, q1Movies)
-		if err != nil {
-			return fmt.Errorf("error sending query results: %w", err)
-		}
-	}
-	return nil
-}
-
-func (g *Gateway) handleResults2(msg common.Message) ([]models.QueryResult, error) {
+func (g *Gateway) handleResults2(msg common.Message) (*models.ResultWithId, error) {
 	var top5Countries common.Top5Countries
 	if err := json.Unmarshal(msg.Body, &top5Countries); err != nil {
 		return nil, fmt.Errorf("error unmarshalling top 5 countries: %w", err)
@@ -391,59 +232,47 @@ func (g *Gateway) handleResults2(msg common.Message) ([]models.QueryResult, erro
 
 	slog.Info("Top 5 countries", slog.Any("top5Countries", top5Countries))
 
-	q2Result := []models.QueryResult{
-		models.Q2Country{Country: top5Countries.Countries[0].Country, Budget: top5Countries.Countries[0].Budget},
-		models.Q2Country{Country: top5Countries.Countries[1].Country, Budget: top5Countries.Countries[1].Budget},
-		models.Q2Country{Country: top5Countries.Countries[2].Country, Budget: top5Countries.Countries[2].Budget},
-		models.Q2Country{Country: top5Countries.Countries[3].Country, Budget: top5Countries.Countries[3].Budget},
-		models.Q2Country{Country: top5Countries.Countries[4].Country, Budget: top5Countries.Countries[4].Budget},
+	results := Top5CountriesToQResult(top5Countries)
+	resultsWithId := models.ResultWithId{
+		Id:      top5Countries.ClientId,
+		Results: results,
 	}
-	return q2Result, nil
+
+	return &resultsWithId, nil
 }
 
-func (g *Gateway) handleResults3(msg common.Message) ([]models.QueryResult, error) {
+func (g *Gateway) handleResults3(msg common.Message) (*models.ResultWithId, error) {
 	var bestAndWorstMovies common.BestAndWorstMovies
 	if err := json.Unmarshal(msg.Body, &bestAndWorstMovies); err != nil {
 		return nil, fmt.Errorf("error unmarshalling best and worst movies: %w", err)
 	}
 	slog.Info("Best and worst movies", slog.Any("bestAndWorstMovies", bestAndWorstMovies))
-	q3Result := []models.QueryResult{
-		models.Q3Result{
-			Best: models.Q3Movie{
-				ID:     bestAndWorstMovies.BestMovie.ID,
-				Title:  bestAndWorstMovies.BestMovie.Title,
-				Rating: bestAndWorstMovies.BestMovie.Rating,
-			},
-			Worst: models.Q3Movie{
-				ID:    bestAndWorstMovies.WorstMovie.ID,
-				Title: bestAndWorstMovies.WorstMovie.Title,
-				Rating: bestAndWorstMovies.WorstMovie.Rating,
-			},
-		},
+
+	results := BestAndWorstToQResult(bestAndWorstMovies)
+	resultsWithId := models.ResultWithId{
+		Id:      bestAndWorstMovies.ClientId,
+		Results: results,
 	}
-	return q3Result, nil
+	return &resultsWithId, nil
 }
 
-func (g *Gateway) handleResults4(msg common.Message) ([]models.QueryResult, error) {
+func (g *Gateway) handleResults4(msg common.Message) (*models.ResultWithId, error) {
 	var top10Actors common.Top10Actors
 	if err := json.Unmarshal(msg.Body, &top10Actors); err != nil {
 		return nil, fmt.Errorf("error unmarshalling top 10 actors: %w", err)
 	}
 
 	slog.Info("Top 10 actors", slog.Any("top10Actors", top10Actors))
-	q4Result := make([]models.QueryResult, len(top10Actors.TopActors))
-	for i, actor := range top10Actors.TopActors {
-		q4Result[i] = models.Q4Actors{
-			ActorId:     actor.ActorID,
-			ActorName:   actor.ActorName,
-			Appearances: actor.MoviesAmount,
-		}
-	}
 
-	return q4Result, nil
+	results := Top10ActorsToQResult(top10Actors)
+	resultsWithId := models.ResultWithId{
+		Id:      top10Actors.ClientId,
+		Results: results,
+	}
+	return &resultsWithId, nil
 }
 
-func (g *Gateway) handleResults5(msg common.Message) ([]models.QueryResult, error) {
+func (g *Gateway) handleResults5(msg common.Message) (*models.ResultWithId, error) {
 	var sentimentProfitRatio common.SentimentProfitRatioAverage
 	if err := json.Unmarshal(msg.Body, &sentimentProfitRatio); err != nil {
 		return nil, fmt.Errorf("error unmarshalling sentiment profit ratio: %w", err)
@@ -451,27 +280,20 @@ func (g *Gateway) handleResults5(msg common.Message) ([]models.QueryResult, erro
 
 	slog.Info("received query 5 results", slog.Any("sentiment profit ratio", sentimentProfitRatio))
 
-	q5Result := []models.QueryResult{
-		models.Q5Avg{
-			PositiveAvgProfitRatio: sentimentProfitRatio.PositiveAvgProfitRatio,
-			NegativeAvgProfitRatio: sentimentProfitRatio.NegativeAvgProfitRatio,
-		},
+	results := SentimentToQResult(sentimentProfitRatio)
+	resultsWithId := models.ResultWithId{
+		Id:      sentimentProfitRatio.ClientId,
+		Results: results,
 	}
-
-	return q5Result, nil
+	return &resultsWithId, nil
 }
 
 func (g *Gateway) handleResult(msg common.Message, query int) error {
-	var results []models.QueryResult
+	var results *models.ResultWithId
 	var err error
 	switch query {
 	case 1:
-		// Case 1 is weird, TODO: change it
-		err = g.handleResult1(msg)
-		if err != nil {
-			return fmt.Errorf("error handling results in query %d err: %s", query, err)
-		}
-		return nil
+		results, err = g.handleResult1(msg)
 	case 2:
 		results, err = g.handleResults2(msg)
 	case 3:
@@ -486,12 +308,16 @@ func (g *Gateway) handleResult(msg common.Message, query int) error {
 		return fmt.Errorf("error handling results in query %d err: %s", query, err)
 	}
 
-	err = communication.SendQueryResults(g.client, query, results)
-	if err != nil {
-		return fmt.Errorf("error sending query results: %w", err)
+	if results != nil { // can be nil due to empty results in query 1
+		slog.Info("Received results", slog.String("clientId", results.Id), slog.Int("query", query))
+		client, ok := g.clients[results.Id]
+		if !ok {
+			return fmt.Errorf("client %s not found", results.Id)
+		}
+		if !client.IsDead() {
+			client.sendResult(&results.Results)
+		}
 	}
-
-	g.done++
 
 	if err := msg.Ack(); err != nil {
 		return fmt.Errorf("error acknowledging message: %w", err)
@@ -507,40 +333,30 @@ func (g *Gateway) consumeBatch(msg []byte) (common.Batch[common.Movie], error) {
 	return batch, nil
 }
 
-func (g *Gateway) publishCleanupBatch() error {
-	// TODO: tidy up this code
-	cleanHeader := models.Header{
-		Weight:      0,
-		TotalWeight: -2,
-	}
-
-	rawMovies := models.RawMovieBatch{
-		Header: cleanHeader,
-		Movies: nil,
-	}
-
-	err := g.publishBatch(rawMovies, "movies")
-	if err != nil {
-		return fmt.Errorf("error publishing movies batch: %w", err)
-	}
-
-	rawReviews := models.RawReviewBatch{
-		Header:  cleanHeader,
-		Reviews: nil,
-	}
-	err = g.publishBatch(rawReviews, "reviews")
-	if err != nil {
-		return fmt.Errorf("error publishing reviews batch: %w", err)
-	}
-
-	rawCredits := models.RawCreditBatch{
-		Header:  cleanHeader,
-		Credits: nil,
-	}
-
-	err = g.publishBatch(rawCredits, "credits")
-	if err != nil {
-		return fmt.Errorf("error publishing credits batch: %w", err)
-	}
-	return nil
-}
+//func (g *Gateway) publishCleanupBatch() error {
+//	// TODO: tidy up this code
+//	cleanHeader := models.Header{
+//		Weight:      0,
+//		TotalWeight: -2,
+//	}
+//
+//	emptyBatch := models.RawBatch[any]{ // no data
+//		Header: cleanHeader,
+//	}
+//
+//	err := publishBatch(emptyBatch, "movies", g.toPreprocess)
+//	if err != nil {
+//		return fmt.Errorf("error publishing movies batch: %w", err)
+//	}
+//
+//	err = publishBatch(emptyBatch, "reviews", g.toPreprocess)
+//	if err != nil {
+//		return fmt.Errorf("error publishing reviews batch: %w", err)
+//	}
+//
+//	err = publishBatch(emptyBatch, "credits", g.toPreprocess)
+//	if err != nil {
+//		return fmt.Errorf("error publishing credits batch: %w", err)
+//	}
+//	return nil
+//}

@@ -32,6 +32,9 @@ CLIENT_NODE = """
       dockerfile: ./client/Dockerfile
     environment:
       - CLI_ID={idx}
+      - MOVIES_FILE={movies_file}
+      - REVIEWS_FILE={reviews_file}
+      - CREDITS_FILE={credits_file}
     depends_on:
       - gateway
     volumes:
@@ -126,8 +129,10 @@ def create_compose(cfg):
         compose += JOINER_NODE.format(idx=j)
 
     # Clients
+    print(f"   • clients ×{clients}")
     for c in range(1, clients+1):
-        compose += CLIENT_NODE.format(idx=c)
+        review_file = "archive/ratings.csv" if c % 2 == 1 else "archive/ratings_small.csv" # Multiples of 2 use small dataset
+        compose += CLIENT_NODE.format(idx=c, movies_file="archive/movies_metadata.csv", reviews_file=review_file, credits_file="archive/credits.csv")
 
     with open(YAML_FILE, "w") as f:
         f.write(compose)

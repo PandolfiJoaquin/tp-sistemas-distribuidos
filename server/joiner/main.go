@@ -31,11 +31,11 @@ func main() {
 		return
 	}
 
-	joiner, err := NewJoiner(joinerIdInt, rabbitUser, rabbitPass)
+	joiner, err := NewJoinerController(joinerIdInt, rabbitUser, rabbitPass)
 	if err != nil {
 		slog.Error("error creating joiner", slog.String("error", err.Error()))
 		return
 	}
-	
+
 	joiner.Start()
 }

@@ -11,46 +11,46 @@ import (
 )
 
 const (
+	rabbitHost      = "rabbitmq" //"127.0.0.1"
 	moviesExchange  = "movies-exchange"
 	moviestopic     = "movies-to-join-%d"
 	reviewsExchange = "reviews-exchange"
 	reviewsTopic    = "reviews-to-join-%d"
 	creditExchange  = "credits-exchange"
 	creditTopic     = "credits-to-join-%d"
+	q3ToReduceQueue = "q3-to-reduce"
+	q4ToReduceQueue = "q4-to-reduce"
 )
 
-const q3ToReduceQueue = "q3-to-reduce"
-const q4ToReduceQueue = "q4-to-reduce"
-
-type Joiner struct {
-	joinerId   int
-	middleware *common.Middleware
-	session    *JoinerSession //para varios clientes convertir esto en un mapa [ClientId]JoinerSession
+type JoinerController struct {
+	joinerId            int
+	middleware          *common.Middleware
+	sessions            map[string]*JoinerService
+	storedReviewBatches map[string][]common.Batch[common.Review]
 }
 
-func NewJoiner(joinerId int, rabbitUser, rabbitPass string) (*Joiner, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
+func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
+	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	return &Joiner{
-		joinerId:   joinerId,
-		middleware: middleware,
-		session:    NewJoinerSession(),
+	return &JoinerController{
+		joinerId:            joinerId,
+		middleware:          middleware,
+		sessions:            map[string]*JoinerService{},
+		storedReviewBatches: map[string][]common.Batch[common.Review]{},
 	}, nil
 }
 
-func (j *Joiner) Start() {
+func (j *JoinerController) Start() {
 	defer j.stop()
 
-	// Sigterm , sigint
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	moviesChan, err := j.middleware.GetChanWithTopicToRecv(moviesExchange, fmt.Sprintf(moviestopic, j.joinerId))
-	//moviesChan, err := j.middleware.GetChanToRecv(fmt.Sprintf(moviesToJoinWithTopic, j.joinerId))
 	if err != nil {
 		slog.Error("Error creating channel", slog.String("queue", moviesExchange), slog.String("error", err.Error()))
 		return
@@ -83,7 +83,38 @@ func (j *Joiner) Start() {
 	j.run(ctx, moviesChan, reviewsChan, creditChan, q3ToReduce, q4ToReduce)
 }
 
-func (j *Joiner) run(
+func (j *JoinerController) joinReviewBatch(clientId string, batch common.Batch[common.Review], q3ToReduce chan<- []byte) {
+	session := j.getSession(clientId)
+	session.NotifyReview(batch.Header)
+
+	reviewXMovies := session.Join(batch.Data)
+	reviewsXMoviesBatch := common.Batch[common.MovieReview]{
+		Header: batch.Header,
+		Data:   reviewXMovies,
+	}
+
+	response, err := json.Marshal(reviewsXMoviesBatch)
+	if err != nil {
+		slog.Error("error marshalling batch", slog.String("error", err.Error()))
+	}
+	q3ToReduce <- response
+}
+
+func (j *JoinerController) storeReviewBatch(clientId string, batch common.Batch[common.Review]) {
+	j.storedReviewBatches[clientId] = append(j.storedReviewBatches[clientId], batch)
+}
+
+func (j *JoinerController) joinStoredReviewBatches(clientId string, q3ToReduce chan<- []byte) {
+	slog.Info("joining stored review batches", slog.String("clientId", clientId))
+	batches := j.storedReviewBatches[clientId]
+	j.storedReviewBatches[clientId] = []common.Batch[common.Review]{}
+	for _, batch := range batches {
+		j.joinReviewBatch(clientId, batch, q3ToReduce)
+		j.exorciseSession(clientId)
+	}
+}
+
+func (j *JoinerController) run(
 	ctx context.Context,
 	_moviesChan, _reviewsChan, _creditChan <-chan common.Message,
 	q3ToReduce, q4ToReduce chan<- []byte,
@@ -103,16 +134,18 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			j.session.SaveMovies(batch)
-			if j.session.AllMoviesReceived() {
+			clientId := batch.GetClientID()
+			session := j.getSession(clientId)
+			session.SaveMovies(batch)
+			if session.AllMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
 				reviews = _reviewsChan
 				credits = _creditChan
+				j.joinStoredReviewBatches(clientId, q3ToReduce) // Joins all reviews stored
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
-			continue
 
 		case msg := <-reviews:
 			var batch common.Batch[common.Review]
@@ -120,33 +153,35 @@ func (j *Joiner) run(
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			j.session.NotifyReview(batch.Header)
-			reviewXMovies := j.join(batch.Data)
-			reviewsXMoviesBatch := common.Batch[common.MovieReview]{
-				Header: batch.Header,
-				Data:   reviewXMovies,
-			}
+			clientId := batch.GetClientID()
+			session := j.getSession(clientId)
 
-			response, err := json.Marshal(reviewsXMoviesBatch)
-			if err != nil {
-				slog.Error("error marshalling batch", slog.String("error", err.Error()))
+			if !session.AllMoviesReceived() {
+				j.storeReviewBatch(clientId, batch)
+				if err := msg.Ack(); err != nil {
+					slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				}
 				continue
 			}
-			q3ToReduce <- response
+
+			j.joinReviewBatch(clientId, batch, q3ToReduce)
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
-			continue
+			j.exorciseSession(clientId)
+
 		case msg := <-credits:
 			var batch common.Batch[common.Credit]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			j.session.NotifyCredit(batch.Header)
+			clientId := batch.GetClientID()
+			session := j.getSession(clientId)
+			session.NotifyCredit(batch.Header)
 
-			actors := j.filterCredits(batch.Data)
+			actors := session.filterCredits(batch.Data)
 			actorsBatch := common.Batch[common.Credit]{
 				Header: batch.Header,
 				Data:   actors,
@@ -162,47 +197,32 @@ func (j *Joiner) run(
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
-			continue
+			j.exorciseSession(clientId)
 		}
 
 	}
 }
 
-func (j *Joiner) join(reviews []common.Review) []common.MovieReview {
-	joinedReviews := common.Map(reviews, j.joinReview)
-	return common.Flatten(joinedReviews)
+func (j *JoinerController) getSession(clientId string) *JoinerService {
+	if _, ok := j.sessions[clientId]; !ok {
+		slog.Info("New client detected. creating session", slog.String("clientId", string(clientId)))
+		j.sessions[clientId] = NewJoinerService()
+	}
+	return j.sessions[clientId]
 }
 
-func (j *Joiner) joinReview(r common.Review) []common.MovieReview {
-
-	movies := j.session.GetMovies()
-	moviesForReview := common.Filter(movies, func(m common.Movie) bool { return m.ID == r.MovieID })
-	reviewXMovies := common.Map(moviesForReview, func(m common.Movie) common.MovieReview {
-		return common.MovieReview{
-			MovieID: m.ID,
-			Title:   m.Title,
-			Rating:  r.Rating,
-		}
-	})
-	return reviewXMovies
+// if the session is done, delete it
+func (j *JoinerController) exorciseSession(id string) {
+	if j.sessions[id].IsDone() {
+		slog.Info("Done for client", slog.String("clientId", id))
+		delete(j.sessions, id)
+		slog.Info("Successfully deleted session", slog.String("clientId", id))
+	}
 }
 
-func (j *Joiner) stop() {
+func (j *JoinerController) stop() {
 	if err := j.middleware.Close(); err != nil {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
 	slog.Info("joiner stopped")
-}
-
-func (j *Joiner) filterCredits(data []common.Credit) []common.Credit {
-	movies := j.session.GetMovies()
-	movieIds := common.Map(movies, func(m common.Movie) string { return m.ID })
-	ids := make(map[string]bool)
-	for _, id := range movieIds {
-		ids[id] = true
-	}
-	actors := common.Filter(data, func(c common.Credit) bool {
-		return ids[c.MovieId]
-	})
-	return actors
 }

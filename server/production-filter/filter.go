@@ -14,6 +14,7 @@ import (
 )
 
 const (
+	rabbitHost          = "rabbitmq"
 	previousQueueQuery1 = "filter-production-q1"
 	previousQueueQuery2 = "filter-production-q2"
 	previousQueueQuery3 = "filter-production-q3q4"
@@ -28,12 +29,12 @@ type ProductionFilter struct {
 	query1Connection        connection
 	query2Connection        connection
 	query3ShardsConnections shardConnection
-	shards                  int
 }
 
 type shardConnection struct {
 	previousChan <-chan common.Message
 	nextChan     map[int]chan<- []byte
+	shards       int
 }
 
 type connection struct {
@@ -42,7 +43,7 @@ type connection struct {
 }
 
 func NewProductionFilter(rabbitUser, rabbitPass string, shards int) (*ProductionFilter, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
+	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
@@ -66,7 +67,6 @@ func NewProductionFilter(rabbitUser, rabbitPass string, shards int) (*Production
 		query1Connection:        query1Connection,
 		query2Connection:        query2Connection,
 		query3ShardsConnections: query3ShardsConnections,
-		shards:                  shards,
 	}, nil
 }
 
@@ -92,13 +92,12 @@ func initializeShardsConnections(middleware *common.Middleware, previousQueue st
 	nextChan := make(map[int]chan<- []byte)
 	for i := 1; i <= shards; i++ {
 		nextChan[i], err = middleware.GetChanWithTopicToSend(moviesExchange, fmt.Sprintf(topic, i))
-		//nextChan[i], err = middleware.GetChanToSend(fmt.Sprintf(topic, i))
 		if err != nil {
 			return shardConnection{}, fmt.Errorf("error getting channel %s to receive: %w", fmt.Sprintf(topic, i), err)
 		}
 	}
 
-	return shardConnection{previousChan, nextChan}, nil
+	return shardConnection{previousChan, nextChan, shards}, nil
 }
 
 func (f *ProductionFilter) Start() {
@@ -121,9 +120,10 @@ func (f *ProductionFilter) start(ctx context.Context) {
 			batch, err := f.processQueryMessage(msg, f.filterByProductionQ1)
 			if err != nil {
 				slog.Error("error processing query message", slog.String("error", err.Error()))
-			}
-			if err := f.sendBatch(f.query1Connection.ChanToSend, batch); err != nil {
-				slog.Error("error sending batch", slog.String("error", err.Error()))
+			} else {
+				if err := f.sendBatch(f.query1Connection.ChanToSend, batch); err != nil {
+					slog.Error("error sending batch", slog.String("error", err.Error()))
+				}
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -132,9 +132,10 @@ func (f *ProductionFilter) start(ctx context.Context) {
 			batch, err := f.processQueryMessage(msg, f.filterByProductionQ2)
 			if err != nil {
 				slog.Error("error processing query message", slog.String("error", err.Error()))
-			}
-			if err := f.sendBatch(f.query2Connection.ChanToSend, batch); err != nil {
-				slog.Error("error sending batch", slog.String("error", err.Error()))
+			} else {
+				if err := f.sendBatch(f.query2Connection.ChanToSend, batch); err != nil {
+					slog.Error("error sending batch", slog.String("error", err.Error()))
+				}
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -143,20 +144,9 @@ func (f *ProductionFilter) start(ctx context.Context) {
 			batch, err := f.processQueryMessage(msg, f.filterByProductionQ3)
 			if err != nil {
 				slog.Error("error processing query message", slog.String("error", err.Error()))
-			}
-
-			movies := make([][]common.Movie, f.shards)
-			for _, movie := range batch.Data {
-				shard := common.GetShard(movie.ID, f.shards)
-				movies[shard-1] = append(movies[shard-1], movie)
-			}
-
-			for i, moviesData := range movies {
-				shard := i + 1
-				currentBatch := batch
-				currentBatch.Data = moviesData
-				if err := f.sendBatch(f.query3ShardsConnections.nextChan[shard], currentBatch); err != nil {
-					slog.Error("error sending batch", slog.String("error", err.Error()))
+			} else {
+				if err := f.sendBatchToShards(f.query3ShardsConnections, batch); err != nil {
+					slog.Error("error sending batch to shards", slog.String("error", err.Error()))
 				}
 			}
 			if err := msg.Ack(); err != nil {
@@ -199,6 +189,23 @@ func (f *ProductionFilter) sendBatch(chanToSend chan<- []byte, batch common.Batc
 	return nil
 }
 
+func (f *ProductionFilter) sendBatchToShards(conn shardConnection, batch common.Batch[common.Movie]) error {
+	movies := make([][]common.Movie, conn.shards)
+	for _, movie := range batch.Data {
+		shard := common.GetShard(movie.ID, conn.shards)
+		movies[shard-1] = append(movies[shard-1], movie)
+	}
+
+	for i, moviesData := range movies {
+		shard := i + 1
+		currentBatch := batch
+		currentBatch.Data = moviesData
+		if err := f.sendBatch(conn.nextChan[shard], currentBatch); err != nil {
+			slog.Error("error sending batch", slog.String("error", err.Error()))
+		}
+	}
+	return nil
+}
 func (f *ProductionFilter) filterByProductionQ1(movie common.Movie) bool {
 	arg := pkg.Country{Code: "AR", Name: "Argentina"}
 	esp := pkg.Country{Code: "ES", Name: "Spain"}

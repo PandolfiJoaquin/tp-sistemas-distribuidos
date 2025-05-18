@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"os/signal"
 	"pkg/models"
-	"strconv"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
 )
 
 const (
+	rabbitHost      = "rabbitmq"
 	toPreProcess    = "to-preprocess"
 	filterMoviesQ1  = "filter-year-q1"
 	filterMoviesQ2  = "filter-production-q2"
@@ -65,7 +65,7 @@ func NewPreprocessor(rabbitUser string, rabbitPass string, shards int) *Preproce
 
 func (p *Preprocessor) middlewareSetup() error {
 	// Setup middleware connection
-	middleware, err := common.NewMiddleware(p.config.RabbitUser, p.config.RabbitPass)
+	middleware, err := common.NewMiddleware(p.config.RabbitUser, p.config.RabbitPass, rabbitHost)
 	if err != nil {
 		return fmt.Errorf("error creating middleware: %s", err)
 	}
@@ -73,7 +73,6 @@ func (p *Preprocessor) middlewareSetup() error {
 	for i := range p.shards {
 		shard := i + 1
 		slog.Info("Creating channel to send reviews", slog.Int("shard", shard))
-		//nextChan[i], err = middleware.GetChanWithTopicToSend(moviesExchange, fmt.Sprintf(topic, i))
 		p.reviewsChans[shard], err = middleware.GetChanWithTopicToSend(reviewsExchange, fmt.Sprintf(reviewsTopic, shard))
 		if err != nil {
 			return fmt.Errorf("error getting channel to send reviews: %s", err)
@@ -157,16 +156,16 @@ func (p *Preprocessor) processMessages(ctx context.Context) {
 func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 	switch msg.Type {
 	case "movies":
-		var mb models.RawMovieBatch
+		var mb models.RawBatch[models.RawMovie]
 		if err := json.Unmarshal(msg.Body, &mb); err != nil {
 			return fmt.Errorf("movies unmarshal: %w", err)
 		}
 
 		var payload any
 		if mb.IsEof() {
-			payload = makeEOFBatch[common.Movie](mb.Header.TotalWeight)
+			payload = makeEOFBatch[common.Movie](mb.Header.TotalWeight, msg.ClientId)
 		} else {
-			payload = p.preprocessMovies(mb)
+			payload = preprocessMovies(mb, msg.ClientId)
 		}
 
 		data, err := json.Marshal(payload)
@@ -180,12 +179,12 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 		slog.Debug("preprocessing movies", slog.Int("size", int(mb.Header.Weight)))
 
 	case "reviews":
-		var rb models.RawReviewBatch
+		var rb models.RawBatch[models.RawReview]
 		if err := json.Unmarshal(msg.Body, &rb); err != nil {
 			return fmt.Errorf("reviews unmarshal: %w", err)
 		}
 
-		batch := p.preprocessReviews(rb)
+		batch := preprocessReviews(rb, msg.ClientId)
 		if err := sendBatchMap(
 			batch,
 			p.shards,
@@ -197,12 +196,12 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 		slog.Debug("preprocessing reviews", slog.Int("size", int(rb.Header.Weight)))
 
 	case "credits":
-		var cb models.RawCreditBatch
+		var cb models.RawBatch[models.RawCredits]
 		if err := json.Unmarshal(msg.Body, &cb); err != nil {
 			return fmt.Errorf("credits unmarshal: %w", err)
 		}
 
-		batch := p.preprocessCredits(cb)
+		batch := preprocessCredits(cb, msg.ClientId)
 		if err := sendBatchMap(
 			batch,
 			p.shards,
@@ -220,90 +219,23 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 	return nil
 }
 
-func (p *Preprocessor) preprocessMovies(batch models.RawMovieBatch) common.Batch[common.Movie] {
-	movies := make([]common.Movie, 0)
-
-	for _, movie := range batch.Movies {
-		id := strconv.Itoa(int(movie.ID))
-		title := movie.Title
-		year := movie.ReleaseDate.Year()
-
-		movies = append(movies, common.Movie{
-			ID:                  id,
-			Title:               title,
-			Year:                year,
-			Genres:              movie.Genres,
-			ProductionCountries: movie.ProductionCountries,
-			Budget:              movie.Budget,
-			Overview:            movie.Overview,
-			Revenue:             movie.Revenue,
-		})
-	}
-
-	res := makeBatchMsg[common.Movie](batch.Header.Weight, movies, batch.Header.TotalWeight)
-
-	return res
-}
-
-func (p *Preprocessor) preprocessReviews(batch models.RawReviewBatch) common.Batch[common.Review] {
-	reviews := make([]common.Review, 0)
-
-	for _, review := range batch.Reviews {
-		id := review.UserID
-		movieID := review.MovieID
-		rating := review.Rating
-
-		reviews = append(reviews, common.Review{
-			ID:      id,
-			MovieID: movieID,
-			Rating:  rating,
-		})
-	}
-	res := makeBatchMsg[common.Review](batch.Header.Weight, reviews, batch.Header.TotalWeight)
-
-	return res
-}
-
-func (p *Preprocessor) preprocessCredits(batch models.RawCreditBatch) common.Batch[common.Credit] {
-	credits := make([]common.Credit, 0)
-
-	for _, credit := range batch.Credits {
-		movieID := credit.MovieId
-		actors := make([]common.Actor, 0)
-
-		for _, actor := range credit.Cast {
-			actors = append(actors, common.Actor{
-				ActorID: strconv.Itoa(actor.ID),
-				Name:    actor.Name,
-			})
-		}
-
-		credits = append(credits, common.Credit{
-			MovieId: movieID,
-			Actors:  actors,
-		})
-	}
-
-	res := makeBatchMsg[common.Credit](batch.Header.Weight, credits, batch.Header.TotalWeight)
-
-	return res
-}
-
-func makeEOFBatch[T any](totalWeight int32) common.Batch[T] {
+func makeEOFBatch[T any](totalWeight int32, id string) common.Batch[T] {
 	return common.Batch[T]{
 		Header: common.Header{
 			Weight:      0,
 			TotalWeight: totalWeight,
+			ClientID:    id,
 		},
 		Data: []T{},
 	}
 }
 
-func makeBatchMsg[T any](weight uint32, data []T, totalWeight int32) common.Batch[T] {
+func makeBatchMsg[T any](weight uint32, data []T, totalWeight int32, clientID string) common.Batch[T] {
 	return common.Batch[T]{
 		Header: common.Header{
 			Weight:      weight,
 			TotalWeight: totalWeight,
+			ClientID:    clientID,
 		},
 		Data: data,
 	}
@@ -324,7 +256,7 @@ func divideBatchInShards[T any](batch common.Batch[T], shards int, getKey func(T
 }
 
 // sendBatchMap marshals either an EOF batch or normal sharded batches and sends them
-// to chans[1]..chans[shards]. Assumes map keys 1..shards exist.
+// to chans[1]...chans[shards]. Assumes map keys 1..shards exist.
 func sendBatchMap[T any](batch common.Batch[T], shards int, chans map[int]chan<- []byte, getKey func(T) string) error {
 	if batch.IsEof() {
 		data, err := json.Marshal(batch)

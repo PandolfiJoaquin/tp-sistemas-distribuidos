@@ -1,10 +1,26 @@
 package models
 
-import "strconv"
+import (
+	"encoding/json"
+	"strconv"
+)
+
+type ResultWithId struct {
+	Id      string            `json:"id"`
+	Results TotalQueryResults `json:"results"`
+}
 
 type TotalQueryResults struct {
-	QueryId int
-	Items   []QueryResult
+	QueryId int           `json:"query_id"`
+	Items   []QueryResult `json:"items"`
+	Last    bool          `json:"last"`
+}
+
+// Struct to hold the raw query results for unmarshalling and sending
+type RawQueryResults struct {
+	QueryId int             `json:"query_id"`
+	Items   json.RawMessage `json:"items"`
+	Last    bool            `json:"last"`
 }
 
 type QueryResult interface {
@@ -45,8 +61,8 @@ type Q3Result struct {
 }
 
 type Q3Movie struct {
-	ID    string  `json:"id"`
-	Title string  `json:"title"`
+	ID     string  `json:"id"`
+	Title  string  `json:"title"`
 	Rating float32 `json:"rating"`
 }
 

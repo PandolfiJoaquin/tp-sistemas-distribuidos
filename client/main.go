@@ -24,7 +24,14 @@ func main() {
 	}
 	slog.SetDefault(logger)
 
-	// read cli_id from env
+	moviesFile := os.Getenv("MOVIES_FILE")
+	reviewsFile := os.Getenv("REVIEWS_FILE")
+	creditsFile := os.Getenv("CREDITS_FILE")
+	if moviesFile == "" || reviewsFile == "" || creditsFile == "" {
+		slog.Error("env variables MOVIES_FILE, REVIEWS_FILE and CREDITS_FILE must be set")
+		return
+	}
+
 	cliID := os.Getenv("CLI_ID")
 	id, err := strconv.Atoi(cliID)
 	if err != nil {
@@ -32,7 +39,9 @@ func main() {
 		return
 	}
 
-	config := NewClientConfig(id, server, MoviesBatch, ReviewsBatch, CreditsBatch, sleep)
+	
+
+	config := NewClientConfig(id, server, moviesFile, reviewsFile, creditsFile, MoviesBatch, ReviewsBatch, CreditsBatch, sleep)
 	client := NewClient(config)
 
 	slog.Info("client created successfully")

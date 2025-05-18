@@ -13,6 +13,8 @@ import (
 	pkg "pkg/models"
 )
 
+const rabbitHost = "rabbitmq"
+
 type queuesNames struct {
 	previousQueue string
 	nextQueue     string
@@ -26,10 +28,11 @@ var queriesQueues = map[int]queuesNames{
 }
 
 type FinalReducer struct {
-	middleware  *common.Middleware
-	connection  connection
-	queryNum    int
-	amtOfShards int
+	middleware   *common.Middleware
+	connection   connection
+	queryNum     int
+	joinerShards int
+	sessions     map[string]*ClientSession
 }
 
 type connection struct {
@@ -38,7 +41,7 @@ type connection struct {
 }
 
 func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards int) (*FinalReducer, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass)
+	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
@@ -49,16 +52,17 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 	}
 
 	return &FinalReducer{
-		middleware:  middleware,
-		connection:  connection,
-		queryNum:    queryNum,
-		amtOfShards: amtOfShards,
+		middleware:   middleware,
+		connection:   connection,
+		queryNum:     queryNum,
+		joinerShards: amtOfShards,
+		sessions:     make(map[string]*ClientSession),
 	}, nil
 }
 
 func initializeConnectionForQuery(queryNum int, middleware *common.Middleware) (connection, error) {
-	queuesNames := queriesQueues[queryNum]
-	if queuesNames.previousQueue == "" || queuesNames.nextQueue == "" {
+	queuesNames, ok := queriesQueues[queryNum]
+	if !ok {
 		return connection{}, fmt.Errorf("query number %d not found", queryNum)
 	}
 
@@ -100,252 +104,222 @@ func (r *FinalReducer) Start() {
 	}
 }
 
-func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
-	countries := make(map[pkg.Country]uint64)
-	currentWeight := uint32(0)
-	eofWeight := int32(0)
-
-	resetValues := func() {
-		countries = make(map[pkg.Country]uint64)
-		currentWeight = 0
-		eofWeight = 0
-	}
-
+func startReceiving[T any](ctx context.Context, chanToRecv <-chan common.Message, sessions map[string]*ClientSession, finishAndSendBatch func(clientId string), processBatch func(batch common.Batch[T])) error {
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("received termination signal, stopping final reducer for query 2")
-			return
-		case msg := <-r.connection.ChanToRecv:
-			var batch common.Batch[common.CountryBudget]
+			return nil
+		case msg := <-chanToRecv:
+			var batch common.Batch[T]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
-				if err := msg.Ack(); err != nil {
-					slog.Error("error acknowledging message", slog.String("error", err.Error()))
-				}
 				continue
 			}
 
-			// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
-			for _, countryBudget := range batch.Data {
-				countries[countryBudget.Country] += countryBudget.Budget
+			if batch.Header.GetClientID() == "" {
+				slog.Warn("client id is empty, using 1")
+				batch.Header.ClientID = "1"
 			}
 
-			currentWeight += batch.Header.Weight
+			processBatch(batch)
 
+			clientID := batch.GetClientID()
+			sessions[clientID].AddCurrentWeight(batch.Header.Weight)
 			if batch.IsEof() {
-				eofWeight = int32(batch.Header.TotalWeight)
-			}
-
-			if int32(currentWeight) == eofWeight && eofWeight != 0 {
-				top5Countries := calculateTop5Countries(countries)
-				response, err := json.Marshal(top5Countries)
-				if err != nil {
-					slog.Error("error marshalling response", slog.String("error", err.Error()))
-				}
-				r.connection.ChanToSend <- response
-				slog.Info("sent query2 final response")
-				resetValues()
+				slog.Info("setting eof weight", slog.String("client id", clientID), slog.Any("eof weight", int32(batch.Header.TotalWeight)))
+				sessions[clientID].SetEofWeight(int32(batch.Header.TotalWeight))
 			}
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
+
+			if sessions[clientID].IsFinished() {
+				slog.Info("finishing and sending batch", slog.String("client id", clientID), slog.String("message weight", fmt.Sprintf("%d", batch.Header.Weight)))
+				finishAndSendBatch(clientID)
+			}
 		}
+	}
+}
+
+func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.sessions, r.finishAndSendBatchForQuery2, func(batch common.Batch[common.CountryBudget]) {
+		clientID := batch.Header.GetClientID()
+		if _, ok := r.sessions[clientID]; !ok {
+			r.sessions[clientID] = NewClientSession(clientID, 1)
+			r.sessions[clientID].SetData(make(map[pkg.Country]uint64))
+		}
+
+		countries, ok := r.sessions[clientID].GetData().(map[pkg.Country]uint64)
+		if !ok {
+			slog.Error("error getting data", slog.String("error", "data is not of required type: map[pkg.Country]uint64"))
+			return
+		}
+
+		for _, countryBudget := range batch.Data {
+			countries[countryBudget.Country] += countryBudget.Budget
+		}
+		//TODO: Por que anda si no hice setData?
+
+	})
+
+	if err != nil {
+		slog.Error("error receiving", slog.String("error", err.Error()))
 	}
 }
 
 func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
-	movies := make(map[string]common.MovieAvgRating)
-	currentWeight := uint32(0)
-	eofWeight := int32(0)
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.sessions, r.finishAndSendBatchForQuery3, func(batch common.Batch[common.MovieAvgRating]) {
+		clientID := batch.Header.GetClientID()
+		if _, ok := r.sessions[clientID]; !ok {
+			r.sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
+			r.sessions[clientID].SetData(make(map[string]common.MovieAvgRating))
+		}
 
-	resetValues := func() {
-		movies = make(map[string]common.MovieAvgRating)
-		currentWeight = 0
-		eofWeight = 0
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("received termination signal, stopping final reducer for query 3")
+		movies, ok := r.sessions[clientID].GetData().(map[string]common.MovieAvgRating)
+		if !ok {
+			slog.Error("error getting data", slog.String("error", "data is not of required type: map[string]common.MovieAvgRating"))
 			return
-		case msg := <-r.connection.ChanToRecv:
-			var batch common.Batch[common.MovieAvgRating]
-			if err := json.Unmarshal(msg.Body, &batch); err != nil {
-				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
-				continue
-			}
+		}
 
-			for _, movieRating := range batch.Data {
-				if currentRating, ok := movies[movieRating.MovieID]; !ok {
-					movies[movieRating.MovieID] = movieRating
-				} else {
-					currentRating.RatingSum += movieRating.RatingSum
-					currentRating.RatingCount += movieRating.RatingCount
-					movies[movieRating.MovieID] = currentRating
-				}
-			}
-
-			currentWeight += batch.Header.Weight
-
-			if batch.IsEof() {
-				if eofWeight != 0 {
-					if err := msg.Ack(); err != nil {
-						return
-					}
-					continue
-				}
-				eofWeight = batch.Header.TotalWeight * int32(r.amtOfShards)
-			}
-			if int32(currentWeight) > eofWeight && eofWeight != 0 {
-				slog.Error("current weight is greater than eof weight", slog.Any("current weight", int32(currentWeight)), slog.Any("eof weight", eofWeight))
-			}
-
-			if int32(currentWeight) == eofWeight {
-				bestAndWorstMovies := calculateBestAndWorstMovie(movies)
-				response, err := json.Marshal(bestAndWorstMovies)
-				if err != nil {
-					slog.Error("error marshalling response", slog.String("error", err.Error()))
-				}
-				r.connection.ChanToSend <- response
-				slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.ID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.ID))
-				resetValues()
-			}
-
-			if err := msg.Ack(); err != nil {
-				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+		for _, movieRating := range batch.Data {
+			if currentRating, ok := movies[movieRating.MovieID]; !ok {
+				movies[movieRating.MovieID] = movieRating
+			} else {
+				currentRating.RatingSum += movieRating.RatingSum
+				currentRating.RatingCount += movieRating.RatingCount
+				movies[movieRating.MovieID] = currentRating
 			}
 		}
+		//TODO: Por que anda si no hice setData?
+
+	})
+
+	if err != nil {
+		slog.Error("error receiving", slog.String("error", err.Error()))
 	}
 }
 
 func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
-	actorMovies := make(map[string]common.ActorMoviesAmount)
-	currentWeight := uint32(0)
-	eofWeight := int32(0)
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.sessions, r.finishAndSendBatchForQuery4, func(batch common.Batch[common.ActorMoviesAmount]) {
+		clientID := batch.Header.GetClientID()
+		if _, ok := r.sessions[clientID]; !ok {
+			r.sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
+			r.sessions[clientID].SetData(make(map[string]common.ActorMoviesAmount))
+		}
 
-	resetValues := func() {
-		actorMovies = make(map[string]common.ActorMoviesAmount)
-		currentWeight = 0
-		eofWeight = 0
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("received termination signal, stopping final reducer for query 4")
+		actorMovies, ok := r.sessions[clientID].GetData().(map[string]common.ActorMoviesAmount)
+		if !ok {
+			slog.Error("error getting data", slog.String("error", "data is not of required type: map[string]common.ActorMoviesAmount"))
 			return
-		case msg := <-r.connection.ChanToRecv:
-			var batch common.Batch[common.ActorMoviesAmount]
-			if err := json.Unmarshal(msg.Body, &batch); err != nil {
-				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
-				if err := msg.Ack(); err != nil {
-					slog.Error("error acknowledging message", slog.String("error", err.Error()))
-				}
-				continue
-			}
+		}
 
-			// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
-			for _, actorMoviesAmount := range batch.Data {
-				if currentMoviesAmount, ok := actorMovies[actorMoviesAmount.ActorID]; !ok {
-					actorMovies[actorMoviesAmount.ActorID] = actorMoviesAmount
-				} else {
-					currentMoviesAmount.MoviesAmount += actorMoviesAmount.MoviesAmount
-					actorMovies[actorMoviesAmount.ActorID] = currentMoviesAmount
-				}
-			}
-
-			currentWeight += batch.Header.Weight
-
-			if batch.IsEof() {
-				if eofWeight != 0 {
-					if err := msg.Ack(); err != nil {
-						return
-					}
-					continue
-				}
-				eofWeight = batch.Header.TotalWeight * int32(r.amtOfShards)
-			}
-
-			if int32(currentWeight) == eofWeight && eofWeight != 0 {
-				top10Actors := calculateTop10Actors(actorMovies)
-				response, err := json.Marshal(top10Actors)
-				if err != nil {
-					slog.Error("error marshalling response", slog.String("error", err.Error()))
-				}
-				r.connection.ChanToSend <- response
-				slog.Info("sent query4 final response", slog.Any("top10 actors", top10Actors))
-				resetValues()
-			}
-
-			if err := msg.Ack(); err != nil {
-				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+		for _, actorMoviesAmount := range batch.Data {
+			if currentMoviesAmount, ok := actorMovies[actorMoviesAmount.ActorID]; !ok {
+				actorMovies[actorMoviesAmount.ActorID] = actorMoviesAmount
+			} else {
+				currentMoviesAmount.MoviesAmount += actorMoviesAmount.MoviesAmount
+				actorMovies[actorMoviesAmount.ActorID] = currentMoviesAmount
 			}
 		}
+
+		//TODO: Por que anda si no hice setData?
+	})
+
+	if err != nil {
+		slog.Error("error receiving", slog.String("error", err.Error()))
 	}
 }
 
 func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
-	sentimentProfitRatios := common.SentimentProfitRatioAccumulator{}
-	currentWeight := uint32(0)
-	eofWeight := int32(0)
+	//TODO: add sessions here instead of in the struct and use generics
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.sessions, r.finishAndSendBatchForQuery5, func(batch common.Batch[common.SentimentProfitRatioAccumulator]) {
+		clientID := batch.Header.GetClientID()
+		if _, ok := r.sessions[clientID]; !ok {
+			r.sessions[clientID] = NewClientSession(clientID, 1)
+			r.sessions[clientID].SetData(common.SentimentProfitRatioAccumulator{})
+		}
 
-	resetValues := func() {
-		sentimentProfitRatios = common.SentimentProfitRatioAccumulator{}
-		currentWeight = 0
-		eofWeight = 0
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("received termination signal, stopping final reducer for query 5")
+		sentimentProfitRatios, ok := r.sessions[clientID].GetData().(common.SentimentProfitRatioAccumulator)
+		if !ok {
+			slog.Error("error getting data", slog.String("error", "data is not of required type: common.SentimentProfitRatioAccumulator"))
 			return
-		case msg := <-r.connection.ChanToRecv:
-			var batch common.Batch[common.SentimentProfitRatioAccumulator]
-			if err := json.Unmarshal(msg.Body, &batch); err != nil {
-				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
-				if err := msg.Ack(); err != nil {
-					slog.Error("error acknowledging message", slog.String("error", err.Error()))
-				}
-				continue
-			}
+		}
 
-			// TODO: de aca para abajo se podria cambiar por una func y que el resto del codigo sea para todas las querys
-			for _, sentimentProfitRatio := range batch.Data {
-				sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum
-				sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount
-				sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioSum
-				sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioCount
+		for _, sentimentProfitRatio := range batch.Data {
+			slog.Info("adding sentiment profit ratio", slog.Any("sentiment profit ratio", sentimentProfitRatio))
+			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum
+			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount
+			sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioSum
+			sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioCount
 
-				if sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum > 10000 {
-					slog.Debug("ALOT positive sentiment profit ratio", slog.Any("count", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount), slog.Any("sum", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum))
-				}
-			}
-
-			currentWeight += batch.Header.Weight
-			if batch.IsEof() {
-				eofWeight = int32(batch.Header.TotalWeight)
-				slog.Info("eof weight", slog.Any("eof weight", eofWeight))
-			}
-
-			if int32(currentWeight) == eofWeight && eofWeight != 0 {
-				sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
-				response, err := json.Marshal(sentimentProfitRatioAverage)
-				if err != nil {
-					slog.Error("error marshalling response", slog.String("error", err.Error()))
-				}
-				r.connection.ChanToSend <- response
-				slog.Info("sent query5 final response", slog.Float64("positive avg profit ratio", sentimentProfitRatioAverage.PositiveAvgProfitRatio), slog.Float64("negative avg profit ratio", sentimentProfitRatioAverage.NegativeAvgProfitRatio))
-				resetValues()
-			}
-
-			if err := msg.Ack(); err != nil {
-				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			if sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum > 10000 {
+				slog.Debug("ALOT positive sentiment profit ratio", slog.Any("count", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount), slog.Any("sum", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum))
 			}
 		}
+
+		r.sessions[clientID].SetData(sentimentProfitRatios)
+	})
+
+	if err != nil {
+		slog.Error("error receiving", slog.String("error", err.Error()))
 	}
+}
+
+func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
+	slog.Info("finishing and sending batch for query 2", slog.String("client id", clientId))
+	countries := r.sessions[clientId].GetData().(map[pkg.Country]uint64)
+	top5Countries := calculateTop5Countries(countries)
+	top5Countries.ClientId = clientId
+	response, err := json.Marshal(top5Countries)
+	if err != nil {
+		slog.Error("error marshalling response", slog.String("error", err.Error()))
+	}
+	r.connection.ChanToSend <- response
+	slog.Info("sent query2 final response")
+	delete(r.sessions, clientId)
+}
+
+func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
+	slog.Info("finishing and sending batch for query 3", slog.String("client id", clientId))
+	movies := r.sessions[clientId].GetData().(map[string]common.MovieAvgRating)
+	bestAndWorstMovies := calculateBestAndWorstMovie(movies)
+	bestAndWorstMovies.ClientId = clientId
+	response, err := json.Marshal(bestAndWorstMovies)
+	if err != nil {
+		slog.Error("error marshalling response", slog.String("error", err.Error()))
+	}
+	r.connection.ChanToSend <- response
+	slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.MovieID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.MovieID))
+	delete(r.sessions, clientId)
+}
+
+func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
+	slog.Info("finishing and sending batch for query 4", slog.String("client id", clientId))
+	actorMovies := r.sessions[clientId].GetData().(map[string]common.ActorMoviesAmount)
+	top10Actors := calculateTop10Actors(actorMovies)
+	top10Actors.ClientId = clientId
+	response, err := json.Marshal(top10Actors)
+	if err != nil {
+		slog.Error("error marshalling response", slog.String("error", err.Error()))
+	}
+	r.connection.ChanToSend <- response
+	slog.Info("sent query4 final response", slog.Any("top10 actors", top10Actors))
+	delete(r.sessions, clientId)
+}
+
+func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
+	slog.Info("finishing and sending batch for query 5", slog.String("client id", clientId))
+	sentimentProfitRatios := r.sessions[clientId].GetData().(common.SentimentProfitRatioAccumulator)
+	sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
+	sentimentProfitRatioAverage.ClientId = clientId
+	response, err := json.Marshal(sentimentProfitRatioAverage)
+	if err != nil {
+		slog.Error("error marshalling response", slog.String("error", err.Error()))
+	}
+	r.connection.ChanToSend <- response
+	slog.Info("sent query5 final response", slog.Float64("positive avg profit ratio", sentimentProfitRatioAverage.PositiveAvgProfitRatio), slog.Float64("negative avg profit ratio", sentimentProfitRatioAverage.NegativeAvgProfitRatio))
+	delete(r.sessions, clientId)
 }
 
 func calculateTop5Countries(countries map[pkg.Country]uint64) common.Top5Countries {
@@ -395,8 +369,8 @@ func calculateBestAndWorstMovie(movies map[string]common.MovieAvgRating) common.
 		slog.Warn("best or worst movie is empty")
 	}
 
-	bestMovieWithTitle := common.MovieWithTitle{ID: bestMovie, Title: movies[bestMovie].Title, Rating: float32(bestRatingAvg)}
-	worstMovieWithTitle := common.MovieWithTitle{ID: worstMovie, Title: movies[worstMovie].Title, Rating: float32(worstRatingAvg)}
+	bestMovieWithTitle := common.MovieReview{MovieID: bestMovie, Title: movies[bestMovie].Title, Rating: bestRatingAvg}
+	worstMovieWithTitle := common.MovieReview{MovieID: worstMovie, Title: movies[worstMovie].Title, Rating: worstRatingAvg}
 	return common.BestAndWorstMovies{BestMovie: bestMovieWithTitle, WorstMovie: worstMovieWithTitle}
 }
 
