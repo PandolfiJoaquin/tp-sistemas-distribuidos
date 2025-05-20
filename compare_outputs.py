@@ -33,10 +33,8 @@ def load_config(config_file):
 
 def get_expected_results_for_file(file_path, cfg):
     """Get the expected results for a specific file based on the config."""
-    # Extract client number from filename
     client_num = int(file_path.split('-')[-1].split('.')[0])
     
-    # Get the review file that was used for this client using the same cycling logic as generate-compose
     review_file = cfg["files"]["reviews"][(client_num - 1) % len(cfg["files"]["reviews"])]
     movie_file = cfg["files"]["movies"][(client_num - 1) % len(cfg["files"]["movies"])]
     credits_file = cfg["files"]["credits"][(client_num - 1) % len(cfg["files"]["credits"])]
@@ -283,23 +281,18 @@ def main():
         print("Usage: python compare_outputs.py <config.json>")
         sys.exit(1)
 
-    # Load configuration
     cfg = load_config(sys.argv[1])
     
-    # Get all result files
     result_files = glob.glob("client-results/queries-results-*.txt")
     if not result_files:
         print("No result files found in client-results/")
         sys.exit(1)
 
-    # Sort files to process them in order
     result_files.sort(key=lambda x: int(x.split('-')[-1].split('.')[0]))
     
-    # Track which files we've processed
     processed_files = set()
     all_passed = True
 
-    # Process each result file
     for result_file in result_files:
         if result_file in processed_files:
             continue
@@ -307,7 +300,6 @@ def main():
         # Get the expected results based on the file and config
         expected_results = get_expected_results_for_file(result_file, cfg)
         
-        # Compare results
         comparison = compare_results(result_file, expected_results)
 
         if not print_comparison(comparison, result_file, cfg):
