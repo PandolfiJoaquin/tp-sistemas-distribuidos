@@ -3,12 +3,12 @@ import sys
 
 YAML_FILE = "docker-compose.yaml"
 
-# nodos que inyectan JOINER_SHARDS automáticamente
+# nodes that inject JOINER_SHARDS automatically
 NEEDS_SHARDS = {"preprocessor", "production-filter"}
 
 QUERY_AMNT = 5
 
-# plantillas
+# templates
 BASE_NODE = """
   {svc_name}:
     build:
@@ -129,7 +129,7 @@ def create_compose(cfg):
     # Clients
     print(f"   • clients ×{clients}")
     for c in range(1, clients+1):
-        # Cycle through the file arrays using modulo
+        # Cycle through the file arrays using module
         movies_file = files["movies"][(c-1) % len(files["movies"])]
         reviews_file = files["reviews"][(c-1) % len(files["reviews"])]
         credits_file = files["credits"][(c-1) % len(files["credits"])]
@@ -150,26 +150,26 @@ def create_compose(cfg):
 
 def main():
     if len(sys.argv) != 2:
-        print("Uso: python generate-compose.py <config.json>")
+        print("Use: python generate-compose.py <config.json>")
         sys.exit(1)
 
     try:
         cfg = json.load(open(sys.argv[1]))
     except Exception as e:
-        print(f"Error al leer config.json: {e}")
+        print(f"Error reading {sys.argv[1]}: {e}")
         sys.exit(1)
 
     for key in ("clients", "joiners", "nodes", "files"):
         if key not in cfg:
-            print(f"Falta la clave '{key}' en el JSON")
+            print(f"Missing key '{key}' in JSON")
             sys.exit(1)
         
     for file_type, file_list in cfg["files"].items():
         if not isinstance(file_list, list):
-            print(f"Error: '{file_type}' debe ser una lista de archivos")
+            print(f"Error: '{file_type}' must be a list of files")
             sys.exit(1)
         if len(file_list) == 0:
-            print(f"Error: '{file_type}' no puede estar vacío")
+            print(f"Error: '{file_type}' must not be empty")
             sys.exit(1)
 
     create_compose(cfg)
