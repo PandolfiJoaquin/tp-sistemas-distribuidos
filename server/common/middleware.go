@@ -23,19 +23,28 @@ func (m *Message) Ack() error {
 type Middleware struct {
 	conn *amqp.Connection
 	ch   *amqp.Channel
+	hc   *HealthCheck
 }
 
 func NewMiddleware(rabbitUser string, rabbitPass string, host string) (*Middleware, error) {
 	slog.Info("creating middleware", slog.String("dialing", "amqp://"+rabbitUser+":"+rabbitPass+"@"+host+":5672"))
+
 	conn, err := amqp.Dial("amqp://" + rabbitUser + ":" + rabbitPass + "@" + host + ":5672")
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %s", err)
 	}
+
 	ch, err := conn.Channel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open a channel: %s", err)
 	}
-	return &Middleware{conn: conn, ch: ch}, nil
+
+	hc, err := StartHealthCheck()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start health check: %s", err)
+	}
+
+	return &Middleware{conn: conn, ch: ch, hc: hc}, nil
 }
 
 func (m *Middleware) sendToQueue(queueName string, body []byte) error {
@@ -174,6 +183,10 @@ func (m *Middleware) Close() error {
 	}
 	if err := m.conn.Close(); err != nil {
 		return fmt.Errorf("failed to close connection: %s", err)
+	}
+
+	if err := m.hc.Stop(); err != nil {
+		return fmt.Errorf("failed to close health check: %s", err)
 	}
 
 	return nil

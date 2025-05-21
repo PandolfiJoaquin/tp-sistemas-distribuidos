@@ -17,7 +17,7 @@ COPY server/${NODE}/ ${NODE}/
 
 RUN go build -o /build/app tp-sistemas-distribuidos/server/${NODE}
 
-FROM busybox:1.32.1
+FROM alpine:latest
 LABEL app="imdb"
 
 COPY --from=builder /build/app /
