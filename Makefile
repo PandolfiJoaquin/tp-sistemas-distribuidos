@@ -15,5 +15,5 @@ run-no-cache:
 		exit 1; \
 	fi
 	docker compose down -v
-	docker compose build
+	docker compose build --no-cache
 	docker compose up -d --remove-orphans

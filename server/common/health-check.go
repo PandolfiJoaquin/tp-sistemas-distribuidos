@@ -9,7 +9,7 @@ import (
 
 const (
 	port            = "1500"
-	healthyResponse = "HTTP/1.1 200 OK\r\n"
+	healthyResponse = "K"
 )
 
 type HealthCheck struct {

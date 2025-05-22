@@ -17,7 +17,7 @@ COPY server/${NODE}/ ${NODE}/
 
 RUN go build -o /build/app tp-sistemas-distribuidos/server/${NODE}
 
-FROM alpine:latest
+FROM alpine:3.21.3
 LABEL app="imdb"
 
 COPY --from=builder /build/app /
