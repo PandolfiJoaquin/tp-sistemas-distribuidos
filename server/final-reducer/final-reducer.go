@@ -34,7 +34,7 @@ type FinalReducer struct {
 	queryNum     int
 	joinerShards int
 	sessions     map[string]*ClientSession
-	persistencyHandler *common.PersistencyHandler
+	// persistencyHandler *common.PersistencyHandler
 }
 
 type connection struct {
@@ -43,7 +43,7 @@ type connection struct {
 }
 
 func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards int) (*FinalReducer, error) {
-	persistencyHandler := common.NewPersistencyHandler(persistencyPath)
+	// persistencyHandler := common.NewPersistencyHandler(persistencyPath)
 
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
@@ -61,7 +61,7 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 		queryNum:     queryNum,
 		joinerShards: amtOfShards,
 		sessions:     make(map[string]*ClientSession),
-		persistencyHandler: persistencyHandler,
+		// persistencyHandler: persistencyHandler,
 	}, nil
 }
 

@@ -6,83 +6,83 @@ import (
 )
 
 type JoinerSession struct {
-	movies          []common.Movie
-	moviesReceived  uint32
-	reviewsReceived uint32
-	creditsReceived uint32
-	moviesToExpect  int32
-	reviewsToExpect int32
-	creditsToExpect int32
+	Movies          []common.Movie `json:"movies"`
+	MoviesReceived  uint32         `json:"moviesReceived"`
+	ReviewsReceived uint32         `json:"reviewsReceived"`
+	CreditsReceived uint32         `json:"creditsReceived"`
+	MoviesToExpect  int32          `json:"moviesToExpect"`
+	ReviewsToExpect int32          `json:"reviewsToExpect"`
+	CreditsToExpect int32          `json:"creditsToExpect"`
 }
 
 func NewJoinerSession() *JoinerSession {
 	return &JoinerSession{
-		movies:          []common.Movie{},
-		moviesReceived:  0,
-		reviewsReceived: 0,
-		creditsReceived: 0,
-		moviesToExpect:  -1,
-		reviewsToExpect: -1,
-		creditsToExpect: -1,
+		Movies:          []common.Movie{},
+		MoviesReceived:  0,
+		ReviewsReceived: 0,
+		CreditsReceived: 0,
+		MoviesToExpect:  -1,
+		ReviewsToExpect: -1,
+		CreditsToExpect: -1,
 	}
 }
 
 func (s *JoinerSession) UpdateMoviesWeights(header common.Header) {
 	if header.IsEof() {
 		slog.Info("movies Eof received", slog.Any("header", header))
-		s.moviesToExpect = header.TotalWeight
+		s.MoviesToExpect = header.TotalWeight
 		return
 	}
-	s.moviesReceived += header.Weight
+	s.MoviesReceived += header.Weight
 }
 
 func (s *JoinerSession) SaveMovies(movies []common.Movie) {
-	s.movies = append(s.movies, movies...)
+	s.Movies = append(s.Movies, movies...)
 }
 
 func (s *JoinerSession) GetMovies() []common.Movie {
-	return s.movies
+	return s.Movies
 }
 
 func (s *JoinerSession) AllMoviesReceived() bool {
-	if s.moviesReceived > uint32(s.moviesToExpect) {
-		slog.Error("total weight received is greater than total weight", slog.Any("moviesReceived", s.moviesReceived), slog.Any("moviesToExpect", s.moviesToExpect))
+	if s.MoviesReceived > uint32(s.MoviesToExpect) {
+		slog.Error("total weight received is greater than total weight", slog.Any("moviesReceived", s.MoviesReceived), slog.Any("moviesToExpect", s.MoviesToExpect))
 	}
-	return s.moviesReceived == uint32(s.moviesToExpect)
+	return s.MoviesReceived == uint32(s.MoviesToExpect)
 }
 
 func (s *JoinerSession) UpdateCreditsWeights(header common.Header) {
 	if header.IsEof() {
-		slog.Info("credits Eof received", slog.Any("header", header), slog.Any("creditsReceived", s.creditsReceived), slog.Any("reviewsReceived", s.reviewsReceived))
-		s.creditsToExpect = header.TotalWeight
+		slog.Info("credits Eof received", slog.Any("header", header), slog.Any("creditsReceived", s.CreditsReceived), slog.Any("reviewsReceived", s.ReviewsReceived))
+		s.CreditsToExpect = header.TotalWeight
 	} else {
-		s.creditsReceived += header.Weight
+		s.CreditsReceived += header.Weight
 	}
 }
 
 func (s *JoinerSession) UpdateReviewsWeights(header common.Header) {
 	if header.IsEof() {
-		slog.Info("reviews Eof received", slog.Any("header", header), slog.Any("creditsReceived", s.creditsReceived), slog.Any("reviewsReceived", s.reviewsReceived))
-		s.reviewsToExpect = header.TotalWeight
+		slog.Info("reviews Eof received", slog.Any("header", header), slog.Any("creditsReceived", s.CreditsReceived), slog.Any("reviewsReceived", s.ReviewsReceived))
+		s.ReviewsToExpect = header.TotalWeight
 	} else {
-		s.reviewsReceived += header.Weight
+		s.ReviewsReceived += header.Weight
 	}
 }
 
 func (s *JoinerSession) IsDone() bool {
-	return s.creditsReceived == uint32(s.creditsToExpect) &&
-		s.reviewsReceived == uint32(s.reviewsToExpect)
+	return s.CreditsReceived == uint32(s.CreditsToExpect) &&
+		s.ReviewsReceived == uint32(s.ReviewsToExpect)
 }
 
 func (s *JoinerSession) LogState() {
 	slog.Info(
 		"JoinerSession",
-		slog.Any("moviesReceived", s.moviesReceived),
-		slog.Any("moviesToExpect", s.moviesToExpect),
-		slog.Any("creditsReceived", s.creditsReceived),
-		slog.Any("creditsToExpect", s.creditsToExpect),
-		slog.Any("reviewsReceived", s.reviewsReceived),
-		slog.Any("reviewsToExpect", s.reviewsToExpect))
+		slog.Any("moviesReceived", s.MoviesReceived),
+		slog.Any("moviesToExpect", s.MoviesToExpect),
+		slog.Any("creditsReceived", s.CreditsReceived),
+		slog.Any("creditsToExpect", s.CreditsToExpect),
+		slog.Any("reviewsReceived", s.ReviewsReceived),
+		slog.Any("reviewsToExpect", s.ReviewsToExpect))
 }
 
 func (s *JoinerSession) Join(reviews []common.Review) []common.MovieReview {

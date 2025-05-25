@@ -8,10 +8,12 @@ import (
 	"os/signal"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/persistency"
 )
 
 const (
-	rabbitHost      = "rabbitmq" //"127.0.0.1"
+	// rabbitHost      = "rabbitmq" //"127.0.0.1"
+	rabbitHost      = "127.0.0.1"
 	moviesExchange  = "movies-exchange"
 	moviestopic     = "movies-to-join-%d"
 	reviewsExchange = "reviews-exchange"
@@ -26,27 +28,32 @@ const (
 type JoinerController struct {
 	joinerId            int
 	middleware          *common.Middleware
-	sessions            map[string]*JoinerSession
-	storedReviewBatches map[string][]common.Batch[common.Review]
-	persistencyHandler  *common.PersistencyHandler
+	Sessions            map[string]*JoinerSession                `json:"sessions"`
+	StoredReviewBatches map[string][]common.Batch[common.Review] `json:"storedReviewBatches"`
 }
 
 func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
-	persistencyHandler := common.NewPersistencyHandler(persistencyPath)
-	
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	return &JoinerController{
-		joinerId:            joinerId,
-		middleware:          middleware,
-		sessions:            map[string]*JoinerSession{},
-		storedReviewBatches: map[string][]common.Batch[common.Review]{},
-		persistencyHandler:  persistencyHandler,
-	}, nil
+	recoveredData, err := persistency.Recover()
+	if err != nil {
+		slog.Error("error recovering persistency", slog.String("error", err.Error()))
+	}
+
+	controller := &JoinerController{
+		joinerId:   joinerId,
+		middleware: middleware,
+	}
+
+	if err := json.Unmarshal([]byte(recoveredData), controller); err != nil {
+		slog.Error("error unmarshalling persistency", slog.String("error", err.Error()))
+	}
+
+	return controller, nil
 }
 
 func (j *JoinerController) Start() {
@@ -106,17 +113,26 @@ func (j *JoinerController) joinReviewBatch(clientId string, batch common.Batch[c
 }
 
 func (j *JoinerController) storeReviewBatch(clientId string, batch common.Batch[common.Review]) {
-	j.storedReviewBatches[clientId] = append(j.storedReviewBatches[clientId], batch)
+	j.StoredReviewBatches[clientId] = append(j.StoredReviewBatches[clientId], batch)
 }
 
 func (j *JoinerController) joinStoredReviewBatches(clientId string, q3ToReduce chan<- []byte) {
 	slog.Info("joining stored review batches", slog.String("clientId", clientId))
-	batches := j.storedReviewBatches[clientId]
-	j.storedReviewBatches[clientId] = []common.Batch[common.Review]{}
+	batches := j.StoredReviewBatches[clientId]
+	j.StoredReviewBatches[clientId] = []common.Batch[common.Review]{}
 	for _, batch := range batches {
 		j.joinReviewBatch(clientId, batch, q3ToReduce)
 		j.exorciseSession(clientId)
 	}
+}
+
+func (j *JoinerController) saveCheckpoint() {
+	jsonData, err := json.Marshal(j)
+	if err != nil {
+		slog.Error("error marshalling controller", slog.String("error", err.Error()))
+		return
+	}
+	persistency.SaveCheckpoint(jsonData)
 }
 
 func (j *JoinerController) run(
@@ -152,7 +168,7 @@ func (j *JoinerController) run(
 				j.joinStoredReviewBatches(clientId, q3ToReduce) // Joins all reviews stored
 			}
 
-			//j.persistencyHandler.Save(id, j.sessions[id]) //TODO: save session
+			j.saveCheckpoint()
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -177,7 +193,7 @@ func (j *JoinerController) run(
 
 			j.joinReviewBatch(clientId, batch, q3ToReduce)
 
-			// j.persistencyHandler.Save(clientId, session) //TODO: save session
+			j.saveCheckpoint()
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -207,7 +223,7 @@ func (j *JoinerController) run(
 			}
 			q4ToReduce <- response
 
-			// j.persistencyHandler.Save(clientId, session) //TODO: save session
+			j.saveCheckpoint()
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -218,18 +234,18 @@ func (j *JoinerController) run(
 }
 
 func (j *JoinerController) getSession(clientId string) *JoinerSession {
-	if _, ok := j.sessions[clientId]; !ok {
+	if _, ok := j.Sessions[clientId]; !ok {
 		slog.Info("New client detected. creating session", slog.String("clientId", string(clientId)))
-		j.sessions[clientId] = NewJoinerSession()
+		j.Sessions[clientId] = NewJoinerSession()
 	}
-	return j.sessions[clientId]
+	return j.Sessions[clientId]
 }
 
 // if the session is done, delete it
 func (j *JoinerController) exorciseSession(id string) {
-	if j.sessions[id].IsDone() {
+	if j.Sessions[id].IsDone() {
 		slog.Info("Done for client", slog.String("clientId", id))
-		delete(j.sessions, id)
+		delete(j.Sessions, id)
 		slog.Info("Successfully deleted session", slog.String("clientId", id))
 	}
 }
