@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	// rabbitHost      = "rabbitmq" //"127.0.0.1"
-	rabbitHost      = "127.0.0.1"
+	rabbitHost = "rabbitmq"
+	//rabbitHost      = "127.0.0.1"
 	moviesExchange  = "movies-exchange"
 	moviestopic     = "movies-to-join-%d"
 	reviewsExchange = "reviews-exchange"
