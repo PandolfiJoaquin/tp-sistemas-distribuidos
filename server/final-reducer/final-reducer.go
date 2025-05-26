@@ -9,12 +9,12 @@ import (
 	"sort"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/persistency"
 
 	pkg "pkg/models"
 )
 
 const rabbitHost = "rabbitmq"
-const persistencyPath = "data/"
 
 type queuesNames struct {
 	previousQueue string
@@ -33,8 +33,7 @@ type FinalReducer struct {
 	connection   connection
 	queryNum     int
 	joinerShards int
-	sessions     map[string]*ClientSession
-	// persistencyHandler *common.PersistencyHandler
+	Sessions     map[string]*ClientSession `json:"Sessions"`
 }
 
 type connection struct {
@@ -49,20 +48,29 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
-
 	connection, err := initializeConnectionForQuery(queryNum, middleware)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing connection for query %d: %w", queryNum, err)
 	}
 
-	return &FinalReducer{
+	finalReducer := &FinalReducer{
 		middleware:   middleware,
 		connection:   connection,
 		queryNum:     queryNum,
 		joinerShards: amtOfShards,
-		sessions:     make(map[string]*ClientSession),
-		// persistencyHandler: persistencyHandler,
-	}, nil
+		Sessions:     make(map[string]*ClientSession),
+	}
+
+	recoveredData, err := persistency.Recover()
+	if err != nil {
+		slog.Error("error recovering persistency", slog.String("error", err.Error()))
+	}
+	if len(recoveredData) != 0 {
+		if err = json.Unmarshal(recoveredData, finalReducer); err != nil {
+			slog.Error("error unmarshalling persistency", slog.String("error", err.Error()))
+		}
+	}
+	return finalReducer, nil
 }
 
 func initializeConnectionForQuery(queryNum int, middleware *common.Middleware) (connection, error) {
@@ -130,7 +138,7 @@ func startReceiving[T any](ctx context.Context, chanToRecv <-chan common.Message
 				sessions[clientID].SetEofWeight(int32(batch.Header.TotalWeight))
 			}
 
-			// r.persistencyHandler.Save(clientID, sessions[clientID]) //TODO: save session
+			saveCheckpoint(sessions)
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -142,19 +150,33 @@ func startReceiving[T any](ctx context.Context, chanToRecv <-chan common.Message
 			}
 		}
 	}
+
+}
+
+func saveCheckpoint(sessions map[string]*ClientSession) {
+	jsonData, err := json.Marshal(sessions)
+	if err != nil {
+		slog.Error("error marshalling internal state", slog.String("error", err.Error()))
+		return
+	}
+
+	if err = persistency.SaveCheckpoint(jsonData); err != nil {
+		slog.Error("error saving checkpoint", slog.String("error", err.Error()))
+		return
+	}
 }
 
 func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
-	err := startReceiving(ctx, r.connection.ChanToRecv, r.sessions, r.finishAndSendBatchForQuery2, func(batch common.Batch[common.CountryBudget]) {
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery2, func(batch common.Batch[common.CountryBudget]) {
 		clientID := batch.Header.GetClientID()
-		if _, ok := r.sessions[clientID]; !ok {
-			r.sessions[clientID] = NewClientSession(clientID, 1)
-			r.sessions[clientID].SetData(make(map[pkg.Country]uint64))
+		if _, ok := r.Sessions[clientID]; !ok {
+			r.Sessions[clientID] = NewClientSession(clientID, 1)
+			r.Sessions[clientID].SetData(make(map[pkg.Country]uint64))
 		}
 
-		countries, ok := r.sessions[clientID].GetData().(map[pkg.Country]uint64)
+		countries, ok := r.Sessions[clientID].GetData().(map[pkg.Country]uint64)
 		if !ok {
-			slog.Error("error getting data", slog.String("error", "data is not of required type: map[pkg.Country]uint64"))
+			slog.Error("error getting Data", slog.String("error", "Data is not of required type: map[pkg.Country]uint64"))
 			return
 		}
 
@@ -171,16 +193,16 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
-	err := startReceiving(ctx, r.connection.ChanToRecv, r.sessions, r.finishAndSendBatchForQuery3, func(batch common.Batch[common.MovieAvgRating]) {
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery3, func(batch common.Batch[common.MovieAvgRating]) {
 		clientID := batch.Header.GetClientID()
-		if _, ok := r.sessions[clientID]; !ok {
-			r.sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
-			r.sessions[clientID].SetData(make(map[string]common.MovieAvgRating))
+		if _, ok := r.Sessions[clientID]; !ok {
+			r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
+			r.Sessions[clientID].SetData(make(map[string]common.MovieAvgRating))
 		}
 
-		movies, ok := r.sessions[clientID].GetData().(map[string]common.MovieAvgRating)
+		movies, ok := r.Sessions[clientID].GetData().(map[string]common.MovieAvgRating)
 		if !ok {
-			slog.Error("error getting data", slog.String("error", "data is not of required type: map[string]common.MovieAvgRating"))
+			slog.Error("error getting Data", slog.String("error", "Data is not of required type: map[string]common.MovieAvgRating"))
 			return
 		}
 
@@ -203,16 +225,16 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
-	err := startReceiving(ctx, r.connection.ChanToRecv, r.sessions, r.finishAndSendBatchForQuery4, func(batch common.Batch[common.ActorMoviesAmount]) {
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery4, func(batch common.Batch[common.ActorMoviesAmount]) {
 		clientID := batch.Header.GetClientID()
-		if _, ok := r.sessions[clientID]; !ok {
-			r.sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
-			r.sessions[clientID].SetData(make(map[string]common.ActorMoviesAmount))
+		if _, ok := r.Sessions[clientID]; !ok {
+			r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
+			r.Sessions[clientID].SetData(make(map[string]common.ActorMoviesAmount))
 		}
 
-		actorMovies, ok := r.sessions[clientID].GetData().(map[string]common.ActorMoviesAmount)
+		actorMovies, ok := r.Sessions[clientID].GetData().(map[string]common.ActorMoviesAmount)
 		if !ok {
-			slog.Error("error getting data", slog.String("error", "data is not of required type: map[string]common.ActorMoviesAmount"))
+			slog.Error("error getting Data", slog.String("error", "Data is not of required type: map[string]common.ActorMoviesAmount"))
 			return
 		}
 
@@ -234,17 +256,17 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
-	//TODO: add sessions here instead of in the struct and use generics
-	err := startReceiving(ctx, r.connection.ChanToRecv, r.sessions, r.finishAndSendBatchForQuery5, func(batch common.Batch[common.SentimentProfitRatioAccumulator]) {
+	//TODO: add Sessions here instead of in the struct and use generics
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery5, func(batch common.Batch[common.SentimentProfitRatioAccumulator]) {
 		clientID := batch.Header.GetClientID()
-		if _, ok := r.sessions[clientID]; !ok {
-			r.sessions[clientID] = NewClientSession(clientID, 1)
-			r.sessions[clientID].SetData(common.SentimentProfitRatioAccumulator{})
+		if _, ok := r.Sessions[clientID]; !ok {
+			r.Sessions[clientID] = NewClientSession(clientID, 1)
+			r.Sessions[clientID].SetData(common.SentimentProfitRatioAccumulator{})
 		}
 
-		sentimentProfitRatios, ok := r.sessions[clientID].GetData().(common.SentimentProfitRatioAccumulator)
+		sentimentProfitRatios, ok := r.Sessions[clientID].GetData().(common.SentimentProfitRatioAccumulator)
 		if !ok {
-			slog.Error("error getting data", slog.String("error", "data is not of required type: common.SentimentProfitRatioAccumulator"))
+			slog.Error("error getting Data", slog.String("error", "Data is not of required type: common.SentimentProfitRatioAccumulator"))
 			return
 		}
 
@@ -260,7 +282,7 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 			}
 		}
 
-		r.sessions[clientID].SetData(sentimentProfitRatios)
+		r.Sessions[clientID].SetData(sentimentProfitRatios)
 	})
 
 	if err != nil {
@@ -270,7 +292,7 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 
 func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
 	slog.Info("finishing and sending batch for query 2", slog.String("client id", clientId))
-	countries := r.sessions[clientId].GetData().(map[pkg.Country]uint64)
+	countries := r.Sessions[clientId].GetData().(map[pkg.Country]uint64)
 	top5Countries := calculateTop5Countries(countries)
 	top5Countries.ClientId = clientId
 	response, err := json.Marshal(top5Countries)
@@ -279,12 +301,12 @@ func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
 	}
 	r.connection.ChanToSend <- response
 	slog.Info("sent query2 final response")
-	delete(r.sessions, clientId)
+	delete(r.Sessions, clientId)
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
 	slog.Info("finishing and sending batch for query 3", slog.String("client id", clientId))
-	movies := r.sessions[clientId].GetData().(map[string]common.MovieAvgRating)
+	movies := r.Sessions[clientId].GetData().(map[string]common.MovieAvgRating)
 	bestAndWorstMovies := calculateBestAndWorstMovie(movies)
 	bestAndWorstMovies.ClientId = clientId
 	response, err := json.Marshal(bestAndWorstMovies)
@@ -293,12 +315,12 @@ func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
 	}
 	r.connection.ChanToSend <- response
 	slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.MovieID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.MovieID))
-	delete(r.sessions, clientId)
+	delete(r.Sessions, clientId)
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
 	slog.Info("finishing and sending batch for query 4", slog.String("client id", clientId))
-	actorMovies := r.sessions[clientId].GetData().(map[string]common.ActorMoviesAmount)
+	actorMovies := r.Sessions[clientId].GetData().(map[string]common.ActorMoviesAmount)
 	top10Actors := calculateTop10Actors(actorMovies)
 	top10Actors.ClientId = clientId
 	response, err := json.Marshal(top10Actors)
@@ -307,12 +329,12 @@ func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
 	}
 	r.connection.ChanToSend <- response
 	slog.Info("sent query4 final response", slog.Any("top10 actors", top10Actors))
-	delete(r.sessions, clientId)
+	delete(r.Sessions, clientId)
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
 	slog.Info("finishing and sending batch for query 5", slog.String("client id", clientId))
-	sentimentProfitRatios := r.sessions[clientId].GetData().(common.SentimentProfitRatioAccumulator)
+	sentimentProfitRatios := r.Sessions[clientId].GetData().(common.SentimentProfitRatioAccumulator)
 	sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
 	sentimentProfitRatioAverage.ClientId = clientId
 	response, err := json.Marshal(sentimentProfitRatioAverage)
@@ -321,7 +343,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
 	}
 	r.connection.ChanToSend <- response
 	slog.Info("sent query5 final response", slog.Float64("positive avg profit ratio", sentimentProfitRatioAverage.PositiveAvgProfitRatio), slog.Float64("negative avg profit ratio", sentimentProfitRatioAverage.NegativeAvgProfitRatio))
-	delete(r.sessions, clientId)
+	delete(r.Sessions, clientId)
 }
 
 func calculateTop5Countries(countries map[pkg.Country]uint64) common.Top5Countries {

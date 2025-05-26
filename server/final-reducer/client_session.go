@@ -1,40 +1,40 @@
 package main
 
 type ClientSession struct {
-	currentWeight  uint32
-	eofWeight      int32
-	eofMultiplier uint32
-	sessionId      string
-	data           any
+	CurrentWeight uint32 `json:"current_weight"`
+	EofWeight     int32  `json:"eof_weight"`
+	EofMultiplier uint32 `json:"eof_multiplier"`
+	SessionId     string `json:"session_id"`
+	Data          any    `json:"Data"`
 }
 
 func NewClientSession(sessionId string, eofMultiplier uint32) *ClientSession {
 	return &ClientSession{
-		sessionId:      sessionId,
-		eofMultiplier: eofMultiplier,
+		SessionId:     sessionId,
+		EofMultiplier: eofMultiplier,
 	}
 }
 
 func (c *ClientSession) SetData(data any) {
-	c.data = data
+	c.Data = data
 }
 
 func (c *ClientSession) GetData() any {
-	return c.data
+	return c.Data
 }
 
 func (c *ClientSession) AddCurrentWeight(weight uint32) {
-	c.currentWeight += weight
+	c.CurrentWeight += weight
 }
 
 func (c *ClientSession) SetEofWeight(weight int32) {
-	c.eofWeight = weight
+	c.EofWeight = weight
 }
 
 func (c *ClientSession) GetEofWeight() int32 {
-	return c.eofWeight
+	return c.EofWeight
 }
 
 func (c *ClientSession) IsFinished() bool {
-	return c.eofWeight > 0 && c.currentWeight == (uint32(c.eofWeight) * c.eofMultiplier)
+	return c.EofWeight > 0 && c.CurrentWeight == (uint32(c.EofWeight)*c.EofMultiplier)
 }

@@ -40,22 +40,20 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 	}
 
 	controller := &JoinerController{
-		joinerId:   joinerId,
-		middleware: middleware,
+		joinerId:            joinerId,
+		middleware:          middleware,
+		Sessions:            make(map[string]*JoinerSession),
+		StoredReviewBatches: make(map[string][]common.Batch[common.Review]),
 	}
 	recoveredData, err := persistency.Recover()
 	if err != nil {
 		slog.Error("error recovering persistency", slog.String("error", err.Error()))
 	}
 
-	if len(recoveredData) == 0 {
-		controller.Sessions = make(map[string]*JoinerSession)
-		controller.StoredReviewBatches = make(map[string][]common.Batch[common.Review])
-		return controller, nil
-	}
-
-	if err := json.Unmarshal(recoveredData, controller); err != nil {
-		slog.Error("error unmarshalling persistency", slog.String("error", err.Error()))
+	if len(recoveredData) != 0 {
+		if err = json.Unmarshal(recoveredData, controller); err != nil {
+			slog.Error("error unmarshalling persistency", slog.String("error", err.Error()))
+		}
 	}
 
 	return controller, nil
@@ -134,10 +132,13 @@ func (j *JoinerController) joinStoredReviewBatches(clientId string, q3ToReduce c
 func (j *JoinerController) saveCheckpoint() {
 	jsonData, err := json.Marshal(j)
 	if err != nil {
-		slog.Error("error marshalling controller", slog.String("error", err.Error()))
+		slog.Error("error marshalling internal state", slog.String("error", err.Error()))
 		return
 	}
-	persistency.SaveCheckpoint(jsonData)
+	if err = persistency.SaveCheckpoint(jsonData); err != nil {
+		slog.Error("error saving checkpoint", slog.String("error", err.Error()))
+		return
+	}
 }
 
 func (j *JoinerController) run(

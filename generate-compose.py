@@ -54,6 +54,8 @@ FINAL_REDUCER_NODE = """
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM={idx}
       - JOINER_SHARDS={joiners}
+    volumes:
+      - ./data/final-reducer/id-{idx}/:./data/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -67,6 +69,8 @@ JOINER_NODE = """
       args:
         NODE: joiner
     container_name: joiner-{idx}
+    volumes:
+      - ./data/joiner/id-{idx}/:./data/
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
