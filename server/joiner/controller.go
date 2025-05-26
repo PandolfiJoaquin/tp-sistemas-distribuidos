@@ -39,17 +39,22 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 		return nil, err
 	}
 
+	controller := &JoinerController{
+		joinerId:   joinerId,
+		middleware: middleware,
+	}
 	recoveredData, err := persistency.Recover()
 	if err != nil {
 		slog.Error("error recovering persistency", slog.String("error", err.Error()))
 	}
 
-	controller := &JoinerController{
-		joinerId:   joinerId,
-		middleware: middleware,
+	if len(recoveredData) == 0 {
+		controller.Sessions = make(map[string]*JoinerSession)
+		controller.StoredReviewBatches = make(map[string][]common.Batch[common.Review])
+		return controller, nil
 	}
 
-	if err := json.Unmarshal([]byte(recoveredData), controller); err != nil {
+	if err := json.Unmarshal(recoveredData, controller); err != nil {
 		slog.Error("error unmarshalling persistency", slog.String("error", err.Error()))
 	}
 

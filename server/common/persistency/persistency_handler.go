@@ -1,22 +1,30 @@
 package persistency
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"tp-sistemas-distribuidos/server/common"
 )
 
 const dataPath = "data/"
-const checkpointFileName = "checkpoint"
+const checkpointFileName = "checkpoint.json"
 
 func Recover() ([]byte, error) {
+
 	files, err := common.ScanDirectory(dataPath, checkpointFileName)
 	if err != nil {
-		return nil, fmt.Errorf("error scanning directory: %w", err)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.Mkdir(dataPath, 0777); err != nil {
+				return nil, fmt.Errorf("error creating data directory: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("error scanning directory: %w", err)
+		}
 	}
 
 	if len(files) == 0 {
-		return nil, fmt.Errorf("no checkpoint files found")
+		return []byte{}, nil
 	}
 
 	file := files[0]
