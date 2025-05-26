@@ -7,7 +7,7 @@ services:
       args:
         NODE: gateway
     container_name: gateway
-    environment:  
+    environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
     depends_on:
@@ -230,6 +230,8 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=2
       - JOINER_SHARDS=5
+    volumes:
+      - ./data/final-reducer/id-2/:/data/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -246,6 +248,8 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=3
       - JOINER_SHARDS=5
+    volumes:
+      - ./data/final-reducer/id-3/:/data/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -262,6 +266,8 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=4
       - JOINER_SHARDS=5
+    volumes:
+      - ./data/final-reducer/id-4/:/data/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -278,6 +284,8 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=5
       - JOINER_SHARDS=5
+    volumes:
+      - ./data/final-reducer/id-5/:/data/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -289,6 +297,8 @@ services:
       args:
         NODE: joiner
     container_name: joiner-1
+    volumes:
+      - ./data/joiner/id-1/:/data/
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
@@ -304,6 +314,8 @@ services:
       args:
         NODE: joiner
     container_name: joiner-2
+    volumes:
+      - ./data/joiner/id-2/:/data/
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
@@ -319,6 +331,8 @@ services:
       args:
         NODE: joiner
     container_name: joiner-3
+    volumes:
+      - ./data/joiner/id-3/:/data/
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
@@ -334,6 +348,8 @@ services:
       args:
         NODE: joiner
     container_name: joiner-4
+    volumes:
+      - ./data/joiner/id-4/:/data/
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
@@ -349,6 +365,8 @@ services:
       args:
         NODE: joiner
     container_name: joiner-5
+    volumes:
+      - ./data/joiner/id-5/:/data/
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
