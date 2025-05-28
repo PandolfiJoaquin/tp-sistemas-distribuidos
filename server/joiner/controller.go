@@ -14,15 +14,27 @@ import (
 const (
 	rabbitHost = "rabbitmq"
 	//rabbitHost      = "127.0.0.1"
-	moviesExchange  = "movies-exchange"
-	moviestopic     = "movies-to-join-%d"
-	reviewsExchange = "reviews-exchange"
-	reviewsTopic    = "reviews-to-join-%d"
-	creditExchange  = "credits-exchange"
-	creditTopic     = "credits-to-join-%d"
-	q3ToReduceQueue = "q3-to-reduce"
-	q4ToReduceQueue = "q4-to-reduce"
-	persistencyPath = "data/"
+	moviesExchange       = "movies-exchange"
+	moviestopic          = "movies-to-join-%d"
+	reviewsExchange      = "reviews-exchange"
+	reviewsTopic         = "reviews-to-join-%d"
+	creditExchange       = "credits-exchange"
+	creditTopic          = "credits-to-join-%d"
+	q3ToReduceQueue      = "q3-to-reduce"
+	q4ToReduceQueue      = "q4-to-reduce"
+	maxTransactionsOnLog = 50
+)
+
+type LogOperations string
+
+const ( //TODO: Optimize encoding
+	UpdateMoviesWeightsOp     LogOperations = "UpdateMoviesWeights"
+	SaveMoviesOp                            = "SaveMovies"
+	UpdateReviewsWeightsOp                  = "UpdateReviewsWeights"
+	StoreReviewBatchOp                      = "StoreReviewBatch"
+	JoinStoredReviewBatchesOp               = "JoinStoredReviewBatches"
+	UpdateCreditsWeightsOp                  = "UpdateCreditsWeights"
+	ExorciseSessionOp                       = "ExorciseSession"
 )
 
 type JoinerController struct {
@@ -30,6 +42,7 @@ type JoinerController struct {
 	middleware          *common.Middleware
 	Sessions            map[string]*JoinerSession                `json:"sessions"`
 	StoredReviewBatches map[string][]common.Batch[common.Review] `json:"storedReviewBatches"`
+	transactionsOnLog   int
 }
 
 func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
@@ -129,15 +142,25 @@ func (j *JoinerController) joinStoredReviewBatches(clientId string, q3ToReduce c
 	}
 }
 
-func (j *JoinerController) saveCheckpoint() {
+func (j *JoinerController) save(transaction persistency.Transaction) {
 	jsonData, err := json.Marshal(j)
 	if err != nil {
 		slog.Error("error marshalling internal state", slog.String("error", err.Error()))
 		return
 	}
-	if err = persistency.SaveCheckpoint(jsonData); err != nil {
-		slog.Error("error saving checkpoint", slog.String("error", err.Error()))
+
+	if err := persistency.Commit(transaction); err != nil {
+		slog.Error("error committing transaction", slog.String("error", err.Error()))
 		return
+	}
+	j.transactionsOnLog++
+
+	if j.transactionsOnLog == maxTransactionsOnLog {
+		if err = persistency.SaveCheckpoint(jsonData); err != nil {
+			slog.Error("error saving checkpoint", slog.String("error", err.Error()))
+			return
+		}
+		j.transactionsOnLog = 0
 	}
 }
 
@@ -156,6 +179,7 @@ func (j *JoinerController) run(
 			slog.Info("received termination signal, stopping joiner")
 			return
 		case msg := <-movies:
+			transaction := persistency.NewTransaction()
 			var batch common.Batch[common.Movie]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
@@ -165,7 +189,10 @@ func (j *JoinerController) run(
 			session := j.getSession(clientId)
 
 			session.UpdateMoviesWeights(batch.Header)
+			transaction.Do(string(UpdateMoviesWeightsOp), batch.Header.ToString())
+
 			session.SaveMovies(batch.Data)
+			transaction.Do(string(SaveMoviesOp), batch.Data.ToString())
 
 			if session.AllMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
@@ -174,7 +201,7 @@ func (j *JoinerController) run(
 				j.joinStoredReviewBatches(clientId, q3ToReduce) // Joins all reviews stored
 			}
 
-			j.saveCheckpoint()
+			j.save(transaction)
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -200,8 +227,8 @@ func (j *JoinerController) run(
 			j.joinReviewBatch(clientId, batch, q3ToReduce)
 
 			j.exorciseSession(clientId)
-			
-			j.saveCheckpoint()
+
+			j.save()
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -232,7 +259,7 @@ func (j *JoinerController) run(
 
 			j.exorciseSession(clientId)
 
-			j.saveCheckpoint()
+			j.save()
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))

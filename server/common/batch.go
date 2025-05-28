@@ -1,5 +1,7 @@
 package common
 
+import "strconv"
+
 type Header struct {
 	Weight      uint32 `json:"weight"`
 	TotalWeight int32  `json:"total_weight"` //-1 if its uknown for the moment
@@ -17,4 +19,8 @@ func (h *Header) IsEof() bool {
 
 func (h *Header) GetClientID() string {
 	return h.ClientID
+}
+
+func (h *Header) ToString() string {
+	return h.ClientID + "," + strconv.Itoa(int(h.Weight)) + "," + string(h.TotalWeight)
 }

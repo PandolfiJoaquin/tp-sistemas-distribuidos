@@ -2,6 +2,7 @@ package common
 
 import (
 	pkg "pkg/models"
+	"strconv"
 )
 
 type Sentiment int
@@ -20,6 +21,11 @@ type Movie struct {
 	Budget              uint64        `json:"budget"`
 	Revenue             uint64        `json:"revenue,omitempty"`
 	Overview            string        `json:"overview"`
+}
+
+func (m *Movie) ToString() string {
+	return m.ID + "," + m.Title + "," + string(rune(m.Year)) + "," +
+		strconv.FormatUint(m.Budget, 10) + "," + strconv.FormatUint(m.Revenue, 10) + "," + m.Overview
 }
 
 type MovieWithSentiment struct {

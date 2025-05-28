@@ -45,19 +45,24 @@ func SaveCheckpoint(data []byte) error {
 
 	return nil
 }
+func Commit(transaction Transaction) error {
+	//TODO: Implement the logic to commit the transaction
+	return nil
+}
 
-// func NewPersistencyHandler(basePath string) *PersistencyHandler {
-// 	return &PersistencyHandler{basePath: basePath}
-// }
+type TransactionEntry struct {
+	Op   string
+	Args string
+}
 
-// func (p *PersistencyHandler) SaveTransaction(data string) error {
-// 	return nil
-// }
+type Transaction struct {
+	entries []TransactionEntry
+}
 
-/*
-logs.txt
-xxxxxxxxxxxxx
-add movie: xxx xxx xxx xxx
-add review: xxxxx
-add movie: xxxxx
-*/
+func (t Transaction) Do(op string, args string) {
+	t.entries = append(t.entries, TransactionEntry{Op: op, Args: args})
+}
+
+func NewTransaction() Transaction {
+	return Transaction{entries: []TransactionEntry{}}
+}
