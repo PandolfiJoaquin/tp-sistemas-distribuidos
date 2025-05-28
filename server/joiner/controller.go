@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -165,11 +164,8 @@ func (j *JoinerController) run(
 			clientId := batch.GetClientID()
 			session := j.getSession(clientId)
 
-			// logs.Add(UpdateMoviesWeights, batch.Header)
-			// session.UpdateMoviesWeights(batch.Header)
 			session.UpdateMoviesWeights(batch.Header)
 			session.SaveMovies(batch.Data)
-			// transaction.Commit()
 
 			if session.AllMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
@@ -267,55 +263,4 @@ func (j *JoinerController) stop() {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
 	slog.Info("joiner stopped")
-}
-
-type StatefulFunctionName string
-
-const (
-	UpdateMoviesWeightsEncoded StatefulFunctionName = "updateMoviesWeights"
-	SaveMoviesEncoded StatefulFunctionName = "saveMovies"
-	UpdateReviewsWeightsEncoded StatefulFunctionName = "updateReviewsWeights"
-	UpdateCreditsWeightsEncoded StatefulFunctionName = "updateCreditsWeights"
-	ExorciseSessionEncoded StatefulFunctionName = "exorciseSession"
-	StoreReviewBatchEncoded StatefulFunctionName = "storeReviewBatch"
-)
-
-type TextMarshalerUnmarshaler interface {
-    encoding.TextMarshaler
-    encoding.TextUnmarshaler
-}
-
-func (j *JoinerController) runSessionFunction(fnName StatefulFunctionName, args ...TextMarshalerUnmarshaler) error {
-	if len(args) == 0 {
-		return fmt.Errorf("no arguments provided")
-	}
-
-	switch fnName {
-	case UpdateMoviesWeightsEncoded:
-		clientId := args[0].(string)
-		header := args[1].(common.Header)
-
-		j.getSession(clientId).UpdateMoviesWeights(header)
-		return nil
-	case SaveMoviesEncoded:
-		j.getSession(args[0].String()).SaveMovies(args[1].String())
-		return nil
-	case UpdateReviewsWeightsEncoded:
-		j.getSession(args[0].String()).UpdateReviewsWeights(args[1].String())
-		return nil
-	case UpdateCreditsWeightsEncoded:
-		j.getSession(args[0].String()).UpdateCreditsWeights(args[1].String())
-		return nil
-	case ExorciseSessionEncoded:
-		j.exorciseSession(args[0].String())
-		return nil
-	case StoreReviewBatchEncoded:
-		j.storeReviewBatch(args[0].String(), args[1].String())
-		return nil
-	case JoinReviewBatchEncoded:
-		j.joinReviewBatch(args[0].String(), args[1].String())
-		return nil
-	default:
-		return fmt.Errorf("unknown function: %s", fnName)
-	}
 }
