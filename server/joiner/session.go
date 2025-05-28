@@ -91,7 +91,6 @@ func (s *JoinerSession) Join(reviews []common.Review) []common.MovieReview {
 }
 
 func (s *JoinerSession) joinReview(r common.Review) []common.MovieReview {
-
 	movies := s.GetMovies()
 	moviesForReview := common.Filter(movies, func(m common.Movie) bool { return m.ID == r.MovieID })
 	reviewXMovies := common.Map(moviesForReview, func(m common.Movie) common.MovieReview {
