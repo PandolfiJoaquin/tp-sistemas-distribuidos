@@ -6,6 +6,7 @@ run:
 		exit 1; \
 	fi
 	docker compose down -v
+	sudo rm -rf data
 	docker compose build
 	docker compose up -d --remove-orphans
 

@@ -138,15 +138,15 @@ func startReceiving[T any](ctx context.Context, chanToRecv <-chan common.Message
 				sessions[clientID].SetEofWeight(int32(batch.Header.TotalWeight))
 			}
 
+			if sessions[clientID].IsFinished() {
+				slog.Info("finishing and sending batch", slog.String("client id", clientID), slog.String("message weight", fmt.Sprintf("%d", batch.Header.Weight)))
+				finishAndSendBatch(clientID)
+			}
+
 			saveCheckpoint(sessions)
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
-			}
-
-			if sessions[clientID].IsFinished() {
-				slog.Info("finishing and sending batch", slog.String("client id", clientID), slog.String("message weight", fmt.Sprintf("%d", batch.Header.Weight)))
-				finishAndSendBatch(clientID)
 			}
 		}
 	}
@@ -183,8 +183,6 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 		for _, countryBudget := range batch.Data {
 			countries[countryBudget.Country] += countryBudget.Budget
 		}
-		//TODO: Por que anda si no hice setData?
-
 	})
 
 	if err != nil {
@@ -215,8 +213,6 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 				movies[movieRating.MovieID] = currentRating
 			}
 		}
-		//TODO: Por que anda si no hice setData?
-
 	})
 
 	if err != nil {
@@ -246,8 +242,6 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 				actorMovies[actorMoviesAmount.ActorID] = currentMoviesAmount
 			}
 		}
-
-		//TODO: Por que anda si no hice setData?
 	})
 
 	if err != nil {

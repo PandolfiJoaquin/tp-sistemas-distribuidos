@@ -93,3 +93,14 @@ func (c *Country) UnmarshalJSON(data []byte) error {
 	*c = Country(aux.Alias)
 	return nil
 }
+
+// MarshalText implementa encoding.TextMarshaler
+func (c Country) MarshalText() ([]byte, error) {
+	return []byte(c.Code), nil
+}
+
+// UnmarshalText implementa encoding.TextUnmarshaler
+func (c *Country) UnmarshalText(text []byte) error {
+	c.Code = string(text)
+	return nil
+}

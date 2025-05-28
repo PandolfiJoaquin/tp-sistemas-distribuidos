@@ -199,12 +199,13 @@ func (j *JoinerController) run(
 
 			j.joinReviewBatch(clientId, batch, q3ToReduce)
 
+			j.exorciseSession(clientId)
+			
 			j.saveCheckpoint()
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
-			j.exorciseSession(clientId)
 
 		case msg := <-credits:
 			var batch common.Batch[common.Credit]
@@ -229,12 +230,13 @@ func (j *JoinerController) run(
 			}
 			q4ToReduce <- response
 
+			j.exorciseSession(clientId)
+
 			j.saveCheckpoint()
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
-			j.exorciseSession(clientId)
 		}
 	}
 }
