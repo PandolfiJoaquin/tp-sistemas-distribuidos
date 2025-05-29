@@ -162,7 +162,7 @@ func equalSlices(a, b []int) bool {
 }
 
 func TestDuplicateFilterWithShard(t *testing.T) {
-	filter := NewDuplicateFilterWithShard()
+	filter := NewDuplicateFilterWithShards()
 
 	type testCase struct {
 		id          int

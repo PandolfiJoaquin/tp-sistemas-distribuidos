@@ -56,21 +56,21 @@ func (f *DuplicateFilter) GetCurrentWindowState() []int {
 	return win
 }
 
-// DuplicateFilterWithShard is a filter that manages multiple shards of DuplicateFilter.
+// DuplicateFilterWithShards is a filter that manages multiple shards of DuplicateFilter.
 // It applies the same logic as DuplicateFilter but allows for separate windows per shard.
-type DuplicateFilterWithShard struct {
+type DuplicateFilterWithShards struct {
 	shards map[int]*DuplicateFilter
 }
 
-func NewDuplicateFilterWithShard() *DuplicateFilterWithShard {
-	return &DuplicateFilterWithShard{
+func NewDuplicateFilterWithShards() *DuplicateFilterWithShards {
+	return &DuplicateFilterWithShards{
 		shards: make(map[int]*DuplicateFilter),
 	}
 }
 
 // ShouldAccept checks if an ID should be accepted in the specified shard.
 // Check ShouldAccept in the DuplicateFilter for the logic of accepting IDs.
-func (f *DuplicateFilterWithShard) ShouldAccept(id int, shardID int) bool {
+func (f *DuplicateFilterWithShards) ShouldAccept(id int, shardID int) bool {
 	if id < 0 {
 		return false // Negative IDs are not accepted
 	}
@@ -84,7 +84,7 @@ func (f *DuplicateFilterWithShard) ShouldAccept(id int, shardID int) bool {
 
 // GetCurrentWindowsState GetCurrentWindowState returns the current state of all shards.
 // It returns a map where keys are shard IDs and values are the current window states of those shards.
-func (f *DuplicateFilterWithShard) GetCurrentWindowsState() map[int][]int {
+func (f *DuplicateFilterWithShards) GetCurrentWindowsState() map[int][]int {
 	winStates := make(map[int][]int)
 	for shardID, filter := range f.shards {
 		winStates[shardID] = filter.GetCurrentWindowState()
