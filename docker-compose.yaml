@@ -230,12 +230,12 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=2
       - JOINER_SHARDS=5
-    volumes:
-      - ./data/final-reducer/id-2/:/data/
     depends_on:
       rabbitmq:
         condition: service_healthy
         restart: true
+    volumes:
+      - ./data/joiner/id-{node_id}/:/data/
 
   final-reducer-q3:
     build:
@@ -248,12 +248,12 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=3
       - JOINER_SHARDS=5
-    volumes:
-      - ./data/final-reducer/id-3/:/data/
     depends_on:
       rabbitmq:
         condition: service_healthy
         restart: true
+    volumes:
+      - ./data/joiner/id-{node_id}/:/data/
 
   final-reducer-q4:
     build:
@@ -266,12 +266,12 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=4
       - JOINER_SHARDS=5
-    volumes:
-      - ./data/final-reducer/id-4/:/data/
     depends_on:
       rabbitmq:
         condition: service_healthy
         restart: true
+    volumes:
+      - ./data/joiner/id-{node_id}/:/data/
 
   final-reducer-q5:
     build:
@@ -284,12 +284,12 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=5
       - JOINER_SHARDS=5
-    volumes:
-      - ./data/final-reducer/id-5/:/data/
     depends_on:
       rabbitmq:
         condition: service_healthy
         restart: true
+    volumes:
+      - ./data/joiner/id-{node_id}/:/data/
 
   joiner-1:
     build:
@@ -297,8 +297,6 @@ services:
       args:
         NODE: joiner
     container_name: joiner-1
-    volumes:
-      - ./data/joiner/id-1/:/data/
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
@@ -307,6 +305,8 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
+    volumes:
+      - ./data/joiner/id-{node_id}/:/data/
 
   joiner-2:
     build:
@@ -314,8 +314,6 @@ services:
       args:
         NODE: joiner
     container_name: joiner-2
-    volumes:
-      - ./data/joiner/id-2/:/data/
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
@@ -324,6 +322,8 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
+    volumes:
+      - ./data/joiner/id-{node_id}/:/data/
 
   joiner-3:
     build:
@@ -331,8 +331,6 @@ services:
       args:
         NODE: joiner
     container_name: joiner-3
-    volumes:
-      - ./data/joiner/id-3/:/data/
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
@@ -341,6 +339,8 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
+    volumes:
+      - ./data/joiner/id-{node_id}/:/data/
 
   joiner-4:
     build:
@@ -348,8 +348,6 @@ services:
       args:
         NODE: joiner
     container_name: joiner-4
-    volumes:
-      - ./data/joiner/id-4/:/data/
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
@@ -358,6 +356,8 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
+    volumes:
+      - ./data/joiner/id-{node_id}/:/data/
 
   joiner-5:
     build:
@@ -365,8 +365,6 @@ services:
       args:
         NODE: joiner
     container_name: joiner-5
-    volumes:
-      - ./data/joiner/id-5/:/data/
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
@@ -375,6 +373,8 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
+    volumes:
+      - ./data/joiner/id-{node_id}/:/data/
 
   client1:
     container_name: client1
@@ -383,7 +383,7 @@ services:
     environment:
       - CLI_ID=1
       - MOVIES_FILE=archive/movies_metadata.csv
-      - REVIEWS_FILE=archive/ratings.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
       - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway
@@ -398,7 +398,7 @@ services:
     environment:
       - CLI_ID=2
       - MOVIES_FILE=archive/movies_metadata.csv
-      - REVIEWS_FILE=archive/ratings_small.csv
+      - REVIEWS_FILE=archive/ratings.csv
       - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway
@@ -413,7 +413,7 @@ services:
     environment:
       - CLI_ID=3
       - MOVIES_FILE=archive/movies_metadata.csv
-      - REVIEWS_FILE=archive/ratings.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
       - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway
@@ -428,7 +428,7 @@ services:
     environment:
       - CLI_ID=4
       - MOVIES_FILE=archive/movies_metadata.csv
-      - REVIEWS_FILE=archive/ratings_small.csv
+      - REVIEWS_FILE=archive/ratings.csv
       - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway
