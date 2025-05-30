@@ -61,7 +61,7 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 		Sessions:     make(map[string]*ClientSession),
 	}
 
-	recoveredData, err := persistency.Recover()
+	recoveredData, err := persistency.LoadCheckpointData()
 	if err != nil {
 		slog.Error("error recovering persistency", slog.String("error", err.Error()))
 	}

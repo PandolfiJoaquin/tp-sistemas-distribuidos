@@ -28,13 +28,13 @@ const (
 type LogOperations string
 
 const ( //TODO: Optimize encoding
-	UpdateMoviesWeightsOp     LogOperations = "UpdateMoviesWeights"
-	SaveMoviesOp                            = "SaveMovies"
-	UpdateReviewsWeightsOp                  = "UpdateReviewsWeights"
-	StoreReviewBatchOp                      = "StoreReviewBatch"
-	JoinStoredReviewBatchesOp               = "JoinStoredReviewBatches"
-	UpdateCreditsWeightsOp                  = "UpdateCreditsWeights"
-	ExorciseSessionOp                       = "ExorciseSession"
+	UpdateMoviesWeightsOp     = "UpdateMoviesWeights"
+	SaveMoviesOp              = "SaveMovies"
+	UpdateReviewsWeightsOp    = "UpdateReviewsWeights"
+	StoreReviewBatchOp        = "StoreReviewBatch"
+	JoinStoredReviewBatchesOp = "JoinStoredReviewBatches"
+	UpdateCreditsWeightsOp    = "UpdateCreditsWeights"
+	ExorciseSessionOp         = "ExorciseSession"
 )
 
 type JoinerController struct {
@@ -58,7 +58,7 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 		Sessions:            make(map[string]*JoinerSession),
 		StoredReviewBatches: make(map[string][]common.Batch[common.Review]),
 	}
-	recoveredData, err := persistency.Recover()
+	recoveredData, err := persistency.LoadCheckpointData()
 	if err != nil {
 		slog.Error("error recovering persistency", slog.String("error", err.Error()))
 	}
@@ -189,10 +189,10 @@ func (j *JoinerController) run(
 			session := j.getSession(clientId)
 
 			session.UpdateMoviesWeights(batch.Header)
-			transaction.Do(string(UpdateMoviesWeightsOp), batch.Header.ToString())
+			transaction.Do(UpdateMoviesWeightsOp, batch.Header.ToString())
 
 			session.SaveMovies(batch.Data)
-			transaction.Do(string(SaveMoviesOp), batch.Data.ToString())
+			transaction.Do(SaveMoviesOp, batch.GetDataAsString())
 
 			if session.AllMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
@@ -228,7 +228,7 @@ func (j *JoinerController) run(
 
 			j.exorciseSession(clientId)
 
-			j.save()
+			j.save(persistency.NewTransaction())
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -259,7 +259,7 @@ func (j *JoinerController) run(
 
 			j.exorciseSession(clientId)
 
-			j.save()
+			j.save(persistency.NewTransaction())
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))

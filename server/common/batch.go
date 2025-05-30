@@ -1,6 +1,9 @@
 package common
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 type Header struct {
 	Weight      uint32 `json:"weight"`
@@ -8,9 +11,16 @@ type Header struct {
 	ClientID    string `json:"client_id"`
 }
 
-type Batch[T any] struct {
+type Batch[T Stringer] struct {
 	Header `json:"header"`
 	Data   []T `json:"data"`
+}
+
+func (b Batch[T]) GetDataAsString() string {
+	serializedData := Map(b.Data, func(m T) string {
+		return m.ToString()
+	})
+	return strings.Join(serializedData, "¬.¬")
 }
 
 func (h *Header) IsEof() bool {
