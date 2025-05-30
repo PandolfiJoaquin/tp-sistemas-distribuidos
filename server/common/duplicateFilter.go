@@ -5,17 +5,17 @@ import "sort"
 // DuplicateFilter is a filter that accepts unique IDs in a sliding window.
 // It maintains a sorted window of accepted IDs and rejects duplicates.
 // The window is shortened to the position X if all the IDs are consecutive from the start to X.
+//
+// Precondition: IDs must be non-negative integers starting from 0.
+//
 // Example we have window [1,3,5] Meaning that 0,1,3,5 were accepted.
 // If 2 arrives it will be added and the window will become [3,5]. Compacting Because 1,2,3 are consecutive.
 // With this new window we know that ids from 0-3 are already accepted.
-// Note: ids must start from 0
 type DuplicateFilter struct {
-	window []int
+    window []int
 }
 
 // NewDuplicateFilter initializes a new DuplicateFilter with an empty window.
-// The window starts with a sentinel value of -1 to handle the first ID correctly.
-// Ids must begin from 0.
 func NewDuplicateFilter() *DuplicateFilter {
 	return &DuplicateFilter{
 		window: []int{-1},

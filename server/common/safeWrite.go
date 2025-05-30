@@ -2,6 +2,7 @@ package common
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -43,13 +44,17 @@ func AtomicWriteFile(filename string, data []byte, hook HookFunc) error {
 	if err != nil {
 		return err
 	}
-	// always clean up on error
-	defer tmp.Close()
-	defer os.Remove(tmp.Name())
+	var success bool
+	defer func() {
+		if !success {
+			tmp.Close() // We close the temp file if we fail to rename it.
+		}
+		os.Remove(tmp.Name())
+	}()
 
 	// 1) write
 	if _, err := io.Copy(tmp, bytes.NewReader(data)); err != nil {
-		return err
+		return fmt.Errorf("failed to write data to temporary file %s: %w", tmp.Name(), err)
 	}
 	if err := callHook(hook, FailAfterWrite); err != nil {
 		return err
@@ -57,7 +62,7 @@ func AtomicWriteFile(filename string, data []byte, hook HookFunc) error {
 
 	// 2) fsync
 	if err := tmp.Sync(); err != nil {
-		return err
+		return fmt.Errorf("failed to sync temporary file %s: %w", tmp.Name(), err)
 	}
 	if err := callHook(hook, FailAfterSync); err != nil {
 		return err
@@ -74,7 +79,12 @@ func AtomicWriteFile(filename string, data []byte, hook HookFunc) error {
 	}
 
 	// 5) rename
-	return os.Rename(tmp.Name(), filename)
+	err = os.Rename(tmp.Name(), filename)
+	if err != nil {
+		return fmt.Errorf("failed to rename temporary file %s to %s: %w", tmp.Name(), filename, err)
+	}
+	success = true
+	return nil
 }
 
 // callHook executes the provided hook function with the given fail point.
@@ -90,16 +100,19 @@ func callHook(h HookFunc, point FailPoint) error {
 func CleanupOldTemps(dir, base string, olderThan time.Duration) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read directory %s: %w", dir, err)
 	}
 	cutoff := time.Now().Add(-olderThan)
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), base) && strings.HasSuffix(e.Name(), ".tmp") {
-			info, _ := e.Info()
+			info, err := e.Info()
+			if err != nil {
+				return fmt.Errorf("failed to get info for file %s: %w", e.Name(), err)
+			}
 			if info.ModTime().Before(cutoff) {
 				err := os.Remove(filepath.Join(dir, e.Name()))
 				if err != nil {
-					return err
+					return fmt.Errorf("failed to remove old temporary file %s: %w", e.Name(), err)
 				}
 			}
 		}
@@ -114,17 +127,17 @@ func AppendLine(filename string, data []byte) error {
 	// open file for append
 	f, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open file %s for appending: %w", filename, err)
 	}
 	defer f.Close()
 
 	// Write the record to the file
 	if _, err := io.Copy(f, bytes.NewReader(data)); err != nil {
-		return err
+		return fmt.Errorf("failed to write data to file %s: %w", filename, err)
 	}
 	// sync file data
 	if err := f.Sync(); err != nil {
-		return err
+		return fmt.Errorf("failed to sync file %s: %w", filename, err)
 	}
 	return nil
 }
