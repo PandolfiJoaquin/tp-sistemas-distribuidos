@@ -117,7 +117,7 @@ func (r *FinalReducer) Start() {
 	}
 }
 
-func startReceiving[T any](ctx context.Context, chanToRecv <-chan common.Message, sessions map[string]*ClientSession, finishAndSendBatch func(clientId string), processBatch func(batch common.Batch[T])) error {
+func startReceiving[T common.Stringer](ctx context.Context, chanToRecv <-chan common.Message, sessions map[string]*ClientSession, finishAndSendBatch func(clientId string), processBatch func(batch common.Batch[T])) error {
 	for {
 		select {
 		case <-ctx.Done():

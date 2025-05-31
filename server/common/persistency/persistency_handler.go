@@ -13,10 +13,10 @@ const dataPath = "data/"
 const checkpointFileName = "checkpoint.json"
 const logFileName = "log.MATADORMATADORMATADORTEESTANBUSCANDO"
 const sep = "\x1E"
+const commitChar = "c"
 
-func LoadCheckpointData() ([]byte, error) {
-	//TODO: manejar checkpoints multiples
-	files, err := common.ScanDirectory(dataPath, checkpointFileName)
+func LoadCheckpointData(fileName string) ([]byte, error) {
+	files, err := common.ScanDirectory(dataPath, fileName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			if err := os.Mkdir(dataPath, 0777); err != nil {
@@ -28,7 +28,8 @@ func LoadCheckpointData() ([]byte, error) {
 	}
 
 	if len(files) == 0 {
-		return []byte{}, nil
+		slog.Warn("No checkpoint files found")
+		panic("No checkpoint files found") //TODO: sacar
 	}
 
 	file := files[0]
@@ -41,39 +42,51 @@ func LoadCheckpointData() ([]byte, error) {
 	return content, nil
 }
 
-func LoadLogs() ([]TransactionEntry, error) {
+func getLogPath() (string, error) {
 	files, err := common.ScanDirectory(dataPath, logFileName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			if err := os.Mkdir(dataPath, 0777); err != nil {
+				return "", fmt.Errorf("error creating data directory: %w", err)
 			}
 		} else {
-			return nil, fmt.Errorf("error scanning directory: %w", err)
+			return "", fmt.Errorf("error scanning directory: %w", err)
 		}
 	}
 
 	if len(files) == 0 {
-		slog.Warn("No log files found")
-		return []TransactionEntry{}, nil
+		checkpointName := dataPath + checkpointFileName + "1"
+		if err := common.AtomicWriteFile(checkpointName, []byte{}, nil); err != nil {
+			return "", fmt.Errorf("error creating checkpoint file: %w", err)
+		}
+		if err := common.AtomicWriteFile(dataPath+logFileName, fmt.Appendf(nil, "%s\n", checkpointName), nil); err != nil {
+			return "", fmt.Errorf("error creating log file: %w", err)
+		}
+		return dataPath + logFileName, nil
 	}
 
 	if len(files) > 1 {
 		//TODO: manejar logs multiples
 		slog.Error("Multiple log files found, using the first one", slog.Any("files", files))
+		panic("Multiple log files found") //TODO: sacar
 	}
 
 	file := files[0]
+	return dataPath + file, nil
+}
+
+func getCommitedLogs(logs []string) ([]TransactionEntry, error) {
 	var entries []TransactionEntry
-	content, err := os.ReadFile(file)
-	if err != nil {
-		return nil, fmt.Errorf("error reading log file: %w", err)
-	}
-
-	for _, line := range strings.Split(string(content), "\n") {
+	var uncommitedEntries []TransactionEntry
+	for _, line := range logs {
+		if line == commitChar {
+			entries = append(entries, uncommitedEntries...)
+			uncommitedEntries = []TransactionEntry{}
+			continue
+		}
 		entry := entryFromLog(strings.Split(line, sep))
-		entries = append(entries, entry)
+		uncommitedEntries = append(uncommitedEntries, entry)
 	}
-
 	return entries, nil
 }
 
@@ -93,21 +106,38 @@ func RecoverWithLogs[T any](
 	fromBytes func([]byte) (T, error),
 	applyFunc func(checkpoint T, entry TransactionEntry) T,
 ) (T, error) {
+	//TODO: Esta funcion la chequeamos y ta bien, falta borrar los logs (ver casos bordes) y hacer seguimiento de las otras funciones
 	var checkpoint T
 
-	checkpointData, err := LoadCheckpointData()
+	logPath, err := getLogPath()
+	if err != nil {
+		return checkpoint, fmt.Errorf("error getting log path: %w", err)
+	}
+
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		return checkpoint, fmt.Errorf("error reading log file: %w", err)
+	}
+
+	logs := strings.Split(string(content), "\n")
+	checkpointFileName := logs[0]
+	logs = logs[1:]
+
+	checkpointData, err := LoadCheckpointData(checkpointFileName)
 	if err != nil {
 		return checkpoint, fmt.Errorf("error loading checkpoint %v", err)
 	}
+
 	checkpoint, err = fromBytes(checkpointData)
 	if err != nil {
 		return checkpoint, fmt.Errorf("error loading checkpoint %v", err)
 	}
 
-	entries, err := LoadLogs()
+	entries, err := getCommitedLogs(logs)
 	if err != nil {
 		return checkpoint, fmt.Errorf("error loading logs %v", err)
 	}
+
 	checkpoint = applyLogs(checkpoint, entries, applyFunc)
 	return checkpoint, nil
 }
@@ -120,30 +150,21 @@ func applyLogs[T any](checkpoint T, entries []TransactionEntry, applyFunc func(c
 }
 
 func SaveCheckpoint(data []byte) error {
-	err := os.WriteFile(dataPath+checkpointFileName, data, 0644)
-	if err != nil {
+	if err := common.AtomicWriteFile(dataPath+checkpointFileName, data, nil); err != nil {
 		return fmt.Errorf("error writing checkpoint file: %w", err)
 	}
-
 	return nil
 }
 func Commit(transaction Transaction) error {
-	f, err := os.OpenFile(dataPath+logFileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-
-	defer func(f *os.File) {
-		if err := f.Close(); err != nil {
-			slog.Error("error closing file", slog.String("file", f.Name()), slog.String("error", err.Error()))
-		}
-	}(f)
-
-	for _, entry := range transaction.Entries { //TODO: cambiar por funcion de theo
+	//TODO: optimizacion: Abrir 1 sola vez el archivo y escribir en el
+	var lines string
+	for _, entry := range transaction.Entries {
 		line := fmt.Sprintf("%s%s%s\n", entry.Op, sep, entry.Args)
-		if _, err := f.WriteString(line); err != nil {
-			return fmt.Errorf("error writing to log file: %w", err)
-		}
+		lines += line
+	}
+	lines += fmt.Sprintf("%s\n", commitChar)
+	if err := common.AppendLine(dataPath+logFileName, []byte(lines)); err != nil {
+		return fmt.Errorf("error appending to log file: %w", err)
 	}
 	return nil
 }
@@ -157,7 +178,7 @@ type Transaction struct {
 	Entries []TransactionEntry
 }
 
-func (t Transaction) Do(op string, args string) {
+func (t *Transaction) Do(op string, args string) {
 	t.Entries = append(t.Entries, TransactionEntry{Op: op, Args: args})
 }
 

@@ -58,6 +58,7 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 		Sessions:            make(map[string]*JoinerSession),
 		StoredReviewBatches: make(map[string][]common.Batch[common.Review]),
 	}
+
 	recoveredData, err := persistency.LoadCheckpointData()
 	if err != nil {
 		slog.Error("error recovering persistency", slog.String("error", err.Error()))
