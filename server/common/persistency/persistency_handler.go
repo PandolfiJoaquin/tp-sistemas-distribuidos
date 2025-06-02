@@ -56,14 +56,9 @@ func getLogPath() (string, error) {
 	}
 
 	if len(files) == 0 {
-		checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 1)
-		_, err := os.OpenFile(checkpointName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0777)
-		if err != nil {
+		checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 1) 
+		if err := common.AtomicWriteFile(checkpointName, []byte{}, nil); err != nil {
 			return "", fmt.Errorf("error creating checkpoint file: %w", err)
-		}
-		_, err = os.OpenFile(dataPath+logFileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0777)
-		if err != nil {
-			return "", fmt.Errorf("error creating logfile: %w", err)
 		}
 		if err := common.AtomicWriteFile(dataPath+logFileName, fmt.Appendf(nil, "%s\n", checkpointName), nil); err != nil {
 			return "", fmt.Errorf("error creating log file: %w", err)
@@ -155,22 +150,14 @@ func applyLogs[T any](checkpoint T, entries []TransactionEntry, applyFunc func(c
 	return checkpoint
 }
 
-var a = 1
-
 func SaveCheckpoint(data []byte) error {
 	checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 1)
-	if a == 1 {
-		_, err := os.OpenFile(checkpointName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0777)
-		if err != nil {
-			return fmt.Errorf("error creating checkpoint file: %w", err)
-		}
-		a++
-	}
 	if err := common.AtomicWriteFile(checkpointName, data, nil); err != nil {
 		return fmt.Errorf("error writing checkpoint file: %w", err)
 	}
 	return nil
 }
+
 func Commit(transaction Transaction) error {
 	//TODO: optimizacion: Abrir 1 sola vez el archivo y escribir en el
 	var lines string
