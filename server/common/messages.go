@@ -3,6 +3,7 @@ package common
 import (
 	"encoding/json"
 	pkg "pkg/models"
+	"strconv"
 )
 
 type ToProcessMsg struct {
@@ -30,6 +31,10 @@ type MovieAvgRating struct {
 	RatingCount uint32  `json:"rating_count"`
 }
 
+func (m MovieAvgRating) ToString() string {
+	return m.MovieID + "," + m.Title + "," + strconv.FormatFloat(m.RatingSum, 'f', -1, 64) + "," + string(rune(m.RatingCount))
+}
+
 type BestAndWorstMovies struct {
 	ClientId   string      `json:"client_id"`
 	BestMovie  MovieReview `json:"best_movie"`
@@ -41,6 +46,10 @@ type ActorMoviesAmount struct {
 	ActorID      string `json:"actor_id"`
 	ActorName    string `json:"actor_name"`
 	MoviesAmount uint32 `json:"movies_amount"`
+}
+
+func (actor ActorMoviesAmount) ToString() string {
+	return actor.ActorID + "," + actor.ActorName + "," + string(rune(actor.MoviesAmount))
 }
 
 type Top10Actors struct {

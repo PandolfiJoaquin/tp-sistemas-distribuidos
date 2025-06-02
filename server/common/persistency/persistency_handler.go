@@ -10,7 +10,7 @@ import (
 )
 
 const dataPath = "data/"
-const checkpointFileName = "checkpoint.json"
+const checkpointFileName = "checkpoint-%v.json"
 const logFileName = "log.MATADORMATADORMATADORTEESTANBUSCANDO"
 const sep = "\x1E"
 const commitChar = "c"
@@ -29,7 +29,8 @@ func LoadCheckpointData(fileName string) ([]byte, error) {
 
 	if len(files) == 0 {
 		slog.Warn("No checkpoint files found")
-		panic("No checkpoint files found") //TODO: sacar
+		//panic("No checkpoint files found") //TODO: sacar
+		return []byte{}, nil
 	}
 
 	file := files[0]
@@ -55,9 +56,14 @@ func getLogPath() (string, error) {
 	}
 
 	if len(files) == 0 {
-		checkpointName := dataPath + checkpointFileName + "1"
-		if err := common.AtomicWriteFile(checkpointName, []byte{}, nil); err != nil {
+		checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 1)
+		_, err := os.OpenFile(checkpointName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0777)
+		if err != nil {
 			return "", fmt.Errorf("error creating checkpoint file: %w", err)
+		}
+		_, err = os.OpenFile(dataPath+logFileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0777)
+		if err != nil {
+			return "", fmt.Errorf("error creating logfile: %w", err)
 		}
 		if err := common.AtomicWriteFile(dataPath+logFileName, fmt.Appendf(nil, "%s\n", checkpointName), nil); err != nil {
 			return "", fmt.Errorf("error creating log file: %w", err)
@@ -149,8 +155,18 @@ func applyLogs[T any](checkpoint T, entries []TransactionEntry, applyFunc func(c
 	return checkpoint
 }
 
+var a = 1
+
 func SaveCheckpoint(data []byte) error {
-	if err := common.AtomicWriteFile(dataPath+checkpointFileName, data, nil); err != nil {
+	checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 1)
+	if a == 1 {
+		_, err := os.OpenFile(checkpointName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0777)
+		if err != nil {
+			return fmt.Errorf("error creating checkpoint file: %w", err)
+		}
+		a++
+	}
+	if err := common.AtomicWriteFile(checkpointName, data, nil); err != nil {
 		return fmt.Errorf("error writing checkpoint file: %w", err)
 	}
 	return nil

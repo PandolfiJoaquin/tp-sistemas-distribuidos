@@ -61,7 +61,8 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 		Sessions:     make(map[string]*ClientSession),
 	}
 
-	recoveredData, err := persistency.LoadCheckpointData()
+	//recoveredData, err := persistency.LoadCheckpointData()
+	recoveredData, err := []byte{}, nil
 	if err != nil {
 		slog.Error("error recovering persistency", slog.String("error", err.Error()))
 	}
@@ -117,7 +118,7 @@ func (r *FinalReducer) Start() {
 	}
 }
 
-func startReceiving[T common.Stringer](ctx context.Context, chanToRecv <-chan common.Message, sessions map[string]*ClientSession, finishAndSendBatch func(clientId string), processBatch func(batch common.Batch[T])) error {
+func startReceiving[T any](ctx context.Context, chanToRecv <-chan common.Message, sessions map[string]*ClientSession, finishAndSendBatch func(clientId string), processBatch func(batch common.Batch[T])) error {
 	for {
 		select {
 		case <-ctx.Done():

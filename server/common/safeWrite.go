@@ -41,6 +41,7 @@ func AtomicWriteFile(filename string, data []byte, hook HookFunc) error {
 	dir, base := filepath.Dir(filename), filepath.Base(filename)
 
 	tmp, err := os.CreateTemp(dir, base+".tmp")
+	os.Chmod(dir+"/"+tmp.Name(), 0777) // Ensure the temp file is writable
 	if err != nil {
 		return err
 	}

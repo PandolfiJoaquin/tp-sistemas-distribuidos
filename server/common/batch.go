@@ -11,16 +11,28 @@ type Header struct {
 	ClientID    string `json:"client_id"`
 }
 
-type Batch[T Stringer] struct {
+type Batch[T any] struct {
 	Header `json:"header"`
 	Data   []T `json:"data"`
 }
 
-func (b Batch[T]) GetDataAsString() string {
+type LoggableBatch[T Stringer] struct {
+	Header `json:"header"`
+	Data   []T `json:"data"`
+}
+
+func (b LoggableBatch[T]) GetDataAsString() string {
 	serializedData := Map(b.Data, func(m T) string {
 		return m.ToString()
 	})
 	return strings.Join(serializedData, "¬.¬")
+}
+
+func (b LoggableBatch[T]) AsBatch() Batch[T] {
+	return Batch[T]{
+		Header: b.Header,
+		Data:   b.Data,
+	}
 }
 
 func (h *Header) IsEof() bool {

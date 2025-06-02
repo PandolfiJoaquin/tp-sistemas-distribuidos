@@ -235,7 +235,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
-      - ./data/joiner/id-{node_id}/:/data/
+      - ./data/final-reducer/id-2/:/data/
 
   final-reducer-q3:
     build:
@@ -253,7 +253,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
-      - ./data/joiner/id-{node_id}/:/data/
+      - ./data/final-reducer/id-3/:/data/
 
   final-reducer-q4:
     build:
@@ -271,7 +271,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
-      - ./data/joiner/id-{node_id}/:/data/
+      - ./data/final-reducer/id-4/:/data/
 
   final-reducer-q5:
     build:
@@ -289,7 +289,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
-      - ./data/joiner/id-{node_id}/:/data/
+      - ./data/final-reducer/id-5/:/data/
 
   joiner-1:
     build:
@@ -306,7 +306,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
-      - ./data/joiner/id-{node_id}/:/data/
+      - ./data/joiner/id-1/:/data/
 
   joiner-2:
     build:
@@ -323,7 +323,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
-      - ./data/joiner/id-{node_id}/:/data/
+      - ./data/joiner/id-2/:/data/
 
   joiner-3:
     build:
@@ -340,7 +340,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
-      - ./data/joiner/id-{node_id}/:/data/
+      - ./data/joiner/id-3/:/data/
 
   joiner-4:
     build:
@@ -357,7 +357,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
-      - ./data/joiner/id-{node_id}/:/data/
+      - ./data/joiner/id-4/:/data/
 
   joiner-5:
     build:
@@ -374,7 +374,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
-      - ./data/joiner/id-{node_id}/:/data/
+      - ./data/joiner/id-5/:/data/
 
   client1:
     container_name: client1

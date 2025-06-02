@@ -1,7 +1,7 @@
 import json
 import sys
 
-VOLUME = "    volumes:\n      - ./data/joiner/id-{node_id}/:/data/\n"
+VOLUME = "    volumes:\n      - ./data/{type}/id-{node_id}/:/data/\n"
 
 YAML_FILE = "docker-compose.yaml"
 
@@ -117,7 +117,7 @@ def create_compose(cfg):
             svc_name=svc_name,
             node="final-reducer",
             extra_env=extra_env
-        ) + VOLUME
+        ) + VOLUME.format(node_id=q, type="final-reducer")
 
 
     # Joiners
@@ -128,7 +128,7 @@ def create_compose(cfg):
             svc_name=svc_name,
             node="joiner",
             extra_env=extra_env
-        ) + VOLUME
+        ) + VOLUME.format(node_id=j, type="joiner")
 
     # Clients
     print(f"   • clients ×{clients}")

@@ -9,6 +9,8 @@ run:
 	sudo rm -rf data
 	docker compose build
 	docker compose up -d --remove-orphans
+down:
+	docker compose down -v
 
 run-no-cache:
 	@if [ ! -f config-script.json ]; then \
