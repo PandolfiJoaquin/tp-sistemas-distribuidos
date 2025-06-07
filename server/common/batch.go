@@ -1,9 +1,12 @@
 package common
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
+
+const headerSep = ","
 
 type Header struct {
 	Weight      uint32 `json:"weight"`
@@ -44,5 +47,27 @@ func (h *Header) GetClientID() string {
 }
 
 func (h *Header) ToString() string {
-	return h.ClientID + "," + strconv.Itoa(int(h.Weight)) + "," + string(h.TotalWeight)
+
+	return h.ClientID + headerSep + strconv.Itoa(int(h.Weight)) + headerSep + string(h.TotalWeight)
+}
+
+func HeaderFromString(args string) (Header, error) {
+	parts := strings.Split(args, headerSep)
+	if len(parts) != 3 {
+		return Header{}, fmt.Errorf("invalid header format: %s", args)
+	}
+	weight, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return Header{}, fmt.Errorf("invalid weight in header: %w, args: %s", err, parts[1])
+	}
+	totalWeight, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return Header{}, fmt.Errorf("invalid totalWeight in header: %w, args: %s", err, parts[2])
+	}
+
+	return Header{
+		ClientID:    parts[0],
+		Weight:      uint32(weight),
+		TotalWeight: int32(totalWeight),
+	}, nil
 }

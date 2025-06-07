@@ -44,6 +44,22 @@ type JoinerController struct {
 	Sessions            map[string]*JoinerSession                `json:"sessions"`
 	StoredReviewBatches map[string][]common.Batch[common.Review] `json:"storedReviewBatches"`
 	transactionsOnLog   int
+	persistencyHandler  *persistency.PersistencyHandler[JoinerController]
+}
+
+func (j JoinerController) ApplyFunc(entry persistency.TransactionEntry) (JoinerController, error) {
+	switch entry.Op {
+	case UpdateMoviesWeightsOp:
+		header, err := common.HeaderFromString(entry.Args)
+		if err != nil {
+			return JoinerController{}, fmt.Errorf("error applying %v: %w", UpdateCreditsWeightsOp, err)
+		}
+		j.Sessions[header.ClientID].UpdateMoviesWeights(header)
+		return j, nil
+	case SaveMoviesOp:
+		data, err := common.MoviesFromString
+
+	}
 }
 
 func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
@@ -52,26 +68,34 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
 		return nil, err
 	}
+	ph, err := persistency.NewPersistencyHandler[JoinerController]()
+	if err != nil {
+		slog.Error("error creating persistency handler", slog.String("error", err.Error()))
+		return nil, err
+	}
 
-	controller := &JoinerController{
+	controller := JoinerController{
 		joinerId:            joinerId,
 		middleware:          middleware,
+		persistencyHandler:  ph,
 		Sessions:            make(map[string]*JoinerSession),
 		StoredReviewBatches: make(map[string][]common.Batch[common.Review]),
 	}
 
-	recoveredData, err := persistency.LoadCheckpointData("checkpoint")
+	fromBytes := func(data []byte) (JoinerController, error) {
+		if len(data) != 0 {
+			if err = json.Unmarshal(data, &controller); err != nil {
+				slog.Error("error unmarshalling persistency", slog.String("error", err.Error()))
+			}
+		}
+		return controller, nil
+	}
+	controller, err = ph.RecoverFromLogs(fromBytes)
 	if err != nil {
 		slog.Error("error recovering persistency", slog.String("error", err.Error()))
 	}
 
-	if len(recoveredData) != 0 {
-		if err = json.Unmarshal(recoveredData, controller); err != nil {
-			slog.Error("error unmarshalling persistency", slog.String("error", err.Error()))
-		}
-	}
-
-	return controller, nil
+	return &controller, nil
 }
 
 func (j *JoinerController) Start() {
@@ -145,24 +169,23 @@ func (j *JoinerController) joinStoredReviewBatches(clientId string, q3ToReduce c
 }
 
 func (j *JoinerController) save(transaction persistency.Transaction) {
-	jsonData, err := json.Marshal(j)
-	if err != nil {
-		slog.Error("error marshalling internal state", slog.String("error", err.Error()))
+	if err := j.persistencyHandler.Commit(transaction); err != nil {
+		slog.Error("error committing transaction", slog.String("error", err.Error()))
 		return
 	}
+	j.transactionsOnLog++
 
-	//if err := persistency.Commit(transaction); err != nil {
-	//	slog.Error("error committing transaction", slog.String("error", err.Error()))
-	//	return
-	//}
-	//j.transactionsOnLog++
-
-	//if j.transactionsOnLog == maxTransactionsOnLog {
-	if err = persistency.SaveCheckpoint(jsonData); err != nil {
-		slog.Error("error saving checkpoint", slog.String("error", err.Error()))
-		return
-		//}
-		//j.transactionsOnLog = 0
+	if j.transactionsOnLog == maxTransactionsOnLog {
+		jsonData, err := json.Marshal(j)
+		if err != nil {
+			slog.Error("error marshalling internal state", slog.String("error", err.Error()))
+			return
+		}
+		if err = j.persistencyHandler.SaveCheckpoint(jsonData); err != nil {
+			slog.Error("error saving checkpoint", slog.String("error", err.Error()))
+			return
+		}
+		j.transactionsOnLog = 0
 	}
 }
 

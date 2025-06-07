@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"tp-sistemas-distribuidos/server/common"
 )
@@ -15,7 +16,50 @@ const logFileName = "log.MATADORMATADORMATADORTEESTANBUSCANDO"
 const sep = "\x1E"
 const commitChar = "c"
 
-func LoadCheckpointData(fileName string) ([]byte, error) {
+var errNoLogFile = errors.New("no log file found")
+
+type Loggable[T any] interface {
+	ApplyFunc(entry TransactionEntry) (T, error)
+}
+
+type PersistencyHandler[T Loggable[T]] struct {
+	currSnapshotNumber int
+}
+
+func NewPersistencyHandler[T Loggable[T]]() (*PersistencyHandler[T], error) {
+
+	logPath, err := getLogPath()
+	if err != nil {
+		if errors.Is(err, errNoLogFile) {
+			checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 1)
+			if err := common.AtomicWriteFile(checkpointName, []byte{}, nil); err != nil {
+				return nil, fmt.Errorf("error creating checkpoint file: %w", err)
+			}
+			if err := common.AtomicWriteFile(dataPath+logFileName, fmt.Appendf(nil, "%s\n", checkpointName), nil); err != nil {
+				return nil, fmt.Errorf("error creating log file: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("error getting log path: %w", err)
+		}
+	}
+
+	currCheckpointFileName, _, err := getLogsContent(logPath)
+	if err != nil {
+		return nil, fmt.Errorf("error getting logs content: %w", err)
+	}
+
+	currSnapshotNumber, err := strconv.Atoi(strings.Split(currCheckpointFileName, "-")[2])
+	if err != nil {
+		return nil, fmt.Errorf("error parsing current snapshot number from checkpoint file name: %w", err)
+	}
+
+	return &PersistencyHandler[T]{
+		currSnapshotNumber: currSnapshotNumber,
+	}, nil
+
+}
+
+func (ph *PersistencyHandler[T]) loadCheckpointData(fileName string) ([]byte, error) {
 	files, err := common.ScanDirectory(dataPath, fileName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -56,14 +100,7 @@ func getLogPath() (string, error) {
 	}
 
 	if len(files) == 0 {
-		checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 1)
-		if err := common.AtomicWriteFile(checkpointName, []byte{}, nil); err != nil {
-			return "", fmt.Errorf("error creating checkpoint file: %w", err)
-		}
-		if err := common.AtomicWriteFile(dataPath+logFileName, fmt.Appendf(nil, "%s\n", checkpointName), nil); err != nil {
-			return "", fmt.Errorf("error creating log file: %w", err)
-		}
-		return dataPath + logFileName, nil
+		return "", errNoLogFile
 	}
 
 	if len(files) > 1 {
@@ -103,10 +140,19 @@ func entryFromLog(split []string) TransactionEntry {
 	}
 }
 
-func RecoverWithLogs[T any](
-	fromBytes func([]byte) (T, error),
-	applyFunc func(checkpoint T, entry TransactionEntry) T,
-) (T, error) {
+func getLogsContent(logPath string) (string, []string, error) {
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("error reading log file: %w", err)
+	}
+
+	logs := strings.Split(string(content), "\n")
+	checkpointFileName := logs[0]
+	logs = logs[1:]
+	return checkpointFileName, logs, nil
+}
+
+func (ph *PersistencyHandler[T]) RecoverFromLogs(fromBytes func([]byte) (T, error)) (T, error) {
 	//TODO: Esta funcion la chequeamos y ta bien, falta borrar los logs (ver casos bordes) y hacer seguimiento de las otras funciones
 	var checkpoint T
 
@@ -115,16 +161,12 @@ func RecoverWithLogs[T any](
 		return checkpoint, fmt.Errorf("error getting log path: %w", err)
 	}
 
-	content, err := os.ReadFile(logPath)
+	checkpointFileName, logs, err := getLogsContent(logPath)
 	if err != nil {
-		return checkpoint, fmt.Errorf("error reading log file: %w", err)
+		return checkpoint, fmt.Errorf("error getting logs content: %w", err)
 	}
 
-	logs := strings.Split(string(content), "\n")
-	checkpointFileName := logs[0]
-	logs = logs[1:]
-
-	checkpointData, err := LoadCheckpointData(checkpointFileName)
+	checkpointData, err := ph.loadCheckpointData(checkpointFileName)
 	if err != nil {
 		return checkpoint, fmt.Errorf("error loading checkpoint %v", err)
 	}
@@ -139,27 +181,33 @@ func RecoverWithLogs[T any](
 		return checkpoint, fmt.Errorf("error loading logs %v", err)
 	}
 
-	checkpoint = applyLogs(checkpoint, entries, applyFunc)
+	checkpoint, err = applyLogs(checkpoint, entries)
+	if err != nil {
+		return checkpoint, fmt.Errorf("error applying logs to checkpoint: %w", err)
+	}
 	return checkpoint, nil
 }
 
-func applyLogs[T any](checkpoint T, entries []TransactionEntry, applyFunc func(checkpoint T, entry TransactionEntry) T) T {
+func applyLogs[T Loggable[T]](checkpoint T, entries []TransactionEntry) (T, error) {
+	var err error
 	for _, entry := range entries {
-		checkpoint = applyFunc(checkpoint, entry)
+		checkpoint, err = checkpoint.ApplyFunc(entry)
+		if err != nil {
+			return checkpoint, fmt.Errorf("error applying log entry: %w", err)
+		}
 	}
-	return checkpoint
+	return checkpoint, nil
 }
 
-func SaveCheckpoint(data []byte) error {
-	checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 1)
+func (ph *PersistencyHandler[T]) SaveCheckpoint(data []byte) error {
+	checkpointName := dataPath + fmt.Sprintf(checkpointFileName, ph.currSnapshotNumber)
 	if err := common.AtomicWriteFile(checkpointName, data, nil); err != nil {
 		return fmt.Errorf("error writing checkpoint file: %w", err)
 	}
 	return nil
 }
 
-func Commit(transaction Transaction) error {
-	//TODO: optimizacion: Abrir 1 sola vez el archivo y escribir en el
+func (ph *PersistencyHandler[T]) Commit(transaction Transaction) error {
 	var lines string
 	for _, entry := range transaction.Entries {
 		line := fmt.Sprintf("%s%s%s\n", entry.Op, sep, entry.Args)
