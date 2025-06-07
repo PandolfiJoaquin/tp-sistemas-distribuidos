@@ -32,7 +32,7 @@ func LoadCheckpointData(fileName string) ([]byte, error) {
 		//panic("No checkpoint files found") //TODO: sacar
 		return []byte{}, nil
 	}
-
+	slog.Info("checkpoint found")
 	file := files[0]
 
 	content, err := os.ReadFile(file)
@@ -56,7 +56,7 @@ func getLogPath() (string, error) {
 	}
 
 	if len(files) == 0 {
-		checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 1) 
+		checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 1)
 		if err := common.AtomicWriteFile(checkpointName, []byte{}, nil); err != nil {
 			return "", fmt.Errorf("error creating checkpoint file: %w", err)
 		}

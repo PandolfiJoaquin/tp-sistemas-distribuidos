@@ -22,7 +22,7 @@ const (
 	creditTopic          = "credits-to-join-%d"
 	q3ToReduceQueue      = "q3-to-reduce"
 	q4ToReduceQueue      = "q4-to-reduce"
-	maxTransactionsOnLog = 50
+	maxTransactionsOnLog = 500
 )
 
 type LogOperations string
@@ -60,7 +60,7 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 		StoredReviewBatches: make(map[string][]common.Batch[common.Review]),
 	}
 
-	recoveredData, err := persistency.LoadCheckpointData("checkpoint.json")
+	recoveredData, err := persistency.LoadCheckpointData("checkpoint")
 	if err != nil {
 		slog.Error("error recovering persistency", slog.String("error", err.Error()))
 	}
