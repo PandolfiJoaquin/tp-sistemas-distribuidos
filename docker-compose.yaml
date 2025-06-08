@@ -358,6 +358,18 @@ services:
         condition: service_healthy
         restart: true
 
+  healer-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: healer
+    container_name: healer-1
+    environment:
+      - HEALER_ID=1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yaml:/docker-compose.yaml
+
   client1:
     container_name: client1
     build:
@@ -365,7 +377,7 @@ services:
     environment:
       - CLI_ID=1
       - MOVIES_FILE=archive/movies_metadata.csv
-      - REVIEWS_FILE=archive/ratings.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
       - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway
@@ -380,7 +392,7 @@ services:
     environment:
       - CLI_ID=2
       - MOVIES_FILE=archive/movies_metadata.csv
-      - REVIEWS_FILE=archive/ratings_small.csv
+      - REVIEWS_FILE=archive/ratings.csv
       - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway
@@ -395,7 +407,7 @@ services:
     environment:
       - CLI_ID=3
       - MOVIES_FILE=archive/movies_metadata.csv
-      - REVIEWS_FILE=archive/ratings.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
       - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway
@@ -410,7 +422,7 @@ services:
     environment:
       - CLI_ID=4
       - MOVIES_FILE=archive/movies_metadata.csv
-      - REVIEWS_FILE=archive/ratings_small.csv
+      - REVIEWS_FILE=archive/ratings.csv
       - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway

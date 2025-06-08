@@ -1,6 +1,7 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -19,14 +20,16 @@ type HealthCheck struct {
 func StartHealthCheck() (*HealthCheck, error) {
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
-		return nil, fmt.Errorf("Error starting health check server: %w", err)
+		return nil, err
 	}
 
 	go func(listener net.Listener) {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				slog.Error("Error accepting connection at healthcheck:", slog.String("error", err.Error()))
+				if !errors.Is(err, net.ErrClosed) {
+					slog.Error("Error accepting connection at healthcheck:", slog.String("error", err.Error()))
+				}
 				return
 			}
 

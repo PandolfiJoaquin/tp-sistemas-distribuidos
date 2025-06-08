@@ -25,6 +25,20 @@ BASE_NODE = """
         restart: true
 """
 
+HEALER_NODE= """
+  {svc_name}:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: {node}
+    container_name: {svc_name}
+    environment:
+      - HEALER_ID={node_id}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yaml:/docker-compose.yaml
+"""
+
 CLIENT_NODE = """
   client{idx}:
     container_name: client{idx}
@@ -82,6 +96,7 @@ def create_compose(cfg):
     joiners = cfg["joiners"]
     nodes    = cfg["nodes"]    # dict: { "preprocessor": n, "production-filter": m, ... }
     files    = cfg["files"]    # dict: { "movies": [paths], "reviews": [paths], ... }
+    healer   = cfg["healer"]
 
     compose = "name: tp-dist\nservices:\n"
 
@@ -126,6 +141,15 @@ def create_compose(cfg):
             extra_env=extra_env
         )
 
+    # Healer
+    for h in range (1, healer+1):
+        svc_name = f"healer-{h}"
+        compose += HEALER_NODE.format(
+            svc_name=svc_name,
+            node="healer",
+            node_id=h
+        )
+
     # Clients
     print(f"   • clients ×{clients}")
     for c in range(1, clients+1):
@@ -159,7 +183,7 @@ def main():
         print(f"Error reading {sys.argv[1]}: {e}")
         sys.exit(1)
 
-    for key in ("clients", "joiners", "nodes", "files"):
+    for key in ("clients", "joiners", "nodes", "files", "healer"):
         if key not in cfg:
             print(f"Missing key '{key}' in JSON")
             sys.exit(1)
