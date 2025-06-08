@@ -27,11 +27,10 @@ type PersistencyHandler[T Loggable[T]] struct {
 }
 
 func NewPersistencyHandler[T Loggable[T]]() (*PersistencyHandler[T], error) {
-
 	logPath, err := getLogPath()
 	if err != nil {
 		if errors.Is(err, errNoLogFile) {
-			checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 1)
+			checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 0)
 			if err := common.AtomicWriteFile(checkpointName, []byte{}, nil); err != nil {
 				return nil, fmt.Errorf("error creating checkpoint file: %w", err)
 			}
@@ -48,7 +47,7 @@ func NewPersistencyHandler[T Loggable[T]]() (*PersistencyHandler[T], error) {
 		return nil, fmt.Errorf("error getting logs content: %w", err)
 	}
 
-	currSnapshotNumber, err := strconv.Atoi(strings.Split(currCheckpointFileName, "-")[2])
+	currSnapshotNumber, err := strconv.Atoi(strings.Split(currCheckpointFileName, "-")[1])
 	if err != nil {
 		return nil, fmt.Errorf("error parsing current snapshot number from checkpoint file name: %w", err)
 	}
@@ -71,12 +70,15 @@ func (ph *PersistencyHandler[T]) loadCheckpointData(fileName string) ([]byte, er
 		}
 	}
 
-	if len(files) == 0 {
-		slog.Warn("No checkpoint files found")
-		//panic("No checkpoint files found") //TODO: sacar
-		return []byte{}, nil
+	files = common.Filter(files, func(file string) bool {
+		return strings.HasSuffix(file, ".json")
+	})
+
+	if len(files) != 0 {
+		slog.Warn("there is not 1 checkpoint file", slog.Int("count", len(files)), slog.String("files", strings.Join(files, ", ")))
+		panic("there is not 1 checkpoint file, check log for more info") //TODO: sacar
 	}
-	slog.Info("checkpoint found")
+
 	file := files[0]
 
 	content, err := os.ReadFile(file)
@@ -153,7 +155,6 @@ func getLogsContent(logPath string) (string, []string, error) {
 }
 
 func (ph *PersistencyHandler[T]) RecoverFromLogs(fromBytes func([]byte) (T, error)) (T, error) {
-	//TODO: Esta funcion la chequeamos y ta bien, falta borrar los logs (ver casos bordes) y hacer seguimiento de las otras funciones
 	var checkpoint T
 
 	logPath, err := getLogPath()
@@ -200,10 +201,17 @@ func applyLogs[T Loggable[T]](checkpoint T, entries []TransactionEntry) (T, erro
 }
 
 func (ph *PersistencyHandler[T]) SaveCheckpoint(data []byte) error {
+	ph.currSnapshotNumber = (ph.currSnapshotNumber + 1) % 2
 	checkpointName := dataPath + fmt.Sprintf(checkpointFileName, ph.currSnapshotNumber)
 	if err := common.AtomicWriteFile(checkpointName, data, nil); err != nil {
 		return fmt.Errorf("error writing checkpoint file: %w", err)
 	}
+
+	if err := common.AtomicWriteFile(dataPath+logFileName, fmt.Appendf(nil, "%s\n", checkpointName), nil); err != nil {
+		return fmt.Errorf("error writing log file: %w", err)
+	}
+
+	_ = os.Remove(dataPath + fmt.Sprintf(checkpointFileName, (ph.currSnapshotNumber+1)%2)) // :)
 	return nil
 }
 

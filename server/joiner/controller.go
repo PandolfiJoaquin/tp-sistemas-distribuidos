@@ -34,8 +34,6 @@ const ( //TODO: Optimize encoding
 	StoreReviewBatchOp        = "StoreReviewBatch"
 	JoinStoredReviewBatchesOp = "JoinStoredReviewBatches"
 	UpdateCreditsWeightsOp    = "UpdateCreditsWeights"
-	ExorciseSessionOp         = "ExorciseSession"
-	joinReviewBatch           = "JoinReviewBatch"
 )
 
 type JoinerController struct {
@@ -45,6 +43,11 @@ type JoinerController struct {
 	StoredReviewBatches map[string][]common.Batch[common.Review] `json:"storedReviewBatches"`
 	transactionsOnLog   int
 	persistencyHandler  *persistency.PersistencyHandler[JoinerController]
+	q3ToReduce          chan<- []byte
+	q4ToReduce          chan<- []byte
+	moviesChan          <-chan common.Message
+	reviewsChan         <-chan common.Message
+	creditChan          <-chan common.Message
 }
 
 func (j JoinerController) ApplyFunc(entry persistency.TransactionEntry) (JoinerController, error) {
@@ -52,28 +55,62 @@ func (j JoinerController) ApplyFunc(entry persistency.TransactionEntry) (JoinerC
 	case UpdateMoviesWeightsOp:
 		header, err := common.HeaderFromString(entry.Args)
 		if err != nil {
-			return JoinerController{}, fmt.Errorf("error applying %v: %w", UpdateCreditsWeightsOp, err)
+			return JoinerController{}, fmt.Errorf("error deserializing header %v: %w", UpdateMoviesWeightsOp, err)
 		}
 		j.Sessions[header.ClientID].UpdateMoviesWeights(header)
 		return j, nil
 	case SaveMoviesOp:
-		data, err := common.MoviesFromString
-
+		batch, err := common.GetBatchFromString[common.Movie](entry.Args)
+		if err != nil {
+			return JoinerController{}, fmt.Errorf("error deserializing batch %v: %w", SaveMoviesOp, err)
+		}
+		j.Sessions[batch.Header.ClientID].SaveMovies(batch.Data)
+		return j, nil
+	case UpdateReviewsWeightsOp:
+		header, err := common.HeaderFromString(entry.Args)
+		if err != nil {
+			return JoinerController{}, fmt.Errorf("error deserializing header %v: %w", UpdateReviewsWeightsOp, err)
+		}
+		j.Sessions[header.ClientID].UpdateReviewsWeights(header)
+		return j, nil
+	case StoreReviewBatchOp:
+		batch, err := common.GetBatchFromString[common.Review](entry.Args)
+		if err != nil {
+			return JoinerController{}, fmt.Errorf("error deserializing batch %v: %w", StoreReviewBatchOp, err)
+		}
+		j.storeReviewBatch(batch.Header.ClientID, batch.AsBatch())
+		return j, nil
+	case JoinStoredReviewBatchesOp:
+		clientId := entry.Args
+		for _, batch := range j.StoredReviewBatches[clientId] {
+			j.Sessions[clientId].UpdateReviewsWeights(batch.Header)
+		}
+		j.StoredReviewBatches[clientId] = []common.Batch[common.Review]{}
+		return j, nil
+	case UpdateCreditsWeightsOp:
+		header, err := common.HeaderFromString(entry.Args)
+		if err != nil {
+			return JoinerController{}, fmt.Errorf("error deserializing header %v: %w", UpdateCreditsWeightsOp, err)
+		}
+		j.Sessions[header.ClientID].UpdateCreditsWeights(header)
+		return j, nil
+	default:
+		return JoinerController{}, fmt.Errorf("unknown log operation %v", entry.Op)
 	}
 }
 
 func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
+	//TODO: add duplicate filter in middelware and log it :)))))))))))
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
-		slog.Error("error creating middleware", slog.String("error", err.Error()))
-		return nil, err
+		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
+	
 	ph, err := persistency.NewPersistencyHandler[JoinerController]()
 	if err != nil {
-		slog.Error("error creating persistency handler", slog.String("error", err.Error()))
-		return nil, err
+		return nil, fmt.Errorf("error creating persistency handler: %w", err)
 	}
-
+	
 	controller := JoinerController{
 		joinerId:            joinerId,
 		middleware:          middleware,
@@ -82,20 +119,58 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 		StoredReviewBatches: make(map[string][]common.Batch[common.Review]),
 	}
 
+	if err := controller.initializeChannels(); err != nil {
+		return nil, fmt.Errorf("error initializing channels: %w", err)
+	}
+
 	fromBytes := func(data []byte) (JoinerController, error) {
 		if len(data) != 0 {
 			if err = json.Unmarshal(data, &controller); err != nil {
-				slog.Error("error unmarshalling persistency", slog.String("error", err.Error()))
+				return JoinerController{}, fmt.Errorf("error unmarshalling persistency: %w", err)
 			}
 		}
 		return controller, nil
 	}
+
 	controller, err = ph.RecoverFromLogs(fromBytes)
 	if err != nil {
-		slog.Error("error recovering persistency", slog.String("error", err.Error()))
+		return nil, fmt.Errorf("error recovering persistency: %w", err)
+	}
+
+	if err := controller.saveCheckpoint(); err != nil {
+		return nil, fmt.Errorf("error saving checkpoint: %w", err)
 	}
 
 	return &controller, nil
+}
+
+func (j *JoinerController) initializeChannels() error{
+	var err error
+	j.moviesChan, err = j.middleware.GetChanWithTopicToRecv(moviesExchange, fmt.Sprintf(moviestopic, j.joinerId))
+	if err != nil {
+		return fmt.Errorf("error creating channel %s: %w", moviesExchange, err)
+	}
+
+	j.reviewsChan, err = j.middleware.GetChanWithTopicToRecv(reviewsExchange, fmt.Sprintf(reviewsTopic, j.joinerId))
+	if err != nil {
+		return fmt.Errorf("error creating channel %s: %w", reviewsExchange, err)
+	}
+
+	j.creditChan, err = j.middleware.GetChanWithTopicToRecv(creditExchange, fmt.Sprintf(creditTopic, j.joinerId))
+	if err != nil {
+		return fmt.Errorf("error creating channel %s: %w", creditExchange, err)
+	}
+
+	j.q3ToReduce, err = j.middleware.GetChanToSend(q3ToReduceQueue)
+	if err != nil {
+		return fmt.Errorf("error creating channel %s: %w", q3ToReduceQueue, err)
+	}
+
+	j.q4ToReduce, err = j.middleware.GetChanToSend(q4ToReduceQueue)
+	if err != nil {
+		return fmt.Errorf("error creating channel %s: %w", q4ToReduceQueue, err)
+	}
+	return nil
 }
 
 func (j *JoinerController) Start() {
@@ -104,40 +179,10 @@ func (j *JoinerController) Start() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	moviesChan, err := j.middleware.GetChanWithTopicToRecv(moviesExchange, fmt.Sprintf(moviestopic, j.joinerId))
-	if err != nil {
-		slog.Error("Error creating channel", slog.String("queue", moviesExchange), slog.String("error", err.Error()))
-		return
-	}
-
-	reviewsChan, err := j.middleware.GetChanWithTopicToRecv(reviewsExchange, fmt.Sprintf(reviewsTopic, j.joinerId))
-	if err != nil {
-		slog.Error("Error creating channel", slog.String("queue", reviewsExchange), slog.String("error", err.Error()))
-		return
-	}
-
-	creditChan, err := j.middleware.GetChanWithTopicToRecv(creditExchange, fmt.Sprintf(creditTopic, j.joinerId))
-	if err != nil {
-		slog.Error("Error creating channel", slog.String("queue", creditExchange), slog.String("error", err.Error()))
-		return
-	}
-
-	q3ToReduce, err := j.middleware.GetChanToSend(q3ToReduceQueue)
-	if err != nil {
-		slog.Error("error creating channel", slog.String("queue", q3ToReduceQueue), slog.String("error", err.Error()))
-		return
-	}
-
-	q4ToReduce, err := j.middleware.GetChanToSend(q4ToReduceQueue)
-	if err != nil {
-		slog.Error("error creating channel", slog.String("queue", q4ToReduceQueue), slog.String("error", err.Error()))
-		return
-	}
-
-	j.run(ctx, moviesChan, reviewsChan, creditChan, q3ToReduce, q4ToReduce)
+	j.run(ctx)
 }
 
-func (j *JoinerController) joinReviewBatch(clientId string, batch common.Batch[common.Review], q3ToReduce chan<- []byte) {
+func (j *JoinerController) joinReviewBatch(clientId string, batch common.Batch[common.Review]) {
 	session := j.getSession(clientId)
 	session.UpdateReviewsWeights(batch.Header)
 
@@ -151,53 +196,47 @@ func (j *JoinerController) joinReviewBatch(clientId string, batch common.Batch[c
 	if err != nil {
 		slog.Error("error marshalling batch", slog.String("error", err.Error()))
 	}
-	q3ToReduce <- response
+	j.q3ToReduce <- response
 }
 
 func (j *JoinerController) storeReviewBatch(clientId string, batch common.Batch[common.Review]) {
 	j.StoredReviewBatches[clientId] = append(j.StoredReviewBatches[clientId], batch)
 }
 
-func (j *JoinerController) joinStoredReviewBatches(clientId string, q3ToReduce chan<- []byte) {
-	slog.Info("joining stored review batches", slog.String("clientId", clientId))
+func (j *JoinerController) joinStoredReviewBatches(clientId string) {
 	batches := j.StoredReviewBatches[clientId]
 	j.StoredReviewBatches[clientId] = []common.Batch[common.Review]{}
 	for _, batch := range batches {
-		j.joinReviewBatch(clientId, batch, q3ToReduce)
-		j.exorciseSession(clientId)
+		j.joinReviewBatch(clientId, batch)
 	}
 }
 
-func (j *JoinerController) save(transaction persistency.Transaction) {
+func (j *JoinerController) saveCheckpoint() error {
+	jsonData, err := json.Marshal(j)
+	if err != nil {
+		return fmt.Errorf("error marshalling internal state: %w", err)
+	}
+	if err = j.persistencyHandler.SaveCheckpoint(jsonData); err != nil {
+		return fmt.Errorf("error saving checkpoint: %w", err)
+	}
+	j.transactionsOnLog = 0
+	return nil
+}
+
+func (j *JoinerController) save(transaction persistency.Transaction) error {
 	if err := j.persistencyHandler.Commit(transaction); err != nil {
-		slog.Error("error committing transaction", slog.String("error", err.Error()))
-		return
+		return fmt.Errorf("error committing transaction: %w", err)
 	}
 	j.transactionsOnLog++
 
 	if j.transactionsOnLog == maxTransactionsOnLog {
-		jsonData, err := json.Marshal(j)
-		if err != nil {
-			slog.Error("error marshalling internal state", slog.String("error", err.Error()))
-			return
-		}
-		if err = j.persistencyHandler.SaveCheckpoint(jsonData); err != nil {
-			slog.Error("error saving checkpoint", slog.String("error", err.Error()))
-			return
-		}
-		j.transactionsOnLog = 0
+		return j.saveCheckpoint()
 	}
+	return nil
 }
 
-func (j *JoinerController) run(
-	ctx context.Context,
-	_moviesChan, _reviewsChan, _creditChan <-chan common.Message,
-	q3ToReduce, q4ToReduce chan<- []byte,
-) {
-	dummyChan := make(<-chan common.Message)
-	movies := _moviesChan
-	reviews := dummyChan
-	credits := dummyChan
+func (j *JoinerController) run(ctx context.Context) {
+	j.cleanUpSessions()
 	for {
 		var msg common.Message
 		var clientId string
@@ -206,8 +245,7 @@ func (j *JoinerController) run(
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping joiner")
 			return
-		case msg = <-movies:
-
+		case msg = <-j.moviesChan:
 			var batch common.LoggableBatch[common.Movie]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
@@ -220,17 +258,15 @@ func (j *JoinerController) run(
 			transaction.Do(UpdateMoviesWeightsOp, batch.Header.ToString())
 
 			session.SaveMovies(batch.Data)
-			transaction.Do(SaveMoviesOp, batch.GetDataAsString())
+			transaction.Do(SaveMoviesOp, batch.ToString())
 
 			if session.AllMoviesReceived() {
 				slog.Info("Received all movies. starting to pop reviews")
-				reviews = _reviewsChan
-				credits = _creditChan
-				j.joinStoredReviewBatches(clientId, q3ToReduce) // Joins all reviews stored
+				j.joinStoredReviewBatches(clientId) // Joins all reviews stored
 				transaction.Do(JoinStoredReviewBatchesOp, clientId)
 			}
 
-		case msg = <-reviews:
+		case msg = <-j.reviewsChan:
 			var batch common.LoggableBatch[common.Review]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
@@ -242,15 +278,12 @@ func (j *JoinerController) run(
 			if !session.AllMoviesReceived() {
 				j.storeReviewBatch(clientId, batch.AsBatch())
 				transaction.Do(StoreReviewBatchOp, batch.ToString())
-				if err := msg.Ack(); err != nil {
-					slog.Error("error acknowledging message", slog.String("error", err.Error()))
-				}
-				continue
+			} else {
+				j.joinReviewBatch(clientId, batch.AsBatch())
+				transaction.Do(UpdateReviewsWeightsOp, batch.Header.ToString())
 			}
-			j.joinReviewBatch(clientId, batch.AsBatch(), q3ToReduce)
-			transaction.Do(joinReviewBatch, batch.ToString())
 
-		case msg = <-credits:
+		case msg = <-j.creditChan:
 			var batch common.Batch[common.Credit]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
@@ -259,6 +292,7 @@ func (j *JoinerController) run(
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
 			session.UpdateCreditsWeights(batch.Header)
+			transaction.Do(UpdateCreditsWeightsOp, batch.Header.ToString())
 
 			actors := session.filterCredits(batch.Data)
 			actorsBatch := common.Batch[common.Credit]{
@@ -271,9 +305,10 @@ func (j *JoinerController) run(
 				slog.Error("error marshalling batch", slog.String("error", err.Error()))
 				continue
 			}
-			q4ToReduce <- response
+			j.q4ToReduce <- response
 		}
-		j.exorciseSession(clientId)
+
+		j.cleanUpSession(clientId)
 		j.save(transaction)
 		if err := msg.Ack(); err != nil {
 			slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -289,8 +324,13 @@ func (j *JoinerController) getSession(clientId string) *JoinerSession {
 	return j.Sessions[clientId]
 }
 
+func (j *JoinerController) cleanUpSessions() {
+	for id := range j.Sessions {
+		j.cleanUpSession(id)
+	}
+}
 // if the session is done, delete it
-func (j *JoinerController) exorciseSession(id string) {
+func (j *JoinerController) cleanUpSession(id string) {
 	if j.Sessions[id].IsDone() {
 		slog.Info("Done for client", slog.String("clientId", id))
 		delete(j.Sessions, id)

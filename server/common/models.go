@@ -1,10 +1,9 @@
 package common
 
 import (
-	"fmt"
+	"encoding/json"
 	pkg "pkg/models"
 	"strconv"
-	"strings"
 )
 
 type Sentiment int
@@ -13,12 +12,6 @@ const (
 	Positive Sentiment = iota
 	Negative
 )
-
-const movieSep = ","
-const creditSep = ","
-const actorSep = ","
-
-
 
 type Movie struct {
 	ID                  string        `json:"id"`
@@ -32,48 +25,25 @@ type Movie struct {
 }
 
 func (m Movie) ToString() string {
-	
-	return m.ID + movieSep + m.Title + movieSep + string(rune(m.Year)) + movieSep +
-		strconv.FormatUint(m.Budget, 10) + movieSep + strconv.FormatUint(m.Revenue, 10) + movieSep + m.Overview
-	  + movieSep +
+	json, err := json.Marshal(m)
+	if err != nil {
+		return ""
+	}
+	return string(json)
+}
+
+func MovieFromString(s string) (Movie, error) {
+	var m Movie
+	err := json.Unmarshal([]byte(s), &m)
+	if err != nil {
+		return Movie{}, err
+	}
+	return m, nil
 }
 
 type MovieWithSentiment struct {
 	Movie
 	Sentiment Sentiment `json:"sentiment"`
-}
-
-func MovieFromString(data string) (Movie, error) {
-
-	parts := strings.Split(data, movieSep)
-	if len(parts) < 6 {
-		return Movie{}, fmt.Errorf("invalid movie format: %s", data)
-	}
-
-	id := parts[0]
-	title := parts[1]
-	year, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return Movie{}, fmt.Errorf("invalid year format: %s", parts[2])
-	}
-	budget, err := strconv.ParseUint(parts[3], 10, 64)
-	if err != nil {
-		return Movie{}, fmt.Errorf("invalid budget format: %s", parts[3])
-	}
-	revenue, err := strconv.ParseUint(parts[4], 10, 64)
-	if err != nil {
-		return Movie{}, fmt.Errorf("invalid revenue format: %s", parts[4])
-	}
-	overview := parts[5]
-
-	return Movie{
-		ID:                  id,
-		Title:               title,
-		Year:                year,
-		Budget:              budget,
-		Revenue:             revenue,
-		Overview:            overview,
-	}, nil
 }
 
 func (m *MovieWithSentiment) ToString() string {
@@ -96,7 +66,20 @@ type Actor struct {
 }
 
 func (a Actor) ToString() string {
-	return a.ActorID + "," + a.Name
+	json, err := json.Marshal(a)
+	if err != nil {
+		return ""
+	}
+	return string(json)
+}
+
+func ReviewFromString(s string) (Review, error) {
+	var r Review
+	err := json.Unmarshal([]byte(s), &r)
+	if err != nil {
+		return Review{}, err
+	}
+	return r, nil
 }
 
 type Credit struct {
@@ -106,14 +89,20 @@ type Credit struct {
 
 
 func (c Credit) ToString() string {
-	actorsStr := ""
-	for i, actor := range c.Actors {
-		if i > 0 {
-			actorsStr += ";"
-		}
-		actorsStr += actor.ToString()
+	json, err := json.Marshal(c)
+	if err != nil {
+		return ""
 	}
-	return c.MovieId + "," + actorsStr
+	return string(json)
+}
+
+func CreditFromString(s string) (Credit, error) {
+	var c Credit
+	err := json.Unmarshal([]byte(s), &c)
+	if err != nil {
+		return Credit{}, err
+	}
+	return c, nil
 }
 
 type MovieReview struct {

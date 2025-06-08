@@ -3,8 +3,9 @@ package common
 import (
 	"context"
 	"fmt"
-	amqp "github.com/rabbitmq/amqp091-go"
 	"log/slog"
+
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Message struct {
@@ -39,7 +40,7 @@ func NewMiddleware(rabbitUser string, rabbitPass string, host string) (*Middlewa
 		return nil, fmt.Errorf("failed to open a channel: %s", err)
 	}
 
-	hc, err := StartHealthCheck()
+	hc, err := startHealthCheck()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start health check: %s", err)
 	}

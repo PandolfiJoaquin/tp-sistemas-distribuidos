@@ -28,12 +28,24 @@ var queriesQueues = map[int]queuesNames{
 	5: {previousQueue: "q5-to-final-reduce", nextQueue: "q5-results"},
 }
 
+type LogOperations string
+
+const ( //TODO: Optimize encoding
+	UpdateMoviesWeightsOp     = "UpdateMoviesWeights"
+	SaveMoviesOp              = "SaveMovies"
+	UpdateReviewsWeightsOp    = "UpdateReviewsWeights"
+	StoreReviewBatchOp        = "StoreReviewBatch"
+	JoinStoredReviewBatchesOp = "JoinStoredReviewBatches"
+	UpdateCreditsWeightsOp    = "UpdateCreditsWeights"
+)
+
 type FinalReducer struct {
 	middleware   *common.Middleware
 	connection   connection
 	queryNum     int
 	joinerShards int
 	Sessions     map[string]*ClientSession `json:"Sessions"`
+	persistencyHandler *persistency.PersistencyHandler[FinalReducer]
 }
 
 type connection struct {
@@ -42,8 +54,7 @@ type connection struct {
 }
 
 func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards int) (*FinalReducer, error) {
-	// persistencyHandler := common.NewPersistencyHandler(persistencyPath)
-
+	
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
@@ -52,26 +63,40 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 	if err != nil {
 		return nil, fmt.Errorf("error initializing connection for query %d: %w", queryNum, err)
 	}
+	
+	persistencyHandler, err := persistency.NewPersistencyHandler[FinalReducer]()
+	if err != nil {
+		return nil, fmt.Errorf("error creating persistency handler: %w", err)
+	}
 
-	finalReducer := &FinalReducer{
+	finalReducer := FinalReducer{
 		middleware:   middleware,
 		connection:   connection,
 		queryNum:     queryNum,
 		joinerShards: amtOfShards,
 		Sessions:     make(map[string]*ClientSession),
+		persistencyHandler: persistencyHandler,
+	}
+	
+	fromBytes := func(data []byte) (FinalReducer, error) {
+		if len(data) != 0 {
+			if err = json.Unmarshal(data, &finalReducer); err != nil {
+				return FinalReducer{}, fmt.Errorf("error unmarshalling persistency: %w", err)
+			}
+		}
+		return finalReducer, nil
 	}
 
-	//recoveredData, err := persistency.loadCheckpointData()
-	recoveredData, err := []byte{}, nil
+	finalReducer, err = persistencyHandler.RecoverFromLogs(fromBytes)
 	if err != nil {
-		slog.Error("error recovering persistency", slog.String("error", err.Error()))
+		return nil, fmt.Errorf("error recovering persistency: %w", err)
 	}
-	if len(recoveredData) != 0 {
-		if err = json.Unmarshal(recoveredData, finalReducer); err != nil {
-			slog.Error("error unmarshalling persistency", slog.String("error", err.Error()))
-		}
-	}
-	return finalReducer, nil
+
+	// if err := finalReducer.saveCheckpoint(); err != nil {
+	// 	return nil, fmt.Errorf("error saving checkpoint: %w", err)
+	// }
+
+	return &finalReducer, nil
 }
 
 func initializeConnectionForQuery(queryNum int, middleware *common.Middleware) (connection, error) {
@@ -96,7 +121,6 @@ func initializeConnectionForQuery(queryNum int, middleware *common.Middleware) (
 func (r *FinalReducer) Start() {
 	defer r.stop()
 
-	// Sigterm , sigint
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
@@ -138,6 +162,7 @@ func startReceiving[T any](ctx context.Context, chanToRecv <-chan common.Message
 				slog.Info("setting eof weight", slog.String("client id", clientID), slog.Any("eof weight", int32(batch.Header.TotalWeight)))
 				sessions[clientID].SetEofWeight(int32(batch.Header.TotalWeight))
 			}
+			//transaction.Do(UpdateWeightsOp, batch.Header.ToString())
 
 			if sessions[clientID].IsFinished() {
 				slog.Info("finishing and sending batch", slog.String("client id", clientID), slog.String("message weight", fmt.Sprintf("%d", batch.Header.Weight)))

@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -24,11 +25,25 @@ type LoggableBatch[T Stringer] struct {
 	Data   []T `json:"data"`
 }
 
-func (b LoggableBatch[T]) GetDataAsString() string {
-	serializedData := Map(b.Data, func(m T) string {
-		return m.ToString()
-	})
-	return strings.Join(serializedData, "¬.¬")
+func (b LoggableBatch[T]) ToString() string {
+	// serializedData := Map(b.Data, func(m T) string {
+	// 	return m.ToString()
+	// })
+	// return strings.Join(serializedData, "¬.¬")
+	json, err := json.Marshal(b)
+	if err != nil {
+		return ""
+	}
+	return string(json)
+}
+
+func GetBatchFromString[T Stringer](s string) (LoggableBatch[T], error) {
+	var data LoggableBatch[T]
+	err := json.Unmarshal([]byte(s), &data)
+	if err != nil {
+		return LoggableBatch[T]{}, err
+	}
+	return data, nil
 }
 
 func (b LoggableBatch[T]) AsBatch() Batch[T] {
