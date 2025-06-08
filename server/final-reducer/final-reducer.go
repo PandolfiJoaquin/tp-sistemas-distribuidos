@@ -15,6 +15,7 @@ import (
 )
 
 const rabbitHost = "rabbitmq"
+const maxTransactionsOnLog = 500
 
 type queuesNames struct {
 	previousQueue string
@@ -28,24 +29,58 @@ var queriesQueues = map[int]queuesNames{
 	5: {previousQueue: "q5-to-final-reduce", nextQueue: "q5-results"},
 }
 
-type LogOperations string
-
 const ( //TODO: Optimize encoding
-	UpdateMoviesWeightsOp     = "UpdateMoviesWeights"
-	SaveMoviesOp              = "SaveMovies"
-	UpdateReviewsWeightsOp    = "UpdateReviewsWeights"
-	StoreReviewBatchOp        = "StoreReviewBatch"
-	JoinStoredReviewBatchesOp = "JoinStoredReviewBatches"
-	UpdateCreditsWeightsOp    = "UpdateCreditsWeights"
+	AggCountriesBudgetOp      = "aggCountriesBudget"
+	AggMovieRatingsOp         = "AggMovieRatings"
+	AggActorMoviesOp          = "aggActorMovies"
+	AggSentimentProfitRatioOP = "AggSentimentProfitRatio"
+	UpdateWeightsOp           = "UpdateWeights"
 )
 
 type FinalReducer struct {
-	middleware   *common.Middleware
-	connection   connection
-	queryNum     int
-	joinerShards int
-	Sessions     map[string]*ClientSession `json:"Sessions"`
+	middleware         *common.Middleware
+	connection         connection
+	queryNum           int
+	joinerShards       int
+	Sessions           map[string]*ClientSession `json:"Sessions"`
 	persistencyHandler *persistency.PersistencyHandler[FinalReducer]
+	transactionsOnLog  int
+}
+
+func (r FinalReducer) ApplyFunc(entry persistency.TransactionEntry) (FinalReducer, error) {
+	switch entry.Op {
+	case AggCountriesBudgetOp:
+		batch, err := common.GetBatchFromString[common.CountryBudget](entry.Args)
+		if err != nil {
+			return FinalReducer{}, fmt.Errorf("error getting batch from string: %w", err)
+		}
+		r.aggCountriesBudget(batch)
+
+	case AggMovieRatingsOp:
+		batch, err := common.GetBatchFromString[common.MovieAvgRating](entry.Args)
+		if err != nil {
+			return FinalReducer{}, fmt.Errorf("error getting batch from string: %w", err)
+		}
+		r.aggMovieRatings(batch)
+
+	case AggActorMoviesOp:
+		batch, err := common.GetBatchFromString[common.ActorMoviesAmount](entry.Args)
+		if err != nil {
+			return FinalReducer{}, fmt.Errorf("error getting batch from string: %w", err)
+		}
+		r.aggActorMovies(batch)
+
+	case AggSentimentProfitRatioOP:
+		batch, err := common.GetBatchFromString[common.SentimentProfitRatioAccumulator](entry.Args)
+		if err != nil {
+			return FinalReducer{}, fmt.Errorf("error getting batch from string: %w", err)
+		}
+		r.aggSentimentProfitRatio(batch)
+
+	default:
+		return FinalReducer{}, fmt.Errorf("unknown operation: %s", entry.Op)
+	}
+	return r, nil
 }
 
 type connection struct {
@@ -54,7 +89,7 @@ type connection struct {
 }
 
 func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards int) (*FinalReducer, error) {
-	
+
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
@@ -63,21 +98,22 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 	if err != nil {
 		return nil, fmt.Errorf("error initializing connection for query %d: %w", queryNum, err)
 	}
-	
+
 	persistencyHandler, err := persistency.NewPersistencyHandler[FinalReducer]()
 	if err != nil {
 		return nil, fmt.Errorf("error creating persistency handler: %w", err)
 	}
 
 	finalReducer := FinalReducer{
-		middleware:   middleware,
-		connection:   connection,
-		queryNum:     queryNum,
-		joinerShards: amtOfShards,
-		Sessions:     make(map[string]*ClientSession),
+		middleware:         middleware,
+		connection:         connection,
+		queryNum:           queryNum,
+		joinerShards:       amtOfShards,
+		Sessions:           make(map[string]*ClientSession),
 		persistencyHandler: persistencyHandler,
+		transactionsOnLog:  0,
 	}
-	
+
 	fromBytes := func(data []byte) (FinalReducer, error) {
 		if len(data) != 0 {
 			if err = json.Unmarshal(data, &finalReducer); err != nil {
@@ -92,9 +128,9 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 		return nil, fmt.Errorf("error recovering persistency: %w", err)
 	}
 
-	// if err := finalReducer.saveCheckpoint(); err != nil {
-	// 	return nil, fmt.Errorf("error saving checkpoint: %w", err)
-	// }
+	if err := finalReducer.saveCheckpoint(); err != nil {
+		return nil, fmt.Errorf("error saving checkpoint: %w", err)
+	}
 
 	return &finalReducer, nil
 }
@@ -142,34 +178,46 @@ func (r *FinalReducer) Start() {
 	}
 }
 
-func startReceiving[T any](ctx context.Context, chanToRecv <-chan common.Message, sessions map[string]*ClientSession, finishAndSendBatch func(clientId string), processBatch func(batch common.Batch[T])) error {
+func startReceiving[T common.Stringer](
+	ctx context.Context,
+	chanToRecv <-chan common.Message,
+	sessions map[string]*ClientSession,
+	finishAndSendBatch func(clientId string),
+	processBatch func(batch common.LoggableBatch[T]) persistency.Transaction,
+	freddyFazbear *FinalReducer,
+) error {
+	for clientID, session := range sessions {
+		if session.IsFinished() {
+			finishAndSendBatch(clientID)
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case msg := <-chanToRecv:
-			var batch common.Batch[T]
+			var batch common.LoggableBatch[T]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
 
-			processBatch(batch)
+			transaction := processBatch(batch)
 
 			clientID := batch.GetClientID()
 			sessions[clientID].AddCurrentWeight(batch.Header.Weight)
 			if batch.IsEof() {
-				slog.Info("setting eof weight", slog.String("client id", clientID), slog.Any("eof weight", int32(batch.Header.TotalWeight)))
-				sessions[clientID].SetEofWeight(int32(batch.Header.TotalWeight))
+				slog.Info("setting eof weight", slog.String("client id", clientID), slog.Any("eof weight", batch.Header.TotalWeight))
+				sessions[clientID].SetEofWeight(batch.Header.TotalWeight)
 			}
-			//transaction.Do(UpdateWeightsOp, batch.Header.ToString())
+			transaction.Do(UpdateWeightsOp, batch.Header.ToString())
 
 			if sessions[clientID].IsFinished() {
 				slog.Info("finishing and sending batch", slog.String("client id", clientID), slog.String("message weight", fmt.Sprintf("%d", batch.Header.Weight)))
 				finishAndSendBatch(clientID)
 			}
 
-			saveCheckpoint(sessions)
+			freddyFazbear.save(transaction)
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -179,37 +227,14 @@ func startReceiving[T any](ctx context.Context, chanToRecv <-chan common.Message
 
 }
 
-func saveCheckpoint(sessions map[string]*ClientSession) {
-	jsonData, err := json.Marshal(sessions)
-	if err != nil {
-		slog.Error("error marshalling internal state", slog.String("error", err.Error()))
-		return
-	}
-
-	if err = persistency.SaveCheckpoint(jsonData); err != nil {
-		slog.Error("error saving checkpoint", slog.String("error", err.Error()))
-		return
-	}
-}
-
 func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
-	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery2, func(batch common.Batch[common.CountryBudget]) {
-		clientID := batch.Header.GetClientID()
-		if _, ok := r.Sessions[clientID]; !ok {
-			r.Sessions[clientID] = NewClientSession(clientID, 1)
-			r.Sessions[clientID].SetData(make(map[pkg.Country]uint64))
-		}
-
-		countries, ok := r.Sessions[clientID].GetData().(map[pkg.Country]uint64)
-		if !ok {
-			slog.Error("error getting Data", slog.String("error", "Data is not of required type: map[pkg.Country]uint64"))
-			return
-		}
-
-		for _, countryBudget := range batch.Data {
-			countries[countryBudget.Country] += countryBudget.Budget
-		}
-	})
+	err := startReceiving(
+		ctx,
+		r.connection.ChanToRecv,
+		r.Sessions,
+		r.finishAndSendBatchForQuery2,
+		r.aggCountriesBudget,
+		r)
 
 	if err != nil {
 		slog.Error("error receiving", slog.String("error", err.Error()))
@@ -217,29 +242,7 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
-	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery3, func(batch common.Batch[common.MovieAvgRating]) {
-		clientID := batch.Header.GetClientID()
-		if _, ok := r.Sessions[clientID]; !ok {
-			r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
-			r.Sessions[clientID].SetData(make(map[string]common.MovieAvgRating))
-		}
-
-		movies, ok := r.Sessions[clientID].GetData().(map[string]common.MovieAvgRating)
-		if !ok {
-			slog.Error("error getting Data", slog.String("error", "Data is not of required type: map[string]common.MovieAvgRating"))
-			return
-		}
-
-		for _, movieRating := range batch.Data {
-			if currentRating, ok := movies[movieRating.MovieID]; !ok {
-				movies[movieRating.MovieID] = movieRating
-			} else {
-				currentRating.RatingSum += movieRating.RatingSum
-				currentRating.RatingCount += movieRating.RatingCount
-				movies[movieRating.MovieID] = currentRating
-			}
-		}
-	})
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery3, r.aggMovieRatings, r)
 
 	if err != nil {
 		slog.Error("error receiving", slog.String("error", err.Error()))
@@ -247,28 +250,7 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
-	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery4, func(batch common.Batch[common.ActorMoviesAmount]) {
-		clientID := batch.Header.GetClientID()
-		if _, ok := r.Sessions[clientID]; !ok {
-			r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
-			r.Sessions[clientID].SetData(make(map[string]common.ActorMoviesAmount))
-		}
-
-		actorMovies, ok := r.Sessions[clientID].GetData().(map[string]common.ActorMoviesAmount)
-		if !ok {
-			slog.Error("error getting Data", slog.String("error", "Data is not of required type: map[string]common.ActorMoviesAmount"))
-			return
-		}
-
-		for _, actorMoviesAmount := range batch.Data {
-			if currentMoviesAmount, ok := actorMovies[actorMoviesAmount.ActorID]; !ok {
-				actorMovies[actorMoviesAmount.ActorID] = actorMoviesAmount
-			} else {
-				currentMoviesAmount.MoviesAmount += actorMoviesAmount.MoviesAmount
-				actorMovies[actorMoviesAmount.ActorID] = currentMoviesAmount
-			}
-		}
-	})
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery4, r.aggActorMovies, r)
 
 	if err != nil {
 		slog.Error("error receiving", slog.String("error", err.Error()))
@@ -277,33 +259,7 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 
 func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 	//TODO: add Sessions here instead of in the struct and use generics
-	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery5, func(batch common.Batch[common.SentimentProfitRatioAccumulator]) {
-		clientID := batch.Header.GetClientID()
-		if _, ok := r.Sessions[clientID]; !ok {
-			r.Sessions[clientID] = NewClientSession(clientID, 1)
-			r.Sessions[clientID].SetData(common.SentimentProfitRatioAccumulator{})
-		}
-
-		sentimentProfitRatios, ok := r.Sessions[clientID].GetData().(common.SentimentProfitRatioAccumulator)
-		if !ok {
-			slog.Error("error getting Data", slog.String("error", "Data is not of required type: common.SentimentProfitRatioAccumulator"))
-			return
-		}
-
-		for _, sentimentProfitRatio := range batch.Data {
-			slog.Info("adding sentiment profit ratio", slog.Any("sentiment profit ratio", sentimentProfitRatio))
-			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum
-			sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount
-			sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioSum
-			sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioCount
-
-			if sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum > 10000 {
-				slog.Debug("ALOT positive sentiment profit ratio", slog.Any("count", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount), slog.Any("sum", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum))
-			}
-		}
-
-		r.Sessions[clientID].SetData(sentimentProfitRatios)
-	})
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery5, r.aggSentimentProfitRatio, r)
 
 	if err != nil {
 		slog.Error("error receiving", slog.String("error", err.Error()))
@@ -469,4 +425,120 @@ func (r *FinalReducer) stop() {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
 	slog.Info("final reducer stopped")
+}
+
+func (r *FinalReducer) save(transaction persistency.Transaction) error {
+	if err := r.persistencyHandler.Commit(transaction); err != nil {
+		return fmt.Errorf("error committing transaction: %w", err)
+	}
+	r.transactionsOnLog++
+
+	if r.transactionsOnLog == maxTransactionsOnLog {
+		return r.saveCheckpoint()
+	}
+	return nil
+
+}
+
+func (r *FinalReducer) saveCheckpoint() error {
+	jsonData, err := json.Marshal(r)
+	if err != nil {
+		return fmt.Errorf("error marshalling internal state: %w", err)
+	}
+	if err = r.persistencyHandler.SaveCheckpoint(jsonData); err != nil {
+		return fmt.Errorf("error saving checkpoint: %w", err)
+	}
+	r.transactionsOnLog = 0
+	return nil
+}
+
+func (r *FinalReducer) aggCountriesBudget(batch common.LoggableBatch[common.CountryBudget]) persistency.Transaction {
+	transaction := persistency.NewTransaction()
+
+	clientID := batch.Header.GetClientID()
+	if _, ok := r.Sessions[clientID]; !ok {
+		r.Sessions[clientID] = NewClientSession(clientID, 1)
+		r.Sessions[clientID].SetData(make(map[pkg.Country]uint64))
+	}
+
+	countries := r.Sessions[clientID].GetData().(map[pkg.Country]uint64)
+
+	for _, countryBudget := range batch.Data {
+		countries[countryBudget.Country] += countryBudget.Budget
+	}
+	transaction.Do(AggCountriesBudgetOp, batch.ToString())
+	return transaction
+}
+
+func (r *FinalReducer) aggMovieRatings(batch common.LoggableBatch[common.MovieAvgRating]) persistency.Transaction {
+
+	transaction := persistency.NewTransaction()
+	clientID := batch.Header.GetClientID()
+	if _, ok := r.Sessions[clientID]; !ok {
+		r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
+		r.Sessions[clientID].SetData(make(map[string]common.MovieAvgRating))
+	}
+
+	movies := r.Sessions[clientID].GetData().(map[string]common.MovieAvgRating)
+
+	for _, movieRating := range batch.Data {
+		if currentRating, ok := movies[movieRating.MovieID]; !ok {
+			movies[movieRating.MovieID] = movieRating
+		} else {
+			currentRating.RatingSum += movieRating.RatingSum
+			currentRating.RatingCount += movieRating.RatingCount
+			movies[movieRating.MovieID] = currentRating
+		}
+	}
+	transaction.Do(AggMovieRatingsOp, batch.ToString())
+	return transaction
+}
+
+func (r *FinalReducer) aggActorMovies(batch common.LoggableBatch[common.ActorMoviesAmount]) persistency.Transaction {
+	transaction := persistency.NewTransaction()
+	clientID := batch.Header.GetClientID()
+	if _, ok := r.Sessions[clientID]; !ok {
+		r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
+		r.Sessions[clientID].SetData(make(map[string]common.ActorMoviesAmount))
+	}
+
+	actorMovies := r.Sessions[clientID].GetData().(map[string]common.ActorMoviesAmount)
+
+	for _, actorMoviesAmount := range batch.Data {
+		if currentMoviesAmount, ok := actorMovies[actorMoviesAmount.ActorID]; !ok {
+			actorMovies[actorMoviesAmount.ActorID] = actorMoviesAmount
+		} else {
+			currentMoviesAmount.MoviesAmount += actorMoviesAmount.MoviesAmount
+			actorMovies[actorMoviesAmount.ActorID] = currentMoviesAmount
+		}
+	}
+	transaction.Do(AggActorMoviesOp, batch.ToString())
+	return transaction
+}
+
+func (r *FinalReducer) aggSentimentProfitRatio(batch common.LoggableBatch[common.SentimentProfitRatioAccumulator]) persistency.Transaction {
+	transaction := persistency.NewTransaction()
+	clientID := batch.Header.GetClientID()
+	if _, ok := r.Sessions[clientID]; !ok {
+		r.Sessions[clientID] = NewClientSession(clientID, 1)
+		r.Sessions[clientID].SetData(common.SentimentProfitRatioAccumulator{})
+	}
+
+	sentimentProfitRatios := r.Sessions[clientID].GetData().(common.SentimentProfitRatioAccumulator)
+
+	for _, sentimentProfitRatio := range batch.Data {
+		slog.Info("adding sentiment profit ratio", slog.Any("sentiment profit ratio", sentimentProfitRatio))
+		sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum
+		sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount
+		sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioSum
+		sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioCount
+
+		if sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum > 10000 {
+			slog.Debug("ALOT positive sentiment profit ratio", slog.Any("count", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount), slog.Any("sum", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum))
+		}
+	}
+
+	r.Sessions[clientID].SetData(sentimentProfitRatios)
+	transaction.Do(AggSentimentProfitRatioOP, batch.ToString())
+	return transaction
 }

@@ -1,6 +1,6 @@
 {
   "clients": 4,
-  "joiners": 5,
+  "joiners": 10,
   "nodes": {
     "preprocessor": 3,
     "production-filter": 2,

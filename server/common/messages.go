@@ -18,6 +18,10 @@ type CountryBudget struct {
 	Budget  uint64      `json:"budget"`
 }
 
+func (c CountryBudget) ToString() string {
+	return c.Country.Name + "," + strconv.FormatUint(c.Budget, 10)
+}
+
 type Top5Countries struct {
 	ClientId  string          `json:"client_id"`
 	Countries []CountryBudget `json:"countries"`
@@ -66,6 +70,13 @@ type ProfitRatioAccumulator struct {
 type SentimentProfitRatioAccumulator struct {
 	PositiveProfitRatio ProfitRatioAccumulator `json:"positive_profit_ratio"`
 	NegativeProfitRatio ProfitRatioAccumulator `json:"negative_profit_ratio"`
+}
+
+func (s SentimentProfitRatioAccumulator) ToString() string {
+	return strconv.FormatFloat(s.PositiveProfitRatio.ProfitRatioSum, 'f', -1, 64) + "," +
+		strconv.FormatUint(uint64(s.PositiveProfitRatio.ProfitRatioCount), 10) + "," +
+		strconv.FormatFloat(s.NegativeProfitRatio.ProfitRatioSum, 'f', -1, 64) + "," +
+		strconv.FormatUint(uint64(s.NegativeProfitRatio.ProfitRatioCount), 10)
 }
 
 type SentimentProfitRatioAverage struct {

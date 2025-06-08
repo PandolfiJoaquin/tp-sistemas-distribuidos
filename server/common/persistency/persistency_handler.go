@@ -27,7 +27,7 @@ type PersistencyHandler[T Loggable[T]] struct {
 }
 
 func NewPersistencyHandler[T Loggable[T]]() (*PersistencyHandler[T], error) {
-	logPath, err := getLogPath()
+	_, err := getLogPath()
 	if err != nil {
 		if errors.Is(err, errNoLogFile) {
 			checkpointName := dataPath + fmt.Sprintf(checkpointFileName, 0)
@@ -42,12 +42,13 @@ func NewPersistencyHandler[T Loggable[T]]() (*PersistencyHandler[T], error) {
 		}
 	}
 
-	currCheckpointFileName, _, err := getLogsContent(logPath)
+	currCheckpointFileName, _, err := getLogsContent(dataPath + logFileName)
 	if err != nil {
 		return nil, fmt.Errorf("error getting logs content: %w", err)
 	}
+	currSnapShotNumberString := strings.Split(strings.Split(currCheckpointFileName, "-")[1], ".")[0]
+	currSnapshotNumber, err := strconv.Atoi(currSnapShotNumberString)
 
-	currSnapshotNumber, err := strconv.Atoi(strings.Split(currCheckpointFileName, "-")[1])
 	if err != nil {
 		return nil, fmt.Errorf("error parsing current snapshot number from checkpoint file name: %w", err)
 	}
@@ -59,7 +60,9 @@ func NewPersistencyHandler[T Loggable[T]]() (*PersistencyHandler[T], error) {
 }
 
 func (ph *PersistencyHandler[T]) loadCheckpointData(fileName string) ([]byte, error) {
-	files, err := common.ScanDirectory(dataPath, fileName)
+	path := strings.Split(fileName, "/")
+	slog.Info("filename", slog.String("fileName", fileName))
+	files, err := common.ScanDirectory("/"+path[0], path[1])
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			if err := os.Mkdir(dataPath, 0777); err != nil {
@@ -74,7 +77,7 @@ func (ph *PersistencyHandler[T]) loadCheckpointData(fileName string) ([]byte, er
 		return strings.HasSuffix(file, ".json")
 	})
 
-	if len(files) != 0 {
+	if len(files) != 1 {
 		slog.Warn("there is not 1 checkpoint file", slog.Int("count", len(files)), slog.String("files", strings.Join(files, ", ")))
 		panic("there is not 1 checkpoint file, check log for more info") //TODO: sacar
 	}
@@ -96,6 +99,7 @@ func getLogPath() (string, error) {
 			if err := os.Mkdir(dataPath, 0777); err != nil {
 				return "", fmt.Errorf("error creating data directory: %w", err)
 			}
+			slog.Info("Creating folder")
 		} else {
 			return "", fmt.Errorf("error scanning directory: %w", err)
 		}
@@ -112,7 +116,7 @@ func getLogPath() (string, error) {
 	}
 
 	file := files[0]
-	return dataPath + file, nil
+	return file, nil
 }
 
 func getCommitedLogs(logs []string) ([]TransactionEntry, error) {
@@ -122,6 +126,9 @@ func getCommitedLogs(logs []string) ([]TransactionEntry, error) {
 		if line == commitChar {
 			entries = append(entries, uncommitedEntries...)
 			uncommitedEntries = []TransactionEntry{}
+			continue
+		}
+		if line == "" {
 			continue
 		}
 		entry := entryFromLog(strings.Split(line, sep))
@@ -169,17 +176,17 @@ func (ph *PersistencyHandler[T]) RecoverFromLogs(fromBytes func([]byte) (T, erro
 
 	checkpointData, err := ph.loadCheckpointData(checkpointFileName)
 	if err != nil {
-		return checkpoint, fmt.Errorf("error loading checkpoint %v", err)
+		return checkpoint, fmt.Errorf("error loading checkpoint: %v", err)
 	}
 
 	checkpoint, err = fromBytes(checkpointData)
 	if err != nil {
-		return checkpoint, fmt.Errorf("error loading checkpoint %v", err)
+		return checkpoint, fmt.Errorf("error loading checkpoint: %v", err)
 	}
 
 	entries, err := getCommitedLogs(logs)
 	if err != nil {
-		return checkpoint, fmt.Errorf("error loading logs %v", err)
+		return checkpoint, fmt.Errorf("error loading logs: %v", err)
 	}
 
 	checkpoint, err = applyLogs(checkpoint, entries)
