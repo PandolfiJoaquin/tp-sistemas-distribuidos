@@ -41,7 +41,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=5
+      - JOINER_SHARDS=10
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -56,7 +56,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=5
+      - JOINER_SHARDS=10
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -71,7 +71,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=5
+      - JOINER_SHARDS=10
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -86,7 +86,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=5
+      - JOINER_SHARDS=10
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -101,7 +101,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=5
+      - JOINER_SHARDS=10
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -229,7 +229,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=2
-      - JOINER_SHARDS=5
+      - JOINER_SHARDS=10
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -247,7 +247,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=3
-      - JOINER_SHARDS=5
+      - JOINER_SHARDS=10
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -265,7 +265,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=4
-      - JOINER_SHARDS=5
+      - JOINER_SHARDS=10
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -283,7 +283,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=5
-      - JOINER_SHARDS=5
+      - JOINER_SHARDS=10
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -375,6 +375,91 @@ services:
         restart: true
     volumes:
       - ./data/joiner/id-5/:/data/
+
+  joiner-6:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-6
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_ID=6
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-6/:/data/
+
+  joiner-7:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-7
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_ID=7
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-7/:/data/
+
+  joiner-8:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-8
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_ID=8
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-8/:/data/
+
+  joiner-9:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-9
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_ID=9
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-9/:/data/
+
+  joiner-10:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-10
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_ID=10
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-10/:/data/
 
   client1:
     container_name: client1
