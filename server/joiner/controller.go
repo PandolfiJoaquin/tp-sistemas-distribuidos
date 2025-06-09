@@ -28,13 +28,13 @@ const (
 type LogOperations string
 
 const ( //TODO: Optimize encoding
-	UpdateMoviesWeightsOp  = "UpdateMoviesWeights"
-	SaveMoviesOp           = "SaveMovies"
-	UpdateReviewsWeightsOp = "UpdateReviewsWeights"
-	StoreReviewBatchOp     = "StoreReviewBatch"
-	StoreCreditBatchOp     = "StoreCreditBatchOp"
-	JoinStoredBatchesOp    = "JoinStoredBatches"
-	UpdateCreditsWeightsOp = "UpdateCreditsWeights"
+	UpdateMoviesWeightsOp  = "a"
+	SaveMoviesOp           = "b"
+	UpdateReviewsWeightsOp = "d"
+	StoreReviewBatchOp     = "e"
+	StoreCreditBatchOp     = "f"
+	JoinStoredBatchesOp    = "g"
+	UpdateCreditsWeightsOp = "h"
 )
 
 type JoinerController struct {

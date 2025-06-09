@@ -6,6 +6,7 @@ import (
 	"net"
 	"pkg/communication"
 	"tp-sistemas-distribuidos/client/utils"
+	"time"
 )
 
 type Sender[T any] struct {
@@ -49,10 +50,12 @@ func readAndSendData[T any](reader utils.BatchReader[T], conn net.Conn) error {
 	if err != nil {
 		return fmt.Errorf("error reading batch: %w", err)
 	}
-	err = communication.SendData[T](conn, batch)
+
+	err = communication.SendData(conn, batch)
 	if err != nil {
 		return fmt.Errorf("error sending data: %w", err)
 	}
+	time.Sleep(time.Duration(2.5 * float64(time.Millisecond)))
 	return nil
 }
 

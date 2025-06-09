@@ -30,11 +30,11 @@ var queriesQueues = map[int]queuesNames{
 }
 
 const ( //TODO: Optimize encoding
-	AggCountriesBudgetOp      = "aggCountriesBudget"
-	AggMovieRatingsOp         = "AggMovieRatings"
-	AggActorMoviesOp          = "aggActorMovies"
-	AggSentimentProfitRatioOP = "AggSentimentProfitRatio"
-	UpdateWeightsOp           = "UpdateWeights"
+	AggCountriesBudgetOp      = "a"
+	AggMovieRatingsOp         = "b"
+	AggActorMoviesOp          = "c"
+	AggSentimentProfitRatioOP = "d"
+	UpdateWeightsOp           = "e"
 )
 
 type FinalReducer struct {

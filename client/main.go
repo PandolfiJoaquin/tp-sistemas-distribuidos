@@ -11,7 +11,7 @@ import (
 const (
 	server       = "gateway:12345"
 	MoviesBatch  = 30
-	ReviewsBatch = 300
+	ReviewsBatch = 5120
 	CreditsBatch = 30
 	sleep = 1
 )
