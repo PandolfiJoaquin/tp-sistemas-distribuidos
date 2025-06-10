@@ -34,6 +34,9 @@ HEALER_NODE= """
     container_name: {svc_name}
     environment:
       - HEALER_ID={node_id}
+      - DELAY=10
+    depends_on:
+      gateway
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yaml:/docker-compose.yaml
@@ -169,6 +172,7 @@ def create_compose(cfg):
         f.write(compose)
 
     print(f"   • joiners ×{joiners}")
+    print(f"   • healers ×{healer}")
     for node, count in nodes.items():
         print(f"   • {node} ×{count}")
 

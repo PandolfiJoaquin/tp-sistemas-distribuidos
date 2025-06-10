@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -33,6 +34,9 @@ func readContainerToMonitor(myName string) ([]string, error) {
 	var containerNames []string
 	for _, service := range dockerCompose.Services {
 		if service.ContainerName == myName || service.ContainerName == "rabbitmq" {
+			continue
+		}
+		if strings.HasPrefix(service.ContainerName, "client") {
 			continue
 		}
 		containerNames = append(containerNames, service.ContainerName)

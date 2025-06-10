@@ -7,6 +7,9 @@ import (
 	"os"
 	"os/signal"
 	"pkg/log"
+	"strconv"
+	"syscall"
+	"time"
 )
 
 func main() {
@@ -17,7 +20,14 @@ func main() {
 	}
 	slog.SetDefault(logger)
 
-	healerName := os.Getenv("HEALER_NAME")
+	delay, err := strconv.Atoi(os.Getenv("DELAY"))
+	if err != nil {
+		slog.Error("Error converting DELAY env var to int", slog.String("error", err.Error()))
+		return
+	}
+	time.Sleep(time.Duration(delay) * time.Second)
+
+	healerName := "healer-" + os.Getenv("HEALER_ID")
 
 	toMonitor, err := readContainerToMonitor(healerName)
 	if err != nil {
@@ -30,7 +40,7 @@ func main() {
 	healer := NewHealer(toMonitor)
 
 	// Declares a cancelable context to allow graceful shutdown with signasl
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	healer.Start(ctx)

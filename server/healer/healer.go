@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	heartBeatTimer    = 1 * time.Second
+	heartBeatTimer    = 2 * time.Second
 	maxRetries        = 3
-	connectionTimeout = 3 * time.Second
+	connectionTimeout = 5 * time.Second
 	healthCheckPort   = ":1500"
 )
 
