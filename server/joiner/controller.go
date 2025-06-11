@@ -6,14 +6,16 @@ import (
 	"fmt"
 	"log/slog"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
 	"tp-sistemas-distribuidos/server/common/persistency"
 )
 
 const (
-	rabbitHost = "rabbitmq"
-	//rabbitHost           = "127.0.0.1"
+	//rabbitHost = "rabbitmq"
+	rabbitHost           = "127.0.0.1"
 	moviesExchange       = "movies-exchange"
 	moviestopic          = "movies-to-join-%d"
 	reviewsExchange      = "reviews-exchange"
@@ -35,6 +37,9 @@ const ( //TODO: Optimize encoding
 	StoreCreditBatchOp     = "f"
 	JoinStoredBatchesOp    = "g"
 	UpdateCreditsWeightsOp = "h"
+	FilterMovieOP          = "i"
+	FilterReviewsOP        = "j"
+	FilterCreditsOP        = "k"
 )
 
 type JoinerController struct {
@@ -100,9 +105,40 @@ func (j JoinerController) ApplyFunc(entry persistency.TransactionEntry) (JoinerC
 		}
 		j.Sessions[header.ClientID].UpdateCreditsWeights(header)
 		return j, nil
+	case FilterMovieOP:
+		clientId, messageId, err := extractIds(entry)
+		if err != nil {
+			return JoinerController{}, fmt.Errorf("error extracting ids %w", err)
+		}
+		j.Sessions[clientId].FilterMoviesMsg(messageId)
+		return j, nil
+	case FilterReviewsOP:
+		clientId, messageId, err := extractIds(entry)
+		if err != nil {
+			return JoinerController{}, fmt.Errorf("error extracting ids %w", err)
+		}
+		j.Sessions[clientId].FilterReviewsMsg(messageId)
+		return j, nil
+	case FilterCreditsOP:
+		clientId, messageId, err := extractIds(entry)
+		if err != nil {
+			return JoinerController{}, fmt.Errorf("error extracting ids %w", err)
+		}
+		j.Sessions[clientId].FilterCreditsMsg(messageId)
+		return j, nil
 	default:
 		return JoinerController{}, fmt.Errorf("unknown log operation %v", entry.Op)
 	}
+}
+
+func extractIds(entry persistency.TransactionEntry) (string, int, error) {
+	args := strings.Split(entry.Args, ";")
+	clientId := args[0]
+	messageId, err := strconv.Atoi(args[1])
+	if err != nil {
+		return "", 0, err
+	}
+	return clientId, messageId, nil
 }
 
 func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
@@ -287,6 +323,10 @@ func (j *JoinerController) run(ctx context.Context) {
 			}
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
+			if !session.FilterMoviesMsg(batch.MessageID) {
+				break
+			}
+			transaction.Do(FilterMovieOP, batch.ClientID+";"+strconv.Itoa(batch.MessageID))
 
 			session.UpdateMoviesWeights(batch.Header)
 			transaction.Do(UpdateMoviesWeightsOp, batch.Header.ToString())
@@ -308,6 +348,10 @@ func (j *JoinerController) run(ctx context.Context) {
 			}
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
+			if !session.FilterReviewsMsg(batch.MessageID) {
+				break
+			}
+			transaction.Do(FilterReviewsOP, batch.ClientID+";"+strconv.Itoa(batch.MessageID))
 
 			if !session.AllMoviesReceived() {
 				j.storeReviewBatch(clientId, batch.AsBatch())
@@ -325,6 +369,10 @@ func (j *JoinerController) run(ctx context.Context) {
 			}
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
+			if !session.FilterCreditsMsg(batch.MessageID) {
+				break
+			}
+			transaction.Do(FilterCreditsOP, batch.ClientID+";"+strconv.Itoa(batch.MessageID))
 
 			if !session.AllMoviesReceived() {
 				j.storeCreditsBatch(clientId, batch.AsBatch())

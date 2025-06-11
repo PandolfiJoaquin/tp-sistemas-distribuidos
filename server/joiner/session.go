@@ -5,17 +5,29 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
+type DuplicatesFilters struct {
+	MovieFilter   *common.DuplicateFilter `json:"movies"`
+	ReviewsFilter *common.DuplicateFilter `json:"reviews"`
+	CreditsFilter *common.DuplicateFilter `json:"credits"`
+}
+
 type JoinerSession struct {
-	Movies          []common.Movie `json:"movies"`
-	MoviesReceived  uint32         `json:"moviesReceived"`
-	ReviewsReceived uint32         `json:"reviewsReceived"`
-	CreditsReceived uint32         `json:"creditsReceived"`
-	MoviesToExpect  int32          `json:"moviesToExpect"`
-	ReviewsToExpect int32          `json:"reviewsToExpect"`
-	CreditsToExpect int32          `json:"creditsToExpect"`
+	Movies          []common.Movie     `json:"movies"`
+	MoviesReceived  uint32             `json:"moviesReceived"`
+	ReviewsReceived uint32             `json:"reviewsReceived"`
+	CreditsReceived uint32             `json:"creditsReceived"`
+	MoviesToExpect  int32              `json:"moviesToExpect"`
+	ReviewsToExpect int32              `json:"reviewsToExpect"`
+	CreditsToExpect int32              `json:"creditsToExpect"`
+	Filters         *DuplicatesFilters `json:"duplicate"`
 }
 
 func NewJoinerSession() *JoinerSession {
+	df := &DuplicatesFilters{
+		common.NewDuplicateFilter(),
+		common.NewDuplicateFilter(),
+		common.NewDuplicateFilter(),
+	}
 	return &JoinerSession{
 		Movies:          []common.Movie{},
 		MoviesReceived:  0,
@@ -24,7 +36,20 @@ func NewJoinerSession() *JoinerSession {
 		MoviesToExpect:  -1,
 		ReviewsToExpect: -1,
 		CreditsToExpect: -1,
+		Filters:         df,
 	}
+}
+
+func (j *JoinerSession) FilterMoviesMsg(id int) bool {
+	return j.Filters.MovieFilter.Accept(id)
+}
+
+func (j *JoinerSession) FilterReviewsMsg(review int) bool {
+	return j.Filters.ReviewsFilter.Accept(review)
+
+}
+func (j *JoinerSession) FilterCreditsMsg(movie int) bool {
+	return j.Filters.ReviewsFilter.Accept(movie)
 }
 
 func (s *JoinerSession) UpdateMoviesWeights(header common.Header) {

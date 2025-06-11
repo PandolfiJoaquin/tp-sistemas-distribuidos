@@ -7,7 +7,7 @@ func TestDuplicateFilterHappy(t *testing.T) {
 	tests := []struct {
 		id          int
 		expected    bool
-		expectedWin []int // Optional: Expected window state
+		expectedWin []int // Optional: Expected Window state
 	}{
 		{0, true, []int{0}},
 		{1, true, []int{1}},
@@ -19,9 +19,9 @@ func TestDuplicateFilterHappy(t *testing.T) {
 		{4, false, []int{5}}, // Duplicate
 	}
 	for i, test := range tests {
-		got := filter.ShouldAccept(test.id)
+		got := filter.Accept(test.id)
 		if got != test.expected {
-			t.Errorf("[%d] ShouldAccept(%d) = %v; want %v", i, test.id, got, test.expected)
+			t.Errorf("[%d] Accept(%d) = %v; want %v", i, test.id, got, test.expected)
 		}
 
 		if test.expectedWin != nil {
@@ -39,7 +39,7 @@ func TestDuplicateFilterIncremental(t *testing.T) {
 	tests := []struct {
 		id          int
 		expected    bool
-		expectedWin []int // Optional: Expected window state
+		expectedWin []int // Optional: Expected Window state
 	}{
 		{0, true, []int{0}},
 		{1, true, []int{1}},
@@ -64,9 +64,9 @@ func TestDuplicateFilterIncremental(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		got := filter.ShouldAccept(test.id)
+		got := filter.Accept(test.id)
 		if got != test.expected {
-			t.Errorf("[%d] ShouldAccept(%d) = %v; want %v", i, test.id, got, test.expected)
+			t.Errorf("[%d] Accept(%d) = %v; want %v", i, test.id, got, test.expected)
 		}
 
 		if test.expectedWin != nil {
@@ -110,15 +110,15 @@ func TestDuplicateFilterMoreRange(t *testing.T) {
 	}
 
 	for i, s := range scenarios {
-		got := filter.ShouldAccept(s.id)
+		got := filter.Accept(s.id)
 		if got != s.expected {
-			t.Errorf("[%d] ShouldAccept(%d) = %v; want %v",
+			t.Errorf("[%d] Accept(%d) = %v; want %v",
 				i, s.id, got, s.expected)
 		}
 		if s.expectedWin != nil {
 			win := filter.GetCurrentWindowState()
 			if !equalSlices(win, s.expectedWin) {
-				t.Errorf("[%d] window = %v; want %v",
+				t.Errorf("[%d] Window = %v; want %v",
 					i, win, s.expectedWin)
 			}
 		}
@@ -141,9 +141,9 @@ func TestDuplicateFilterNegative(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		got := filter.ShouldAccept(test.id)
+		got := filter.Accept(test.id)
 		if got != test.expected {
-			t.Errorf("[%d] ShouldAccept(%d) = %v; want %v", i, test.id, got, test.expected)
+			t.Errorf("[%d] Accept(%d) = %v; want %v", i, test.id, got, test.expected)
 		}
 	}
 }
@@ -189,7 +189,7 @@ func TestDuplicateFilterWithShard(t *testing.T) {
 	for i, test := range tests {
 		got := filter.ShouldAccept(test.id, test.shardID)
 		if got != test.expected {
-			t.Errorf("[%d] ShouldAccept(id=%d, shard=%d) = %v; want %v",
+			t.Errorf("[%d] Accept(id=%d, shard=%d) = %v; want %v",
 				i, test.id, test.shardID, got, test.expected)
 		}
 
@@ -197,7 +197,7 @@ func TestDuplicateFilterWithShard(t *testing.T) {
 			state := filter.GetCurrentWindowsState()
 			gotWin := state[test.shardID]
 			if !equalSlices(gotWin, test.expectedWin) {
-				t.Errorf("[%d] window for shard %d = %v; want %v",
+				t.Errorf("[%d] Window for shard %d = %v; want %v",
 					i, test.shardID, gotWin, test.expectedWin)
 			}
 		}

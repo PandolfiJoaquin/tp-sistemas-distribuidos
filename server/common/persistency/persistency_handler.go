@@ -62,7 +62,7 @@ func NewPersistencyHandler[T Loggable[T]]() (*PersistencyHandler[T], error) {
 func (ph *PersistencyHandler[T]) loadCheckpointData(fileName string) ([]byte, error) {
 	path := strings.Split(fileName, "/")
 	slog.Info("filename", slog.String("fileName", fileName))
-	files, err := common.ScanDirectory("/"+path[0], path[1])
+	files, err := common.ScanDirectory("./"+path[0], path[1])
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			if err := os.Mkdir(dataPath, 0777); err != nil {

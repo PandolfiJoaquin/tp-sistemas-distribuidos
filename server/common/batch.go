@@ -13,6 +13,7 @@ type Header struct {
 	Weight      uint32 `json:"weight"`
 	TotalWeight int32  `json:"total_weight"` //-1 if its uknown for the moment
 	ClientID    string `json:"client_id"`
+	MessageID   int    `json:"message_id"`
 }
 
 type Batch[T any] struct {

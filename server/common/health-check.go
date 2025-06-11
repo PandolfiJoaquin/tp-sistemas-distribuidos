@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	port            = "1500"
+	port            = "1501"
 	healthyResponse = "K"
 )
 
