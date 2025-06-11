@@ -49,7 +49,6 @@ func (f *DuplicateFilter) Accept(id int) bool {
 			break
 		}
 	}
-	slog.Info("received New Message")
 	return true
 }
 

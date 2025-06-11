@@ -7,11 +7,12 @@ import (
 	"pkg/models"
 )
 
-func SendBatchEOF(conn net.Conn, total int32) error {
+func SendBatchEOF(conn net.Conn, total int32, id int) error {
 	batch := models.RawBatch[any]{ //Doesn't matter type as it is empty
 		Header: models.Header{
 			TotalWeight: total,
 			Weight:      0,
+			BatchID:     id,
 		},
 	}
 

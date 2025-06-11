@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	//rabbitHost = "rabbitmq"
-	rabbitHost           = "127.0.0.1"
+	rabbitHost = "rabbitmq"
+	//rabbitHost           = "127.0.0.1"
 	moviesExchange       = "movies-exchange"
 	moviestopic          = "movies-to-join-%d"
 	reviewsExchange      = "reviews-exchange"
@@ -345,6 +345,7 @@ func (j *JoinerController) run(ctx context.Context) {
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
 			if !session.FilterMoviesMsg(batch.Header.MessageID.ID) {
+				slog.Info("Filtering Msg", slog.Any("msg", batch))
 				break
 			}
 			transaction.Do(FilterMovieOP, batch.ClientID+separator+strconv.Itoa(batch.MessageID.ID))

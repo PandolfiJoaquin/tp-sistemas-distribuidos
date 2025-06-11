@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net"
 	"pkg/communication"
-	"tp-sistemas-distribuidos/client/utils"
 	"time"
+	"tp-sistemas-distribuidos/client/utils"
 )
 
 type Sender[T any] struct {
@@ -76,7 +76,7 @@ func sendAllData[T any](reader utils.BatchReader[T], conn net.Conn) (int, error)
 		batchID++
 	}
 
-	err := communication.SendBatchEOF(conn, int32(reader.TotalRead()))
+	err := communication.SendBatchEOF(conn, int32(reader.TotalRead()), batchID)
 	if err != nil {
 		return 0, fmt.Errorf("error sending EOF: %w", err)
 	}

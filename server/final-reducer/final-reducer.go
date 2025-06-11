@@ -16,9 +16,10 @@ import (
 	pkg "pkg/models"
 )
 
-// const rabbitHost = "rabbitmq"
-const rabbitHost = "127.0.0.1"
-const maxTransactionsOnLog = 5
+const rabbitHost = "rabbitmq"
+
+// const rabbitHost = "127.0.0.1"
+const maxTransactionsOnLog = 500
 const separator = ";"
 
 type queuesNames struct {
@@ -241,6 +242,7 @@ func startReceiving[T common.Stringer](
 
 			session := freddyFazbear.getSession(batch.GetClientID(), freddyFazbear.queryNum)
 			if !session.FilterMsg(batch.MessageID.ID, batch.MessageID.JoinerID) {
+				slog.Info("Filtering Msg", slog.Any("msg", batch))
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				}
