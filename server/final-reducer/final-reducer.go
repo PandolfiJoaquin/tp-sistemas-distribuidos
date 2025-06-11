@@ -18,7 +18,7 @@ import (
 
 // const rabbitHost = "rabbitmq"
 const rabbitHost = "127.0.0.1"
-const maxTransactionsOnLog = 500
+const maxTransactionsOnLog = 5
 const separator = ";"
 
 type queuesNames struct {
@@ -148,6 +148,7 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 			if err = json.Unmarshal(data, &finalReducer); err != nil {
 				return FinalReducer{}, fmt.Errorf("error unmarshalling persistency: %w", err)
 			}
+
 			// for _, session := range finalReducer.Sessions {
 			// 	data, ok := session.Data.(map[string]common.MovieAvgRating)
 			// 	if ok {
@@ -280,16 +281,12 @@ func (r *FinalReducer) getSession(clientID string, queryNum int) *ClientSession 
 	switch queryNum {
 	case 2:
 		r.Sessions[clientID] = NewClientSession(clientID, 1)
-		r.Sessions[clientID].SetData(make(map[pkg.Country]uint64))
 	case 3:
 		r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
-		r.Sessions[clientID].SetData(make(map[string]common.MovieAvgRating))
 	case 4:
 		r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
-		r.Sessions[clientID].SetData(make(map[string]common.ActorMoviesAmount))
 	case 5:
 		r.Sessions[clientID] = NewClientSession(clientID, 1)
-		r.Sessions[clientID].SetData(common.SentimentProfitRatioAccumulator{})
 	default:
 		slog.Error("query number not found", slog.Int("query number", r.queryNum))
 		return nil
@@ -338,7 +335,7 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 
 func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
 	slog.Info("finishing and sending batch for query 2", slog.String("client id", clientId))
-	countries := r.Sessions[clientId].GetData().(map[pkg.Country]uint64)
+	countries := r.Sessions[clientId].Q2Data
 	top5Countries := calculateTop5Countries(countries)
 	top5Countries.ClientId = clientId
 	response, err := json.Marshal(top5Countries)
@@ -352,7 +349,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
 
 func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
 	slog.Info("finishing and sending batch for query 3", slog.String("client id", clientId))
-	movies := r.Sessions[clientId].GetData().(map[string]common.MovieAvgRating)
+	movies := r.Sessions[clientId].Q3Data
 	bestAndWorstMovies := calculateBestAndWorstMovie(movies)
 	bestAndWorstMovies.ClientId = clientId
 	response, err := json.Marshal(bestAndWorstMovies)
@@ -366,7 +363,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
 
 func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
 	slog.Info("finishing and sending batch for query 4", slog.String("client id", clientId))
-	actorMovies := r.Sessions[clientId].GetData().(map[string]common.ActorMoviesAmount)
+	actorMovies := r.Sessions[clientId].Q4Data
 	top10Actors := calculateTop10Actors(actorMovies)
 	top10Actors.ClientId = clientId
 	response, err := json.Marshal(top10Actors)
@@ -380,7 +377,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
 
 func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
 	slog.Info("finishing and sending batch for query 5", slog.String("client id", clientId))
-	sentimentProfitRatios := r.Sessions[clientId].GetData().(common.SentimentProfitRatioAccumulator)
+	sentimentProfitRatios := r.Sessions[clientId].Q5Data
 	sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
 	sentimentProfitRatioAverage.ClientId = clientId
 	response, err := json.Marshal(sentimentProfitRatioAverage)
@@ -526,7 +523,7 @@ func (r *FinalReducer) aggCountriesBudget(batch common.LoggableBatch[common.Coun
 	transaction := persistency.NewTransaction()
 
 	session := r.getSession(batch.Header.GetClientID(), r.queryNum)
-	countries := session.GetData().(map[pkg.Country]uint64)
+	countries := session.Q2Data
 
 	for _, countryBudget := range batch.Data {
 		countries[countryBudget.Country] += countryBudget.Budget
@@ -539,7 +536,7 @@ func (r *FinalReducer) aggMovieRatings(batch common.LoggableBatch[common.MovieAv
 	transaction := persistency.NewTransaction()
 
 	session := r.getSession(batch.Header.GetClientID(), r.queryNum)
-	movies := session.GetData().(map[string]common.MovieAvgRating)
+	movies := session.Q3Data
 
 	for _, movieRating := range batch.Data {
 		if currentRating, ok := movies[movieRating.MovieID]; !ok {
@@ -558,7 +555,7 @@ func (r *FinalReducer) aggActorMovies(batch common.LoggableBatch[common.ActorMov
 	transaction := persistency.NewTransaction()
 
 	session := r.getSession(batch.Header.GetClientID(), r.queryNum)
-	actorMovies := session.GetData().(map[string]common.ActorMoviesAmount)
+	actorMovies := session.Q4Data
 
 	for _, actorMoviesAmount := range batch.Data {
 		if currentMoviesAmount, ok := actorMovies[actorMoviesAmount.ActorID]; !ok {
@@ -576,7 +573,7 @@ func (r *FinalReducer) aggSentimentProfitRatio(batch common.LoggableBatch[common
 	transaction := persistency.NewTransaction()
 
 	session := r.getSession(batch.Header.GetClientID(), r.queryNum)
-	sentimentProfitRatios := session.GetData().(common.SentimentProfitRatioAccumulator)
+	sentimentProfitRatios := session.Q5Data
 
 	for _, sentimentProfitRatio := range batch.Data {
 		slog.Info("adding sentiment profit ratio", slog.Any("sentiment profit ratio", sentimentProfitRatio))
@@ -590,7 +587,7 @@ func (r *FinalReducer) aggSentimentProfitRatio(batch common.LoggableBatch[common
 		}
 	}
 
-	session.SetData(sentimentProfitRatios)
+	session.Q5Data = sentimentProfitRatios
 	transaction.Do(AggSentimentProfitRatioOP, batch.ToString())
 	return transaction
 }

@@ -1,14 +1,20 @@
 package main
 
-import "tp-sistemas-distribuidos/server/common"
+import (
+	pkg "pkg/models"
+	"tp-sistemas-distribuidos/server/common"
+)
 
 type ClientSession struct {
-	CurrentWeight uint32                            `json:"current_weight"`
-	EofWeight     int32                             `json:"eof_weight"`
-	EofMultiplier uint32                            `json:"eof_multiplier"`
-	SessionId     string                            `json:"session_id"`
-	Data          any                               `json:"data"`
-	Filters       *common.DuplicateFilterWithShards `json:"filters"`
+	CurrentWeight uint32                                 `json:"current_weight"`
+	EofWeight     int32                                  `json:"eof_weight"`
+	EofMultiplier uint32                                 `json:"eof_multiplier"`
+	SessionId     string                                 `json:"session_id"`
+	Q2Data        map[pkg.Country]uint64                 `json:"data_q2"`
+	Q3Data        map[string]common.MovieAvgRating       `json:"data_q3"`
+	Q4Data        map[string]common.ActorMoviesAmount    `json:"data_q4"`
+	Q5Data        common.SentimentProfitRatioAccumulator `json:"data_q5"`
+	Filters       *common.DuplicateFilterWithShards      `json:"filters"`
 }
 
 func NewClientSession(sessionId string, eofMultiplier uint32) *ClientSession {
@@ -16,15 +22,10 @@ func NewClientSession(sessionId string, eofMultiplier uint32) *ClientSession {
 		SessionId:     sessionId,
 		EofMultiplier: eofMultiplier,
 		Filters:       common.NewDuplicateFilterWithShards(),
+		Q2Data:        make(map[pkg.Country]uint64),
+		Q3Data:        make(map[string]common.MovieAvgRating),
+		Q4Data:        make(map[string]common.ActorMoviesAmount),
 	}
-}
-
-func (c *ClientSession) SetData(data any) {
-	c.Data = data
-}
-
-func (c *ClientSession) GetData() any {
-	return c.Data
 }
 
 func (c *ClientSession) FilterMsg(id int, shardID int) bool {
