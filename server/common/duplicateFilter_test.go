@@ -187,7 +187,7 @@ func TestDuplicateFilterWithShard(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		got := filter.ShouldAccept(test.id, test.shardID)
+		got := filter.Accept(test.id, test.shardID)
 		if got != test.expected {
 			t.Errorf("[%d] Accept(id=%d, shard=%d) = %v; want %v",
 				i, test.id, test.shardID, got, test.expected)

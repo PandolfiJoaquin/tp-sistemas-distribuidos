@@ -62,7 +62,6 @@ func (c *Client) IsDead() bool {
 }
 
 func (c *Client) sendHandler() {
-
 	err := receiveData[models.RawMovie](*c.toPreprocess, "movies", &c.conn, c.id)
 	if err != nil {
 		c.checkSendError(err, "error receiving movies")

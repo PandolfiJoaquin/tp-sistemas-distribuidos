@@ -22,11 +22,12 @@ func SendBatchEOF(conn net.Conn, total int32) error {
 	return nil
 }
 
-func SendData[T any](conn net.Conn, data []T) error {
+func SendData[T any](conn net.Conn, data []T, batchID int) error {
 	batch := models.RawBatch[T]{
 		Header: models.Header{
 			Weight:      uint32(len(data)),
 			TotalWeight: -1,
+			BatchID:     batchID,
 		},
 		Data: data,
 	}

@@ -45,13 +45,13 @@ func (s *Sender[T]) Send() error {
 	return nil
 }
 
-func readAndSendData[T any](reader utils.BatchReader[T], conn net.Conn) error {
+func readAndSendData[T any](reader utils.BatchReader[T], conn net.Conn, batchID int) error {
 	batch, err := reader.ReadBatch()
 	if err != nil {
 		return fmt.Errorf("error reading batch: %w", err)
 	}
 
-	err = communication.SendData(conn, batch)
+	err = communication.SendData(conn, batch, batchID)
 	if err != nil {
 		return fmt.Errorf("error sending data: %w", err)
 	}
@@ -67,11 +67,13 @@ func sendAllData[T any](reader utils.BatchReader[T], conn net.Conn) (int, error)
 		}
 	}(reader)
 
+	var batchID int = 0
 	for !reader.Finished() {
-		err := readAndSendData(reader, conn)
+		err := readAndSendData(reader, conn, batchID)
 		if err != nil {
 			return 0, fmt.Errorf("error sending data: %w", err)
 		}
+		batchID++
 	}
 
 	err := communication.SendBatchEOF(conn, int32(reader.TotalRead()))

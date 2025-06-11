@@ -25,21 +25,22 @@ const (
 	q3ToReduceQueue      = "q3-to-reduce"
 	q4ToReduceQueue      = "q4-to-reduce"
 	maxTransactionsOnLog = 500
+	separator            = ";"
 )
 
 type LogOperations string
 
 const ( //TODO: Optimize encoding
-	UpdateMoviesWeightsOp  = "a"
-	SaveMoviesOp           = "b"
-	UpdateReviewsWeightsOp = "d"
-	StoreReviewBatchOp     = "e"
-	StoreCreditBatchOp     = "f"
-	JoinStoredBatchesOp    = "g"
-	UpdateCreditsWeightsOp = "h"
-	FilterMovieOP          = "i"
-	FilterReviewsOP        = "j"
-	FilterCreditsOP        = "k"
+	UpdateMoviesWeightsOp  = "update-movies-weights"
+	SaveMoviesOp           = "save-movies"
+	UpdateReviewsWeightsOp = "update-reviews-weights"
+	StoreReviewBatchOp     = "store-review-batch"
+	StoreCreditBatchOp     = "store-credit-batch"
+	JoinStoredBatchesOp    = "join-stored-batches"
+	UpdateCreditsWeightsOp = "update-credits-weights"
+	FilterMovieOP          = "filter-movie"
+	FilterReviewsOP        = "filter-reviews"
+	FilterCreditsOP        = "filter-credits"
 )
 
 type JoinerController struct {
@@ -64,21 +65,24 @@ func (j JoinerController) ApplyFunc(entry persistency.TransactionEntry) (JoinerC
 		if err != nil {
 			return JoinerController{}, fmt.Errorf("error deserializing header %v: %w", UpdateMoviesWeightsOp, err)
 		}
-		j.Sessions[header.ClientID].UpdateMoviesWeights(header)
+		session := j.getSession(header.ClientID)
+		session.UpdateMoviesWeights(header)
 		return j, nil
 	case SaveMoviesOp:
 		batch, err := common.GetBatchFromString[common.Movie](entry.Args)
 		if err != nil {
 			return JoinerController{}, fmt.Errorf("error deserializing batch %v: %w", SaveMoviesOp, err)
 		}
-		j.Sessions[batch.Header.ClientID].SaveMovies(batch.Data)
+		session := j.getSession(batch.Header.ClientID)
+		session.SaveMovies(batch.Data)
 		return j, nil
 	case UpdateReviewsWeightsOp:
 		header, err := common.HeaderFromString(entry.Args)
 		if err != nil {
 			return JoinerController{}, fmt.Errorf("error deserializing header %v: %w", UpdateReviewsWeightsOp, err)
 		}
-		j.Sessions[header.ClientID].UpdateReviewsWeights(header)
+		session := j.getSession(header.ClientID)
+		session.UpdateReviewsWeights(header)
 		return j, nil
 	case StoreReviewBatchOp:
 		batch, err := common.GetBatchFromString[common.Review](entry.Args)
@@ -90,11 +94,13 @@ func (j JoinerController) ApplyFunc(entry persistency.TransactionEntry) (JoinerC
 	case JoinStoredBatchesOp:
 		clientId := entry.Args
 		for _, batch := range j.StoredReviewBatches[clientId] {
-			j.Sessions[clientId].UpdateReviewsWeights(batch.Header)
+			session := j.getSession(clientId)
+			session.UpdateReviewsWeights(batch.Header)
 		}
 		j.StoredReviewBatches[clientId] = []common.Batch[common.Review]{}
 		for _, batch := range j.StoredCreditBatches[clientId] {
-			j.Sessions[clientId].UpdateCreditsWeights(batch.Header)
+			session := j.getSession(clientId)
+			session.UpdateCreditsWeights(batch.Header)
 		}
 		j.StoredCreditBatches[clientId] = []common.Batch[common.Credit]{}
 		return j, nil
@@ -103,28 +109,39 @@ func (j JoinerController) ApplyFunc(entry persistency.TransactionEntry) (JoinerC
 		if err != nil {
 			return JoinerController{}, fmt.Errorf("error deserializing header %v: %w", UpdateCreditsWeightsOp, err)
 		}
-		j.Sessions[header.ClientID].UpdateCreditsWeights(header)
+		session := j.getSession(header.ClientID)
+		session.UpdateCreditsWeights(header)
+		return j, nil
+	case StoreCreditBatchOp:
+		batch, err := common.GetBatchFromString[common.Credit](entry.Args)
+		if err != nil {
+			return JoinerController{}, fmt.Errorf("error deserializing batch %v: %w", StoreCreditBatchOp, err)
+		}
+		j.storeCreditsBatch(batch.Header.ClientID, batch.AsBatch())
 		return j, nil
 	case FilterMovieOP:
 		clientId, messageId, err := extractIds(entry)
 		if err != nil {
 			return JoinerController{}, fmt.Errorf("error extracting ids %w", err)
 		}
-		j.Sessions[clientId].FilterMoviesMsg(messageId)
+		session := j.getSession(clientId)
+		session.FilterMoviesMsg(messageId)
 		return j, nil
 	case FilterReviewsOP:
 		clientId, messageId, err := extractIds(entry)
 		if err != nil {
 			return JoinerController{}, fmt.Errorf("error extracting ids %w", err)
 		}
-		j.Sessions[clientId].FilterReviewsMsg(messageId)
+		session := j.getSession(clientId)
+		session.FilterReviewsMsg(messageId)
 		return j, nil
 	case FilterCreditsOP:
 		clientId, messageId, err := extractIds(entry)
 		if err != nil {
 			return JoinerController{}, fmt.Errorf("error extracting ids %w", err)
 		}
-		j.Sessions[clientId].FilterCreditsMsg(messageId)
+		session := j.getSession(clientId)
+		session.FilterCreditsMsg(messageId)
 		return j, nil
 	default:
 		return JoinerController{}, fmt.Errorf("unknown log operation %v", entry.Op)
@@ -132,7 +149,7 @@ func (j JoinerController) ApplyFunc(entry persistency.TransactionEntry) (JoinerC
 }
 
 func extractIds(entry persistency.TransactionEntry) (string, int, error) {
-	args := strings.Split(entry.Args, ";")
+	args := strings.Split(entry.Args, separator)
 	clientId := args[0]
 	messageId, err := strconv.Atoi(args[1])
 	if err != nil {
@@ -142,7 +159,6 @@ func extractIds(entry persistency.TransactionEntry) (string, int, error) {
 }
 
 func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
-	//TODO: add duplicate filter in middelware and log it :)))))))))))
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
@@ -225,13 +241,18 @@ func (j *JoinerController) Start() {
 	j.run(ctx)
 }
 
+func (j *JoinerController) addJoinerIDToHeader(header common.Header) common.Header {
+	header.MessageID.JoinerID = j.joinerId
+	return header
+}
+
 func (j *JoinerController) joinReviewBatch(clientId string, batch common.Batch[common.Review]) {
 	session := j.getSession(clientId)
 	session.UpdateReviewsWeights(batch.Header)
 
 	reviewXMovies := session.Join(batch.Data)
 	reviewsXMoviesBatch := common.Batch[common.MovieReview]{
-		Header: batch.Header,
+		Header: j.addJoinerIDToHeader(batch.Header),
 		Data:   reviewXMovies,
 	}
 
@@ -248,7 +269,7 @@ func (j *JoinerController) filterCreditBatch(clientId string, batch common.Batch
 	credits := session.filterCredits(batch.Data)
 
 	actorsBatch := common.Batch[common.Credit]{
-		Header: batch.Header,
+		Header: j.addJoinerIDToHeader(batch.Header),
 		Data:   credits,
 	}
 
@@ -323,10 +344,10 @@ func (j *JoinerController) run(ctx context.Context) {
 			}
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
-			if !session.FilterMoviesMsg(batch.MessageID) {
+			if !session.FilterMoviesMsg(batch.Header.MessageID.ID) {
 				break
 			}
-			transaction.Do(FilterMovieOP, batch.ClientID+";"+strconv.Itoa(batch.MessageID))
+			transaction.Do(FilterMovieOP, batch.ClientID+separator+strconv.Itoa(batch.MessageID.ID))
 
 			session.UpdateMoviesWeights(batch.Header)
 			transaction.Do(UpdateMoviesWeightsOp, batch.Header.ToString())
@@ -335,7 +356,7 @@ func (j *JoinerController) run(ctx context.Context) {
 			transaction.Do(SaveMoviesOp, batch.ToString())
 
 			if session.AllMoviesReceived() {
-				slog.Info("Received all movies. starting to pop reviews")
+				slog.Info("Received all movies. starting to pop reviews and credits")
 				j.joinStoredBatches(clientId) // Joins all reviews stored
 				transaction.Do(JoinStoredBatchesOp, clientId)
 			}
@@ -348,10 +369,10 @@ func (j *JoinerController) run(ctx context.Context) {
 			}
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
-			if !session.FilterReviewsMsg(batch.MessageID) {
+			if !session.FilterReviewsMsg(batch.MessageID.ID) {
 				break
 			}
-			transaction.Do(FilterReviewsOP, batch.ClientID+";"+strconv.Itoa(batch.MessageID))
+			transaction.Do(FilterReviewsOP, batch.ClientID+separator+strconv.Itoa(batch.MessageID.ID))
 
 			if !session.AllMoviesReceived() {
 				j.storeReviewBatch(clientId, batch.AsBatch())
@@ -369,10 +390,10 @@ func (j *JoinerController) run(ctx context.Context) {
 			}
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
-			if !session.FilterCreditsMsg(batch.MessageID) {
+			if !session.FilterCreditsMsg(batch.MessageID.ID) {
 				break
 			}
-			transaction.Do(FilterCreditsOP, batch.ClientID+";"+strconv.Itoa(batch.MessageID))
+			transaction.Do(FilterCreditsOP, batch.ClientID+separator+strconv.Itoa(batch.MessageID.ID))
 
 			if !session.AllMoviesReceived() {
 				j.storeCreditsBatch(clientId, batch.AsBatch())

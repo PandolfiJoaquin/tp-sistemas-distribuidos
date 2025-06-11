@@ -1,17 +1,21 @@
 package main
 
+import "tp-sistemas-distribuidos/server/common"
+
 type ClientSession struct {
-	CurrentWeight uint32 `json:"current_weight"`
-	EofWeight     int32  `json:"eof_weight"`
-	EofMultiplier uint32 `json:"eof_multiplier"`
-	SessionId     string `json:"session_id"`
-	Data          any    `json:"Data"`
+	CurrentWeight uint32                            `json:"current_weight"`
+	EofWeight     int32                             `json:"eof_weight"`
+	EofMultiplier uint32                            `json:"eof_multiplier"`
+	SessionId     string                            `json:"session_id"`
+	Data          any                               `json:"data"`
+	Filters       *common.DuplicateFilterWithShards `json:"filters"`
 }
 
 func NewClientSession(sessionId string, eofMultiplier uint32) *ClientSession {
 	return &ClientSession{
 		SessionId:     sessionId,
 		EofMultiplier: eofMultiplier,
+		Filters:       common.NewDuplicateFilterWithShards(),
 	}
 }
 
@@ -21,6 +25,10 @@ func (c *ClientSession) SetData(data any) {
 
 func (c *ClientSession) GetData() any {
 	return c.Data
+}
+
+func (c *ClientSession) FilterMsg(id int, shardID int) bool {
+	return c.Filters.Accept(id, shardID)
 }
 
 func (c *ClientSession) AddCurrentWeight(weight uint32) {

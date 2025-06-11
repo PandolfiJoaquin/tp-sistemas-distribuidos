@@ -22,7 +22,7 @@ run-no-cache:
 	docker compose up -d --remove-orphans
 
 run-local:
-	sudo rm -rf server/joiner/data
+	sudo rm -rf server/data
 	docker compose down -v
 	docker compose up rabbitmq -d
 	@echo "Esperando que RabbitMQ esté healthy..."
@@ -38,7 +38,7 @@ run-local:
 	done; \
 	echo "❌ Timeout esperando a RabbitMQ"; \
 	exit 1'
-	cd server && RABBITMQ_DEFAULT_USER=monke RABBITMQ_DEFAULT_PASS=joaco1 JOINER_ID=1 go run joiner/*.go
+	cd server && RABBITMQ_DEFAULT_USER=monke RABBITMQ_DEFAULT_PASS=joaco1 JOINER_SHARDS=2 QUERY_NUM=3 go run final-reducer/*.go
 
 run-local-no-kill-rabbit:
-	cd server && RABBITMQ_DEFAULT_USER=monke RABBITMQ_DEFAULT_PASS=joaco1 JOINER_ID=1 go run joiner/*.go
+	cd server && RABBITMQ_DEFAULT_USER=monke RABBITMQ_DEFAULT_PASS=joaco1 JOINER_SHARDS=2 QUERY_NUM=3 go run final-reducer/*.go

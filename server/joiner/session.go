@@ -44,12 +44,12 @@ func (j *JoinerSession) FilterMoviesMsg(id int) bool {
 	return j.Filters.MovieFilter.Accept(id)
 }
 
-func (j *JoinerSession) FilterReviewsMsg(review int) bool {
-	return j.Filters.ReviewsFilter.Accept(review)
+func (j *JoinerSession) FilterReviewsMsg(id int) bool {
+	return j.Filters.ReviewsFilter.Accept(id)
 
 }
-func (j *JoinerSession) FilterCreditsMsg(movie int) bool {
-	return j.Filters.ReviewsFilter.Accept(movie)
+func (j *JoinerSession) FilterCreditsMsg(id int) bool {
+	return j.Filters.CreditsFilter.Accept(id)
 }
 
 func (s *JoinerSession) UpdateMoviesWeights(header common.Header) {

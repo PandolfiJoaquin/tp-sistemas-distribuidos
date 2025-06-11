@@ -9,11 +9,16 @@ import (
 
 const headerSep = ","
 
+type BatchID struct {
+	ID       int  `json:"id"`
+	JoinerID int `json:"joiner_id"`
+}
+
 type Header struct {
-	Weight      uint32 `json:"weight"`
-	TotalWeight int32  `json:"total_weight"` //-1 if its uknown for the moment
-	ClientID    string `json:"client_id"`
-	MessageID   int    `json:"message_id"`
+	Weight      uint32  `json:"weight"`
+	TotalWeight int32   `json:"total_weight"` //-1 if its uknown for the moment
+	ClientID    string  `json:"client_id"`
+	MessageID   BatchID `json:"message_id"`
 }
 
 type Batch[T any] struct {
@@ -27,10 +32,6 @@ type LoggableBatch[T Stringer] struct {
 }
 
 func (b LoggableBatch[T]) ToString() string {
-	// serializedData := Map(b.Data, func(m T) string {
-	// 	return m.ToString()
-	// })
-	// return strings.Join(serializedData, "¬.¬")
 	json, err := json.Marshal(b)
 	if err != nil {
 		return ""
@@ -63,8 +64,7 @@ func (h *Header) GetClientID() string {
 }
 
 func (h *Header) ToString() string {
-
-	return h.ClientID + headerSep + strconv.Itoa(int(h.Weight)) + headerSep + string(h.TotalWeight)
+	return h.ClientID + headerSep + strconv.Itoa(int(h.Weight)) + headerSep + strconv.Itoa(int(h.TotalWeight))
 }
 
 func HeaderFromString(args string) (Header, error) {

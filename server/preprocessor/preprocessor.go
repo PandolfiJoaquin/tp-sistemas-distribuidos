@@ -83,7 +83,7 @@ func (p *Preprocessor) middlewareSetup() error {
 		}
 	}
 
-	moviesChans := make([]chan<- []byte, 0, 4) // optional capacity hint
+	moviesChans := make([]chan<- []byte, 0, 4)
 	queues := []string{
 		filterMoviesQ1,
 		filterMoviesQ2,
@@ -163,7 +163,7 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 
 		var payload any
 		if mb.IsEof() {
-			payload = makeEOFBatch[common.Movie](mb.Header.TotalWeight, msg.ClientId)
+			payload = makeEOFBatch[common.Movie](mb.Header.TotalWeight, msg.ClientId, mb.Header.BatchID)
 		} else {
 			payload = preprocessMovies(mb, msg.ClientId)
 		}
@@ -219,23 +219,31 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 	return nil
 }
 
-func makeEOFBatch[T any](totalWeight int32, id string) common.Batch[T] {
+func makeEOFBatch[T any](totalWeight int32, clientID string, batchID int) common.Batch[T] {
 	return common.Batch[T]{
 		Header: common.Header{
 			Weight:      0,
 			TotalWeight: totalWeight,
-			ClientID:    id,
+			ClientID:    clientID,
+			MessageID: common.BatchID{
+				ID:       batchID,
+				JoinerID: -1,
+			},
 		},
 		Data: []T{},
 	}
 }
 
-func makeBatchMsg[T any](weight uint32, data []T, totalWeight int32, clientID string) common.Batch[T] {
+func makeBatchMsg[T any](weight uint32, data []T, totalWeight int32, clientID string, batchID int) common.Batch[T] {
 	return common.Batch[T]{
 		Header: common.Header{
 			Weight:      weight,
 			TotalWeight: totalWeight,
 			ClientID:    clientID,
+			MessageID: common.BatchID{
+				ID:       batchID,
+				JoinerID: -1,
+			},
 		},
 		Data: data,
 	}

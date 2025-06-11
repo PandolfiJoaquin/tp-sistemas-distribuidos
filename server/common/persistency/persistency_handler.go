@@ -223,6 +223,9 @@ func (ph *PersistencyHandler[T]) SaveCheckpoint(data []byte) error {
 }
 
 func (ph *PersistencyHandler[T]) Commit(transaction Transaction) error {
+	if len(transaction.Entries) == 0 {
+		return nil
+	}
 	var lines string
 	for _, entry := range transaction.Entries {
 		line := fmt.Sprintf("%s%s%s\n", entry.Op, sep, entry.Args)

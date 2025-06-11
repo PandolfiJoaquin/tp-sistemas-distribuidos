@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"os/signal"
 	"sort"
+	"strconv"
+	"strings"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
 	"tp-sistemas-distribuidos/server/common/persistency"
@@ -14,8 +16,10 @@ import (
 	pkg "pkg/models"
 )
 
-const rabbitHost = "rabbitmq"
+// const rabbitHost = "rabbitmq"
+const rabbitHost = "127.0.0.1"
 const maxTransactionsOnLog = 500
+const separator = ";"
 
 type queuesNames struct {
 	previousQueue string
@@ -30,11 +34,12 @@ var queriesQueues = map[int]queuesNames{
 }
 
 const ( //TODO: Optimize encoding
-	AggCountriesBudgetOp      = "a"
-	AggMovieRatingsOp         = "b"
-	AggActorMoviesOp          = "c"
-	AggSentimentProfitRatioOP = "d"
-	UpdateWeightsOp           = "e"
+	AggCountriesBudgetOp      = "AGG_COUNTRIES_BUDGET"
+	AggMovieRatingsOp         = "AGG_MOVIE_RATINGS"
+	AggActorMoviesOp          = "AGG_ACTOR_MOVIES"
+	AggSentimentProfitRatioOP = "AGG_SENTIMENT_PROFIT_RATIO"
+	UpdateWeightsOp           = "UPDATE_WEIGHTS"
+	FilterDuplicatesOp        = "FILTER_DUPLICATES"
 )
 
 type FinalReducer struct {
@@ -42,7 +47,7 @@ type FinalReducer struct {
 	connection         connection
 	queryNum           int
 	joinerShards       int
-	Sessions           map[string]*ClientSession `json:"Sessions"`
+	Sessions           map[string]*ClientSession `json:"sessions"`
 	persistencyHandler *persistency.PersistencyHandler[FinalReducer]
 	transactionsOnLog  int
 }
@@ -77,6 +82,31 @@ func (r FinalReducer) ApplyFunc(entry persistency.TransactionEntry) (FinalReduce
 		}
 		r.aggSentimentProfitRatio(batch)
 
+	case UpdateWeightsOp:
+		header, err := common.HeaderFromString(entry.Args)
+		if err != nil {
+			return FinalReducer{}, fmt.Errorf("error getting header from string: %w", err)
+		}
+		session := r.getSession(header.ClientID, r.queryNum)
+		session.AddCurrentWeight(header.Weight)
+		if header.IsEof() {
+			slog.Info("setting eof weight", slog.String("client id", session.SessionId), slog.Any("eof weight", header.TotalWeight))
+			session.SetEofWeight(header.TotalWeight)
+		}
+		return r, nil
+
+	case FilterDuplicatesOp:
+		args := strings.Split(entry.Args, separator)
+		clientID := args[0]
+		messageID, err := strconv.Atoi(args[1])
+		if err != nil {
+			return FinalReducer{}, fmt.Errorf("error converting message id to int: %w", err)
+		}
+		shardID, err := strconv.Atoi(args[2])
+		if err != nil {
+			return FinalReducer{}, fmt.Errorf("error converting message shardId to int: %w", err)
+		}
+		r.getSession(clientID, r.queryNum).FilterMsg(messageID, shardID)
 	default:
 		return FinalReducer{}, fmt.Errorf("unknown operation: %s", entry.Op)
 	}
@@ -89,7 +119,6 @@ type connection struct {
 }
 
 func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards int) (*FinalReducer, error) {
-
 	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
@@ -119,6 +148,13 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 			if err = json.Unmarshal(data, &finalReducer); err != nil {
 				return FinalReducer{}, fmt.Errorf("error unmarshalling persistency: %w", err)
 			}
+			// for _, session := range finalReducer.Sessions {
+			// 	data, ok := session.Data.(map[string]common.MovieAvgRating)
+			// 	if ok {
+			// 		slog.Info("session data is a map[string]common.MovieAvgRating", slog.String("client id", session.SessionId), slog.Any("data", data))
+			// 	}
+			// 	slog.Info("session data", slog.String("client id", session.SessionId), slog.Any("data", session.Data))
+			// }
 		}
 		return finalReducer, nil
 	}
@@ -202,19 +238,27 @@ func startReceiving[T common.Stringer](
 				continue
 			}
 
-			transaction := processBatch(batch)
+			session := freddyFazbear.getSession(batch.GetClientID(), freddyFazbear.queryNum)
+			if !session.FilterMsg(batch.MessageID.ID, batch.MessageID.JoinerID) {
+				if err := msg.Ack(); err != nil {
+					slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				}
+				continue
+			}
 
-			clientID := batch.GetClientID()
-			sessions[clientID].AddCurrentWeight(batch.Header.Weight)
+			transaction := processBatch(batch)
+			transaction.Do(FilterDuplicatesOp, batch.ClientID+separator+strconv.Itoa(batch.MessageID.ID)+separator+strconv.Itoa(batch.MessageID.JoinerID))
+
+			session.AddCurrentWeight(batch.Header.Weight)
 			if batch.IsEof() {
-				slog.Info("setting eof weight", slog.String("client id", clientID), slog.Any("eof weight", batch.Header.TotalWeight))
-				sessions[clientID].SetEofWeight(batch.Header.TotalWeight)
+				slog.Info("setting eof weight", slog.String("client id", session.SessionId), slog.Any("eof weight", batch.Header.TotalWeight))
+				session.SetEofWeight(batch.Header.TotalWeight)
 			}
 			transaction.Do(UpdateWeightsOp, batch.Header.ToString())
 
-			if sessions[clientID].IsFinished() {
-				slog.Info("finishing and sending batch", slog.String("client id", clientID), slog.String("message weight", fmt.Sprintf("%d", batch.Header.Weight)))
-				finishAndSendBatch(clientID)
+			if session.IsFinished() {
+				slog.Info("finishing and sending batch", slog.String("client id", session.SessionId), slog.String("message weight", fmt.Sprintf("%d", batch.Header.Weight)))
+				finishAndSendBatch(session.SessionId)
 			}
 
 			freddyFazbear.save(transaction)
@@ -225,6 +269,32 @@ func startReceiving[T common.Stringer](
 		}
 	}
 
+}
+
+func (r *FinalReducer) getSession(clientID string, queryNum int) *ClientSession {
+	slog.Info("getting session", slog.String("client id", clientID), slog.Int("query num", queryNum))
+	if _, ok := r.Sessions[clientID]; ok {
+		return r.Sessions[clientID]
+	}
+	slog.Info("session not found, creating new one", slog.String("client id", clientID), slog.Int("query num", queryNum))
+	switch queryNum {
+	case 2:
+		r.Sessions[clientID] = NewClientSession(clientID, 1)
+		r.Sessions[clientID].SetData(make(map[pkg.Country]uint64))
+	case 3:
+		r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
+		r.Sessions[clientID].SetData(make(map[string]common.MovieAvgRating))
+	case 4:
+		r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
+		r.Sessions[clientID].SetData(make(map[string]common.ActorMoviesAmount))
+	case 5:
+		r.Sessions[clientID] = NewClientSession(clientID, 1)
+		r.Sessions[clientID].SetData(common.SentimentProfitRatioAccumulator{})
+	default:
+		slog.Error("query number not found", slog.Int("query number", r.queryNum))
+		return nil
+	}
+	return r.Sessions[clientID]
 }
 
 func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
@@ -455,13 +525,8 @@ func (r *FinalReducer) saveCheckpoint() error {
 func (r *FinalReducer) aggCountriesBudget(batch common.LoggableBatch[common.CountryBudget]) persistency.Transaction {
 	transaction := persistency.NewTransaction()
 
-	clientID := batch.Header.GetClientID()
-	if _, ok := r.Sessions[clientID]; !ok {
-		r.Sessions[clientID] = NewClientSession(clientID, 1)
-		r.Sessions[clientID].SetData(make(map[pkg.Country]uint64))
-	}
-
-	countries := r.Sessions[clientID].GetData().(map[pkg.Country]uint64)
+	session := r.getSession(batch.Header.GetClientID(), r.queryNum)
+	countries := session.GetData().(map[pkg.Country]uint64)
 
 	for _, countryBudget := range batch.Data {
 		countries[countryBudget.Country] += countryBudget.Budget
@@ -471,15 +536,10 @@ func (r *FinalReducer) aggCountriesBudget(batch common.LoggableBatch[common.Coun
 }
 
 func (r *FinalReducer) aggMovieRatings(batch common.LoggableBatch[common.MovieAvgRating]) persistency.Transaction {
-
 	transaction := persistency.NewTransaction()
-	clientID := batch.Header.GetClientID()
-	if _, ok := r.Sessions[clientID]; !ok {
-		r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
-		r.Sessions[clientID].SetData(make(map[string]common.MovieAvgRating))
-	}
 
-	movies := r.Sessions[clientID].GetData().(map[string]common.MovieAvgRating)
+	session := r.getSession(batch.Header.GetClientID(), r.queryNum)
+	movies := session.GetData().(map[string]common.MovieAvgRating)
 
 	for _, movieRating := range batch.Data {
 		if currentRating, ok := movies[movieRating.MovieID]; !ok {
@@ -496,13 +556,9 @@ func (r *FinalReducer) aggMovieRatings(batch common.LoggableBatch[common.MovieAv
 
 func (r *FinalReducer) aggActorMovies(batch common.LoggableBatch[common.ActorMoviesAmount]) persistency.Transaction {
 	transaction := persistency.NewTransaction()
-	clientID := batch.Header.GetClientID()
-	if _, ok := r.Sessions[clientID]; !ok {
-		r.Sessions[clientID] = NewClientSession(clientID, uint32(r.joinerShards))
-		r.Sessions[clientID].SetData(make(map[string]common.ActorMoviesAmount))
-	}
 
-	actorMovies := r.Sessions[clientID].GetData().(map[string]common.ActorMoviesAmount)
+	session := r.getSession(batch.Header.GetClientID(), r.queryNum)
+	actorMovies := session.GetData().(map[string]common.ActorMoviesAmount)
 
 	for _, actorMoviesAmount := range batch.Data {
 		if currentMoviesAmount, ok := actorMovies[actorMoviesAmount.ActorID]; !ok {
@@ -518,13 +574,9 @@ func (r *FinalReducer) aggActorMovies(batch common.LoggableBatch[common.ActorMov
 
 func (r *FinalReducer) aggSentimentProfitRatio(batch common.LoggableBatch[common.SentimentProfitRatioAccumulator]) persistency.Transaction {
 	transaction := persistency.NewTransaction()
-	clientID := batch.Header.GetClientID()
-	if _, ok := r.Sessions[clientID]; !ok {
-		r.Sessions[clientID] = NewClientSession(clientID, 1)
-		r.Sessions[clientID].SetData(common.SentimentProfitRatioAccumulator{})
-	}
 
-	sentimentProfitRatios := r.Sessions[clientID].GetData().(common.SentimentProfitRatioAccumulator)
+	session := r.getSession(batch.Header.GetClientID(), r.queryNum)
+	sentimentProfitRatios := session.GetData().(common.SentimentProfitRatioAccumulator)
 
 	for _, sentimentProfitRatio := range batch.Data {
 		slog.Info("adding sentiment profit ratio", slog.Any("sentiment profit ratio", sentimentProfitRatio))
@@ -538,7 +590,7 @@ func (r *FinalReducer) aggSentimentProfitRatio(batch common.LoggableBatch[common
 		}
 	}
 
-	r.Sessions[clientID].SetData(sentimentProfitRatios)
+	session.SetData(sentimentProfitRatios)
 	transaction.Do(AggSentimentProfitRatioOP, batch.ToString())
 	return transaction
 }
