@@ -5,6 +5,7 @@ run:
 		echo "Error: config-script.json not found"; \
 		exit 1; \
 	fi
+	./generate-compose.sh config-script.json
 	docker compose down -v
 	sudo rm -rf data
 	docker compose build

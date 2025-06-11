@@ -16,9 +16,10 @@ import (
 	pkg "pkg/models"
 )
 
-// const rabbitHost = "rabbitmq"
-const rabbitHost = "127.0.0.1"
-const maxTransactionsOnLog = 5
+const rabbitHost = "rabbitmq"
+
+// const rabbitHost = "127.0.0.1"
+const maxTransactionsOnLog = 500
 const separator = ";"
 
 type queuesNames struct {
@@ -241,6 +242,7 @@ func startReceiving[T common.Stringer](
 
 			session := freddyFazbear.getSession(batch.GetClientID(), freddyFazbear.queryNum)
 			if !session.FilterMsg(batch.MessageID.ID, batch.MessageID.JoinerID) {
+				slog.Info("Filtering Msg", slog.Any("msg", batch))
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				}
@@ -273,7 +275,6 @@ func startReceiving[T common.Stringer](
 }
 
 func (r *FinalReducer) getSession(clientID string, queryNum int) *ClientSession {
-	slog.Info("getting session", slog.String("client id", clientID), slog.Int("query num", queryNum))
 	if _, ok := r.Sessions[clientID]; ok {
 		return r.Sessions[clientID]
 	}
@@ -389,7 +390,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
 	delete(r.Sessions, clientId)
 }
 
-func calculateTop5Countries(countries map[pkg.Country]uint64) common.Top5Countries {
+func calculateTop5Countries(countries map[string]uint64) common.Top5Countries {
 	if len(countries) == 0 {
 		slog.Warn("countries count is 0, returning empty top 5 countries")
 		return common.Top5Countries{}
@@ -397,7 +398,7 @@ func calculateTop5Countries(countries map[pkg.Country]uint64) common.Top5Countri
 
 	counts := make([]common.CountryBudget, 0, len(countries))
 	for country, budget := range countries {
-		counts = append(counts, common.CountryBudget{Country: country, Budget: budget})
+		counts = append(counts, common.CountryBudget{Country: pkg.CountryFromString(country), Budget: budget})
 	}
 
 	sort.Slice(counts, func(i, j int) bool {
@@ -526,7 +527,7 @@ func (r *FinalReducer) aggCountriesBudget(batch common.LoggableBatch[common.Coun
 	countries := session.Q2Data
 
 	for _, countryBudget := range batch.Data {
-		countries[countryBudget.Country] += countryBudget.Budget
+		countries[countryBudget.Country.ToString()] += countryBudget.Budget
 	}
 	transaction.Do(AggCountriesBudgetOp, batch.ToString())
 	return transaction

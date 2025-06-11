@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -96,11 +97,25 @@ func (c *Country) UnmarshalJSON(data []byte) error {
 
 // MarshalText implementa encoding.TextMarshaler
 func (c Country) MarshalText() ([]byte, error) {
-	return []byte(c.Code), nil
+	return []byte(c.Code + "," + c.Name), nil
 }
 
 // UnmarshalText implementa encoding.TextUnmarshaler
 func (c *Country) UnmarshalText(text []byte) error {
-	c.Code = string(text)
+	parts := strings.Split(string(text), ",")
+	c.Code = parts[0]
+	c.Name = parts[1]
 	return nil
+}
+
+func (c Country) ToString() string {
+	return c.Code + "," + c.Name
+}
+
+func CountryFromString(str string) Country {
+	parts := strings.Split(str, ",")
+	return Country{
+		Code: parts[0],
+		Name: parts[1],
+	}
 }
