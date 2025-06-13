@@ -106,7 +106,7 @@ def compare_results(actual_file_path, expected_results):
     for query_num, actual in actual_results.items():
         # Skip if we don't have expected results for this query
         if query_num not in expected_results:
-            println("ERROR")
+            print("ERROR")
             
         expected = expected_results[query_num]
         
