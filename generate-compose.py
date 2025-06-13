@@ -58,10 +58,10 @@ RABBITMQ_SERVICE = """
     volumes:
       - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
-      interval: 2s
-      timeout: 5s
-      retries: 3
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 8s
+      retries: 5
 """
 
 def get_node_env(node_type, node_id=None, joiners=None):
