@@ -9,6 +9,8 @@ import (
 	"tp-sistemas-distribuidos/client/utils"
 )
 
+const msToSleep = 20.5
+
 type Sender[T any] struct {
 	conn      *net.Conn
 	dataType  string // for logging
@@ -55,7 +57,7 @@ func readAndSendData[T any](reader utils.BatchReader[T], conn net.Conn, batchID 
 	if err != nil {
 		return fmt.Errorf("error sending data: %w", err)
 	}
-	time.Sleep(time.Duration(2.5 * float64(time.Millisecond)))
+	time.Sleep(time.Duration(msToSleep * float64(time.Millisecond)))
 	return nil
 }
 

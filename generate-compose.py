@@ -60,8 +60,8 @@ RABBITMQ_SERVICE = """
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
-      timeout: 8s
-      retries: 5
+      timeout: 5s
+      retries: 15
 """
 
 def get_node_env(node_type, node_id=None, joiners=None):

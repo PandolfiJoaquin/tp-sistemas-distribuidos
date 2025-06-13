@@ -102,10 +102,11 @@ def compare_results(actual_file_path, expected_results):
     
     # Compare results
     comparison = {}
+
     for query_num, actual in actual_results.items():
         # Skip if we don't have expected results for this query
         if query_num not in expected_results:
-            continue
+            println("ERROR")
             
         expected = expected_results[query_num]
         
@@ -305,8 +306,16 @@ def main():
         if not print_comparison(comparison, result_file, cfg):
             all_passed = False
 
+
         processed_files.add(result_file)
 
+    if len(comparison) != 5:
+        print("\nMissing results! ❌")
+        missing  = {1,2,3,4,5}  - set([query_num for query_num, _ in comparison.items()])
+        print(missing)
+
+
+        sys.exit(1)
     if all_passed:
         print("\nAll comparisons passed! ✅")
         sys.exit(0)
