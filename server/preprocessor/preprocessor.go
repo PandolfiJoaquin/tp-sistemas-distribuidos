@@ -292,6 +292,7 @@ func sendBatchMap[T any](batch common.Batch[T], shards int, chans map[int]chan<-
 			return fmt.Errorf("missing chan for shard %d", id)
 		}
 		ch <- data
+		ch <- data
 	}
 	return nil
 }

@@ -108,11 +108,12 @@ func getLogPath() (string, error) {
 	if len(files) == 0 {
 		return "", errNoLogFile
 	}
+	files = common.Filter(files, func(file string) bool { return !strings.Contains(file, "tmp") })
 
 	if len(files) > 1 {
 		//TODO: manejar logs multiples
 		slog.Error("Multiple log files found, using the first one", slog.Any("files", files))
-		panic("Multiple log files found") //TODO: sacar
+		panic("Multiple log files found")
 	}
 
 	file := files[0]
