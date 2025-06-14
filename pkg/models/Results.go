@@ -14,6 +14,7 @@ type TotalQueryResults struct {
 	QueryId int           `json:"query_id"`
 	Items   []QueryResult `json:"items"`
 	Last    bool          `json:"last"`
+	Header  Header        `json:"header"`
 }
 
 // Struct to hold the raw query results for unmarshalling and sending

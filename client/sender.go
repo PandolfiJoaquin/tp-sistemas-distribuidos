@@ -9,7 +9,9 @@ import (
 	"tp-sistemas-distribuidos/client/utils"
 )
 
-const msToSleep = 20.5
+// Monke: 2.5
+// Joaco: 20.5
+const msToSleep = 2.5
 
 type Sender[T any] struct {
 	conn      *net.Conn

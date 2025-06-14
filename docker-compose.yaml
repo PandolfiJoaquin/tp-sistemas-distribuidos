@@ -41,7 +41,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -56,7 +56,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -71,7 +71,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -86,7 +86,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -101,7 +101,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -229,7 +229,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=2
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -247,7 +247,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=3
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -265,7 +265,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=4
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -283,7 +283,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - QUERY_NUM=5
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -341,6 +341,55 @@ services:
         restart: true
     volumes:
       - ./data/joiner/id-3/:/data/
+
+  joiner-4:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-4
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_ID=4
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-4/:/data/
+
+  joiner-5:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-5
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - JOINER_ID=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-5/:/data/
+
+  healer-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: healer
+    container_name: healer-1
+    environment:
+      - HEALER_ID=1
+      - DELAY=10
+    depends_on:
+      - gateway
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yaml:/docker-compose.yaml
 
   client1:
     container_name: client1

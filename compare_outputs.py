@@ -318,8 +318,8 @@ def main():
             print("\nMissing results! ❌")
             missing = {1, 2, 3, 4, 5} - set([query_num for query_num, _ in comparison.items()])
             print(missing)
+            sys.exit(1)
 
-        sys.exit(1)
     if all_passed:
         print("\nAll comparisons passed! ✅")
         sys.exit(0)
