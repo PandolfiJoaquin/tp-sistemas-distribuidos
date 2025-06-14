@@ -11,7 +11,7 @@ import (
 
 // Monke: 2.5
 // Joaco: 20.5
-const msToSleep = 2.5
+const msToSleep = 2.0
 
 type Sender[T any] struct {
 	conn      *net.Conn

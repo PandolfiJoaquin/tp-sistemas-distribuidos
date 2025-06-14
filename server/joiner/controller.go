@@ -357,7 +357,7 @@ func (j *JoinerController) run(ctx context.Context) {
 			transaction.Do(SaveMoviesOp, batch.ToString())
 
 			if session.AllMoviesReceived() {
-				slog.Info("Received all movies. starting to pop reviews and credits")
+				slog.Info("Received all movies", slog.String("client id", clientId))
 				j.joinStoredBatches(clientId) // Joins all reviews stored
 				transaction.Do(JoinStoredBatchesOp, clientId)
 			}
@@ -430,9 +430,8 @@ func (j *JoinerController) cleanUpSessions() {
 // if the session is done, delete it
 func (j *JoinerController) cleanUpSession(id string) {
 	if j.Sessions[id].IsDone() {
-		slog.Info("Done for client", slog.String("clientId", id))
+		slog.Info("Done for client, deleting session", slog.String("clientId", id))
 		delete(j.Sessions, id)
-		slog.Info("Successfully deleted session", slog.String("clientId", id))
 	}
 }
 

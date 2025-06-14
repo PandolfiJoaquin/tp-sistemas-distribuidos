@@ -207,6 +207,10 @@ func (g *Gateway) handleResult1(msg common.Message) (*models.ResultWithId, error
 		return nil, fmt.Errorf("error consuming results: %w", err)
 	}
 
+	if len(batch.Data) == 0 && !batch.IsEof() {
+		return nil, nil
+	}
+
 	results := MovieToQResult(batch)
 	resultsWithId := models.ResultWithId{
 		Id:      batch.Header.ClientID,

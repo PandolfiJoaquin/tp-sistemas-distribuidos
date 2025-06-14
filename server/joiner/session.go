@@ -54,7 +54,7 @@ func (j *JoinerSession) FilterCreditsMsg(id int) bool {
 
 func (s *JoinerSession) UpdateMoviesWeights(header common.Header) {
 	if header.IsEof() {
-		slog.Info("movies Eof received", slog.Any("header", header))
+		// slog.Info("movies Eof received", slog.Any("header", header))
 		s.MoviesToExpect = header.TotalWeight
 		return
 	}
@@ -78,7 +78,7 @@ func (s *JoinerSession) AllMoviesReceived() bool {
 
 func (s *JoinerSession) UpdateCreditsWeights(header common.Header) {
 	if header.IsEof() {
-		slog.Info("credits Eof received", slog.Any("header", header), slog.Any("creditsReceived", s.CreditsReceived), slog.Any("reviewsReceived", s.ReviewsReceived))
+		// slog.Info("credits Eof received", slog.Any("header", header), slog.Any("creditsReceived", s.CreditsReceived), slog.Any("reviewsReceived", s.ReviewsReceived))
 		s.CreditsToExpect = header.TotalWeight
 	} else {
 		s.CreditsReceived += header.Weight
@@ -87,7 +87,7 @@ func (s *JoinerSession) UpdateCreditsWeights(header common.Header) {
 
 func (s *JoinerSession) UpdateReviewsWeights(header common.Header) {
 	if header.IsEof() {
-		slog.Info("reviews Eof received", slog.Any("header", header), slog.Any("creditsReceived", s.CreditsReceived), slog.Any("reviewsReceived", s.ReviewsReceived))
+		// slog.Info("reviews Eof received", slog.Any("header", header), slog.Any("creditsReceived", s.CreditsReceived), slog.Any("reviewsReceived", s.ReviewsReceived))
 		s.ReviewsToExpect = header.TotalWeight
 	} else {
 		s.ReviewsReceived += header.Weight

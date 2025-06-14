@@ -450,3 +450,18 @@ services:
     volumes:
       - ./archive/:/home/app/archive/
       - ./client-results/:/home/app/results/
+
+  client5:
+    container_name: client5
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=5
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/

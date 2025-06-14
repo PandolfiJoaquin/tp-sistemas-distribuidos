@@ -91,7 +91,7 @@ func (r FinalReducer) ApplyFunc(entry persistency.TransactionEntry) (FinalReduce
 		session := r.getSession(header.ClientID, r.queryNum)
 		session.AddCurrentWeight(header.Weight)
 		if header.IsEof() {
-			slog.Info("setting eof weight", slog.String("client id", session.SessionId), slog.Any("eof weight", header.TotalWeight))
+			// slog.Info("setting eof weight", slog.String("client id", session.SessionId), slog.Any("eof weight", header.TotalWeight))
 			session.SetEofWeight(header.TotalWeight)
 		}
 		return r, nil
@@ -149,14 +149,6 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 			if err = json.Unmarshal(data, &finalReducer); err != nil {
 				return FinalReducer{}, fmt.Errorf("error unmarshalling persistency: %w", err)
 			}
-
-			// for _, session := range finalReducer.Sessions {
-			// 	data, ok := session.Data.(map[string]common.MovieAvgRating)
-			// 	if ok {
-			// 		slog.Info("session data is a map[string]common.MovieAvgRating", slog.String("client id", session.SessionId), slog.Any("data", data))
-			// 	}
-			// 	slog.Info("session data", slog.String("client id", session.SessionId), slog.Any("data", session.Data))
-			// }
 		}
 		return finalReducer, nil
 	}
@@ -254,13 +246,11 @@ func startReceiving[T common.Stringer](
 
 			session.AddCurrentWeight(batch.Header.Weight)
 			if batch.IsEof() {
-				slog.Info("setting eof weight", slog.String("client id", session.SessionId), slog.Any("eof weight", batch.Header.TotalWeight))
 				session.SetEofWeight(batch.Header.TotalWeight)
 			}
 			transaction.Do(UpdateWeightsOp, batch.Header.ToString())
 
 			if session.IsFinished() {
-				slog.Info("finishing and sending batch", slog.String("client id", session.SessionId), slog.String("message weight", fmt.Sprintf("%d", batch.Header.Weight)))
 				finishAndSendBatch(session.SessionId)
 			}
 
@@ -278,7 +268,6 @@ func (r *FinalReducer) getSession(clientID string, queryNum int) *ClientSession 
 	if _, ok := r.Sessions[clientID]; ok {
 		return r.Sessions[clientID]
 	}
-	slog.Info("session not found, creating new one", slog.String("client id", clientID), slog.Int("query num", queryNum))
 	switch queryNum {
 	case 2:
 		r.Sessions[clientID] = NewClientSession(clientID, 1)
@@ -326,7 +315,6 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
-	//TODO: add Sessions here instead of in the struct and use generics
 	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery5, r.aggSentimentProfitRatio, r)
 
 	if err != nil {
@@ -344,7 +332,6 @@ func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
 	r.connection.ChanToSend <- response
-	slog.Info("sent query2 final response")
 	delete(r.Sessions, clientId)
 }
 
@@ -358,7 +345,6 @@ func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
 	r.connection.ChanToSend <- response
-	slog.Info("sent query3 final response", slog.String("best movie id", bestAndWorstMovies.BestMovie.MovieID), slog.String("worst movie id", bestAndWorstMovies.WorstMovie.MovieID))
 	delete(r.Sessions, clientId)
 }
 
@@ -372,7 +358,6 @@ func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
 	r.connection.ChanToSend <- response
-	slog.Info("sent query4 final response", slog.Any("top10 actors", top10Actors))
 	delete(r.Sessions, clientId)
 }
 
@@ -386,7 +371,6 @@ func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
 	r.connection.ChanToSend <- response
-	slog.Info("sent query5 final response", slog.Float64("positive avg profit ratio", sentimentProfitRatioAverage.PositiveAvgProfitRatio), slog.Float64("negative avg profit ratio", sentimentProfitRatioAverage.NegativeAvgProfitRatio))
 	delete(r.Sessions, clientId)
 }
 
@@ -577,15 +561,10 @@ func (r *FinalReducer) aggSentimentProfitRatio(batch common.LoggableBatch[common
 	sentimentProfitRatios := session.Q5Data
 
 	for _, sentimentProfitRatio := range batch.Data {
-		slog.Info("adding sentiment profit ratio", slog.Any("sentiment profit ratio", sentimentProfitRatio))
 		sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum
 		sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount += sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount
 		sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioSum
 		sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount += sentimentProfitRatio.NegativeProfitRatio.ProfitRatioCount
-
-		if sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum > 10000 {
-			slog.Debug("ALOT positive sentiment profit ratio", slog.Any("count", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioCount), slog.Any("sum", sentimentProfitRatio.PositiveProfitRatio.ProfitRatioSum))
-		}
 	}
 
 	session.Q5Data = sentimentProfitRatios

@@ -5,14 +5,6 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-func headerToModelHeader(header common.Header) models.Header {
-	return models.Header{
-		Weight:      header.Weight,
-		TotalWeight: header.TotalWeight,
-		BatchID:     header.MessageID.ID,
-	}
-}
-
 func MovieToQResult(batch common.Batch[common.Movie]) models.TotalQueryResults {
 	q1Movies := make([]models.QueryResult, 0)
 	for _, movie := range batch.Data {
@@ -25,7 +17,6 @@ func MovieToQResult(batch common.Batch[common.Movie]) models.TotalQueryResults {
 		QueryId: 1,
 		Items:   q1Movies,
 		Last:    batch.IsEof(),
-		Header:  headerToModelHeader(batch.Header),
 	}
 }
 

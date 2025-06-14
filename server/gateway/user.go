@@ -15,36 +15,27 @@ import (
 	"tp-sistemas-distribuidos/server/common"
 )
 
-type q1State struct {
-	CurrentWeight   uint32
-	EofWeight       int32
-	DuplicateFilter *common.DuplicateFilter
-}
-
 type Client struct {
-	id              string
-	conn            net.Conn
-	dead            bool
-	recvChannel     chan *models.TotalQueryResults
-	toPreprocess    *chan<- []byte
-	queriesReceived map[int]bool
-	q1State         *q1State
-	ctx             context.Context
-	cancel          context.CancelFunc
+	id           string
+	conn         net.Conn
+	dead         bool
+	recvChannel  chan *models.TotalQueryResults
+	toPreprocess *chan<- []byte
+	done         uint8
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 func NewClient(conn net.Conn, toPreprocess *chan<- []byte) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
-		id:              uuid.NewString(),
-		conn:            conn,
-		dead:            false,
-		recvChannel:     make(chan *models.TotalQueryResults),
-		toPreprocess:    toPreprocess,
-		queriesReceived: make(map[int]bool),
-		q1State:         &q1State{DuplicateFilter: common.NewDuplicateFilter()},
-		ctx:             ctx,
-		cancel:          cancel,
+		id:           uuid.NewString(),
+		conn:         conn,
+		dead:         false,
+		recvChannel:  make(chan *models.TotalQueryResults),
+		toPreprocess: toPreprocess,
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 }
 
@@ -90,37 +81,17 @@ func (c *Client) sendHandler() {
 	}
 }
 
-func (c *Client) handleQ1(results *models.TotalQueryResults) {
-	if !c.q1State.DuplicateFilter.Accept(results.Header.BatchID) {
-		slog.Warn("duplicate query received WINDOW", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
-		return
-	}
-	c.q1State.CurrentWeight += results.Header.Weight
-	if results.Header.TotalWeight > 0 {
-		c.q1State.EofWeight = int32(results.Header.TotalWeight)
-	}
-	if c.q1State.EofWeight > 0 && c.q1State.CurrentWeight == uint32(c.q1State.EofWeight) { //TODO: va a romper si el peso del archivo es 0
-		c.queriesReceived[1] = true
-	}
-}
-
 func (c *Client) recvHandler() {
 	for {
-		if len(c.queriesReceived) == 5 {
+		if c.done == 5 {
 			slog.Info("client finished receiving all data", slog.String("id", c.id))
 			break
 		}
 		select {
 		case <-c.ctx.Done():
 		case results := <-c.recvChannel:
-			if _, ok := c.queriesReceived[results.QueryId]; ok {
-				slog.Warn("duplicate query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
-				continue
-			}
-			if results.QueryId == 1 {
-				c.handleQ1(results)
-			} else {
-				c.queriesReceived[results.QueryId] = true
+			if results.Last {
+				c.done++
 			}
 			err := communication.SendQueryResults(c.conn, *results)
 			if err != nil {
