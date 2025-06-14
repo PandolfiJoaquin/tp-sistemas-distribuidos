@@ -115,10 +115,10 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 			reduced, err := reduceMessage(msg, r.reduceQ2)
 			if err != nil {
 				slog.Error("error processing query2 message", slog.String("error", err.Error()))
-			} else {
-				if err := sendResponse(reduced, r.query2Connection.ChanToSend); err != nil {
-					slog.Error("error sending response", slog.String("error", err.Error()))
-				}
+				continue
+			}
+			if err := sendResponse(reduced, r.query2Connection.ChanToSend); err != nil {
+				slog.Error("error sending response", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query2 message", slog.String("error", err.Error()))
@@ -127,10 +127,10 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 			reduced, err := reduceMessage(msg, r.reduceQ3)
 			if err != nil {
 				slog.Error("error processing query3 message", slog.String("error", err.Error()))
-			} else {
-				if err := sendResponse(reduced, r.query3Connection.ChanToSend); err != nil {
-					slog.Error("error sending response", slog.String("error", err.Error()))
-				}
+				continue
+			}
+			if err := sendResponse(reduced, r.query3Connection.ChanToSend); err != nil {
+				slog.Error("error sending response", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query3 message", slog.String("error", err.Error()))
@@ -139,10 +139,10 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 			reduced, err := reduceMessage(msg, r.reduceQ4)
 			if err != nil {
 				slog.Error("error processing query4 message", slog.String("error", err.Error()))
-			} else {
-				if err := sendResponse(reduced, r.query4Connection.ChanToSend); err != nil {
-					slog.Error("error sending response", slog.String("error", err.Error()))
-				}
+				continue
+			}
+			if err := sendResponse(reduced, r.query4Connection.ChanToSend); err != nil {
+				slog.Error("error sending response", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query4 message", slog.String("error", err.Error()))
@@ -151,10 +151,10 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 			reduced, err := reduceMessage(msg, r.reduceQ5)
 			if err != nil {
 				slog.Error("error processing query5 message", slog.String("error", err.Error()))
-			} else {
-				if err := sendResponse(reduced, r.query5Connection.ChanToSend); err != nil {
-					slog.Error("error sending response", slog.String("error", err.Error()))
-				}
+				continue
+			}
+			if err := sendResponse(reduced, r.query5Connection.ChanToSend); err != nil {
+				slog.Error("error sending response", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query5 message", slog.String("error", err.Error()))
