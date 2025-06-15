@@ -41,11 +41,9 @@ run-local:
 	exit 1'
 	cd server && RABBITMQ_DEFAULT_USER=monke RABBITMQ_DEFAULT_PASS=joaco1 JOINER_SHARDS=2 QUERY_NUM=3 go run final-reducer/*.go
 
-run-local-no-kill-rabbit:
+run-local-no-reset:
 	cd server && RABBITMQ_DEFAULT_USER=monke RABBITMQ_DEFAULT_PASS=joaco1 JOINER_SHARDS=2 QUERY_NUM=3 go run final-reducer/*.go
 
 run-cadillac: run
 	./kill-containers.sh
 	
-run-cadillac-infinite: run
-	./kill-containers.sh

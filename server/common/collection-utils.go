@@ -19,6 +19,15 @@ func First[T any](slice []T, predicate func(T) bool) *T {
 	return nil
 }
 
+func Any[T any](slice []T, predicate func(T) bool) bool {
+	for _, item := range slice {
+		if predicate(item) {
+			return true
+		}
+	}
+	return false
+}
+
 func Map[T, U any](slice []T, mapper func(T) U) []U {
 	var result []U
 	for _, item := range slice {

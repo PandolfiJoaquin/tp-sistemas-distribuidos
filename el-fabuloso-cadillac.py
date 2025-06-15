@@ -7,18 +7,18 @@ import re
 
 # Define tu whitelist de nombres o IDs de contenedores
 WHITELIST = [
-    #"gateway",
-    "joiner-\d+$",
-    "reducer-\d+$",
-    # "final-reducer-q\d+$",
-    "preprocessor-\d+$",
-    "production-filter-\d+$",
-    "year-filter-\d+$",
-    "sentiment-analyzer-\d+$",
+    # "gateway",
+    # r"joiner-\d+$",
+    # r"reducer-\d+$",
+    r"final-reducer-q\d+$",
+    r"preprocessor-\d+$",
+    # r"production-filter-\d+$",
+    # r"year-filter-\d+$",
+    # r"sentiment-analyzer-\d+$",
 ]
 REGEXS = [re.compile(exp) for exp in WHITELIST]
 
-REGEX_CLIENT = re.compile("client-\d+$")
+REGEX_CLIENT = re.compile(r"client-\d+$")
 
 def is_whitelisted(name_or_id, regex_list):
     return any(pattern.match(name_or_id) for pattern in regex_list)

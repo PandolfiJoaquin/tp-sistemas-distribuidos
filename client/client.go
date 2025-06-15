@@ -197,8 +197,9 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
 				slog.Error("error receiving query results", slog.String("error", err.Error()))
 				return
 			}
-
-			if results.Last {
+			_, alreadyHasResult := queriesResults[results.QueryId]
+			isDuplicate := results.QueryId != 1 && alreadyHasResult
+			if results.Last && (!isDuplicate) {
 				queriesReceived = append(queriesReceived, true)
 			}
 
