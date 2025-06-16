@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"tp-sistemas-distribuidos/server/common"
 	"tp-sistemas-distribuidos/server/common/persistency"
 
@@ -35,12 +36,13 @@ var queriesQueues = map[int]queuesNames{
 }
 
 const ( //TODO: Optimize encoding
-	AggCountriesBudgetOp      = "AGG_COUNTRIES_BUDGET"
-	AggMovieRatingsOp         = "AGG_MOVIE_RATINGS"
-	AggActorMoviesOp          = "AGG_ACTOR_MOVIES"
-	AggSentimentProfitRatioOP = "AGG_SENTIMENT_PROFIT_RATIO"
-	UpdateWeightsOp           = "UPDATE_WEIGHTS"
-	FilterDuplicatesOp        = "FILTER_DUPLICATES"
+	AggCountriesBudgetOp        = "AGG_COUNTRIES_BUDGET"
+	AggMovieRatingsOp           = "AGG_MOVIE_RATINGS"
+	AggActorMoviesOp            = "AGG_ACTOR_MOVIES"
+	AggSentimentProfitRatioOP   = "AGG_SENTIMENT_PROFIT_RATIO"
+	UpdateWeightsOp             = "UPDATE_WEIGHTS"
+	FilterDuplicatesOp          = "FILTER_DUPLICATES"
+	DeleteClientOp              = "DELETE_CLIENT"
 )
 
 type FinalReducer struct {
@@ -51,6 +53,7 @@ type FinalReducer struct {
 	Sessions           map[string]*ClientSession `json:"sessions"`
 	persistencyHandler *persistency.PersistencyHandler[FinalReducer]
 	transactionsOnLog  int
+	BlacklistedClients map[string]int64 `json:"blacklisted_clients"`
 }
 
 func (r FinalReducer) ApplyFunc(entry persistency.TransactionEntry) (FinalReducer, error) {
@@ -91,7 +94,6 @@ func (r FinalReducer) ApplyFunc(entry persistency.TransactionEntry) (FinalReduce
 		session := r.getSession(header.ClientID, r.queryNum)
 		session.AddCurrentWeight(header.Weight)
 		if header.IsEof() {
-			// slog.Info("setting eof weight", slog.String("client id", session.SessionId), slog.Any("eof weight", header.TotalWeight))
 			session.SetEofWeight(header.TotalWeight)
 		}
 		return r, nil
@@ -108,6 +110,10 @@ func (r FinalReducer) ApplyFunc(entry persistency.TransactionEntry) (FinalReduce
 			return FinalReducer{}, fmt.Errorf("error converting message shardId to int: %w", err)
 		}
 		r.getSession(clientID, r.queryNum).FilterMsg(messageID, shardID)
+
+	case DeleteClientOp:
+		clientID := entry.Args
+		r.deleteClient(clientID)
 	default:
 		return FinalReducer{}, fmt.Errorf("unknown operation: %s", entry.Op)
 	}
@@ -142,6 +148,7 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 		Sessions:           make(map[string]*ClientSession),
 		persistencyHandler: persistencyHandler,
 		transactionsOnLog:  0,
+		BlacklistedClients: make(map[string]int64),
 	}
 
 	fromBytes := func(data []byte) (FinalReducer, error) {
@@ -212,7 +219,7 @@ func startReceiving[T common.Stringer](
 	ctx context.Context,
 	chanToRecv <-chan common.Message,
 	sessions map[string]*ClientSession,
-	finishAndSendBatch func(clientId string),
+	finishAndSendBatch func(clientId string) persistency.Transaction,
 	processBatch func(batch common.LoggableBatch[T]) persistency.Transaction,
 	freddyFazbear *FinalReducer,
 ) error {
@@ -221,6 +228,7 @@ func startReceiving[T common.Stringer](
 			finishAndSendBatch(clientID)
 		}
 	}
+	freddyFazbear.purgeBlacklist()
 	for {
 		select {
 		case <-ctx.Done():
@@ -229,6 +237,24 @@ func startReceiving[T common.Stringer](
 			var batch common.LoggableBatch[T]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+				continue
+			}
+
+			// if batch.IsFlush() {
+			// 	deletedClients := freddyFazbear.deleteClients()
+			// 	transaction := persistency.NewTransaction()
+			// 	for _, clientID := range deletedClients {
+			// 		transaction.Do(DeleteClientOp, clientID)
+			// 	}
+			// 	freddyFazbear.save(transaction)
+			// 	continue
+			// }
+
+			if freddyFazbear.isBlacklisted(batch.GetClientID()) {
+				slog.Info("Discarding message from blacklisted client", slog.String("clientID", batch.GetClientID()))
+				if err := msg.Ack(); err != nil {
+					slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				}
 				continue
 			}
 
@@ -252,6 +278,9 @@ func startReceiving[T common.Stringer](
 
 			if session.IsFinished() {
 				finishAndSendBatch(session.SessionId)
+				freddyFazbear.deleteClient(session.SessionId)
+				transaction.Do(DeleteClientOp, session.SessionId)
+				freddyFazbear.purgeBlacklist()
 			}
 
 			freddyFazbear.save(transaction)
@@ -322,7 +351,7 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 	}
 }
 
-func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
+func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) persistency.Transaction {
 	slog.Info("finishing and sending batch for query 2", slog.String("client id", clientId))
 	countries := r.Sessions[clientId].Q2Data
 	top5Countries := calculateTop5Countries(countries)
@@ -332,10 +361,12 @@ func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
 	r.connection.ChanToSend <- response
+	r.addToBlacklist(clientId)
 	delete(r.Sessions, clientId)
+	return persistency.NewTransaction()
 }
 
-func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
+func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) persistency.Transaction {
 	slog.Info("finishing and sending batch for query 3", slog.String("client id", clientId))
 	movies := r.Sessions[clientId].Q3Data
 	bestAndWorstMovies := calculateBestAndWorstMovie(movies)
@@ -345,10 +376,12 @@ func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
 	r.connection.ChanToSend <- response
+	r.addToBlacklist(clientId)
 	delete(r.Sessions, clientId)
+	return persistency.NewTransaction()
 }
 
-func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
+func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) persistency.Transaction {
 	slog.Info("finishing and sending batch for query 4", slog.String("client id", clientId))
 	actorMovies := r.Sessions[clientId].Q4Data
 	top10Actors := calculateTop10Actors(actorMovies)
@@ -358,10 +391,12 @@ func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
 	r.connection.ChanToSend <- response
+	r.addToBlacklist(clientId)
 	delete(r.Sessions, clientId)
+	return persistency.NewTransaction()
 }
 
-func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
+func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) persistency.Transaction {
 	slog.Info("finishing and sending batch for query 5", slog.String("client id", clientId))
 	sentimentProfitRatios := r.Sessions[clientId].Q5Data
 	sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
@@ -371,7 +406,9 @@ func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
 	r.connection.ChanToSend <- response
+	r.addToBlacklist(clientId)
 	delete(r.Sessions, clientId)
+	return persistency.NewTransaction()
 }
 
 func calculateTop5Countries(countries map[string]uint64) common.Top5Countries {
@@ -570,4 +607,36 @@ func (r *FinalReducer) aggSentimentProfitRatio(batch common.LoggableBatch[common
 	session.Q5Data = sentimentProfitRatios
 	transaction.Do(AggSentimentProfitRatioOP, batch.ToString())
 	return transaction
+}
+
+func (r *FinalReducer) addToBlacklist(clientID string) {
+	r.BlacklistedClients[clientID] = time.Now().Unix()
+}
+
+func (r *FinalReducer) purgeBlacklist() {
+	now := time.Now().Unix()
+	for clientID, timestamp := range r.BlacklistedClients {
+		if now-timestamp >= 10 { // 10 seconds
+			delete(r.BlacklistedClients, clientID)
+		}
+	}
+}
+
+func (r *FinalReducer) isBlacklisted(clientID string) bool {
+	_, exists := r.BlacklistedClients[clientID]
+	return exists
+}
+
+func (r *FinalReducer) deleteClient(clientID string) {
+	delete(r.Sessions, clientID)
+	r.addToBlacklist(clientID)
+}
+
+func (r *FinalReducer) deleteClients() []string {
+	deletedClients := make([]string, 0, len(r.Sessions))
+	for clientID := range r.Sessions {
+		r.deleteClient(clientID)
+		deletedClients = append(deletedClients, clientID)
+	}
+	return deletedClients
 }

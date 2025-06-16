@@ -44,13 +44,13 @@ run-local:
 run-local-no-reset:
 	cd server && RABBITMQ_DEFAULT_USER=monke RABBITMQ_DEFAULT_PASS=joaco1 JOINER_SHARDS=2 QUERY_NUM=3 go run final-reducer/*.go
 
-run-cadillac: run
+run-kill: run
 	./kill-containers.sh
 
-run-cadillac-inf:
+run-kill-inf:
 	@while true; do \
 		echo "Starting new iteration..."; \
-		make run-cadillac; \
+		make run-kill; \
 		echo "Checking results..."; \
 		if ! ./compare-outputs.sh config-script.json | tee /tmp/compare-output.txt; then \
 			echo "❌ Results check failed!"; \
