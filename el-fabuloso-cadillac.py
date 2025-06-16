@@ -18,7 +18,7 @@ WHITELIST = [
 ]
 REGEXS = [re.compile(exp) for exp in WHITELIST]
 
-REGEX_CLIENT = re.compile(r"client-\d+$")
+REGEX_CLIENT = re.compile(r"client\d+$")
 
 def is_whitelisted(name_or_id, regex_list):
     return any(pattern.match(name_or_id) for pattern in regex_list)
@@ -26,13 +26,16 @@ def is_whitelisted(name_or_id, regex_list):
 
 def main():
     client = docker.from_env()
-    # sleep_time = 10
-    # time.sleep(sleep_time)
-    running_containers = client.containers.list(filters={"status": "running"})
-    # while any(REGEX_CLIENT.match(c.name) for c in running_containers):
+    print("Esperando a que aparezcan contenedores...")
     while True:
-        print("iteration")
         running_containers = client.containers.list(filters={"status": "running"})
+        if len(running_containers) > 0:
+            break
+        time.sleep(5)
+    
+    print("Contenedores detectados. Iniciando...")
+    while any(REGEX_CLIENT.match(c.name) for c in running_containers) and len(running_containers) > 0:
+        print("iteration")
         containers_to_kill = list(filter(lambda c: is_whitelisted(c.name, REGEXS), running_containers))
         for container in containers_to_kill:
             if random.random() < 0.9:
@@ -44,8 +47,10 @@ def main():
                 container.kill()
             except Exception as e:
                 print(f"Error al matar {container_name}: {e}")
+
         time.sleep(random.randint(10, 20))
-    print("Finished killing containers")
+        running_containers = client.containers.list(filters={"status": "running"})
+    print("No more clients. Terminating...")
 
 
 if __name__ == "__main__":

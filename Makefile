@@ -46,4 +46,23 @@ run-local-no-reset:
 
 run-cadillac: run
 	./kill-containers.sh
+
+run-cadillac-inf:
+	@while true; do \
+		echo "Starting new iteration..."; \
+		make run-cadillac; \
+		echo "Checking results..."; \
+		if ! ./compare-outputs.sh config-script.json | tee /tmp/compare-output.txt; then \
+			echo "❌ Results check failed!"; \
+			exit 1; \
+		fi; \
+		if grep -q "❌" /tmp/compare-output.txt; then \
+			echo "❌ Found negative results in output!"; \
+			exit 1; \
+		fi; \
+		rm /tmp/compare-output.txt; \
+		echo "✅ Results check passed!"; \
+		echo "Waiting 5 seconds before next iteration..."; \
+		sleep 5; \
+	done
 	
