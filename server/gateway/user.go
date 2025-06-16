@@ -11,6 +11,7 @@ import (
 	"net"
 	"pkg/communication"
 	"pkg/models"
+	"sync"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
 )
@@ -23,6 +24,7 @@ type q1State struct {
 
 type Client struct {
 	id              string
+	connMutex       sync.Mutex
 	conn            net.Conn
 	dead            bool
 	recvChannel     chan *models.TotalQueryResults
@@ -37,6 +39,7 @@ func NewClient(conn net.Conn, toPreprocess *chan<- []byte) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
 		id:              uuid.NewString(),
+		connMutex:       sync.Mutex{},
 		conn:            conn,
 		dead:            false,
 		recvChannel:     make(chan *models.TotalQueryResults),
@@ -71,19 +74,19 @@ func (c *Client) IsDead() bool {
 }
 
 func (c *Client) sendHandler() {
-	err := receiveData[models.RawMovie](*c.toPreprocess, "movies", &c.conn, c.id)
+	err := receiveData[models.RawMovie](*c.toPreprocess, "movies", &c.conn, c.id, &c.connMutex)
 	if err != nil {
 		c.checkSendError(err, "error receiving movies")
 		return
 	}
 
-	err = receiveData[models.RawReview](*c.toPreprocess, "reviews", &c.conn, c.id)
+	err = receiveData[models.RawReview](*c.toPreprocess, "reviews", &c.conn, c.id, &c.connMutex)
 	if err != nil {
 		c.checkSendError(err, "error receiving reviews")
 		return
 	}
 
-	err = receiveData[models.RawCredits](*c.toPreprocess, "credits", &c.conn, c.id)
+	err = receiveData[models.RawCredits](*c.toPreprocess, "credits", &c.conn, c.id, &c.connMutex)
 	if err != nil {
 		c.checkSendError(err, "error receiving credits")
 		return
@@ -124,7 +127,9 @@ func (c *Client) recvHandler() {
 				c.queriesReceived[results.QueryId] = true
 				slog.Info("query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
 			}
+			c.connMutex.Lock()
 			err := communication.SendQueryResults(c.conn, *results)
+			c.connMutex.Unlock()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
 					slog.Info("Client Disconnected", slog.String("id", c.id))
@@ -143,10 +148,10 @@ func (c *Client) GetId() string {
 	return c.id
 }
 
-func receiveData[T any](toPreprocess chan<- []byte, batchType string, client *net.Conn, id string) error {
+func receiveData[T any](toPreprocess chan<- []byte, batchType string, client *net.Conn, id string, connMutex *sync.Mutex) error {
 	total := 0
 	for {
-		batch, err := communication.RecvBatch[T](*client)
+		batch, err := communication.RecvBatch[T](*client, connMutex)
 		if err != nil {
 			return fmt.Errorf("error receiving %s: %w", batchType, err)
 		}

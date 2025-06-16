@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
 	"pkg/log"
+	"strconv"
 )
 
 const (
 	server       = "gateway:12345"
-	MoviesBatch  = 30
+	MoviesBatch  = 200
 	ReviewsBatch = 5120
-	CreditsBatch = 30
-	sleep = 1
+	CreditsBatch = 500
+	sleep        = 1
 )
 
 func main() {
@@ -38,8 +38,6 @@ func main() {
 		slog.Error("env variable CLI_ID is invalid", slog.String("error", err.Error()))
 		return
 	}
-
-	
 
 	config := NewClientConfig(id, server, moviesFile, reviewsFile, creditsFile, MoviesBatch, ReviewsBatch, CreditsBatch, sleep)
 	client := NewClient(config)
