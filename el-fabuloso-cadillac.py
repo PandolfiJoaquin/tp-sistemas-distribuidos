@@ -8,13 +8,13 @@ import re
 # Define tu whitelist de nombres o IDs de contenedores
 WHITELIST = [
     # "gateway",
-    # r"joiner-\d+$",
-    # r"reducer-\d+$",
+     r"joiner-\d+$",
+     r"reducer-\d+$",
     r"final-reducer-q\d+$",
     r"preprocessor-\d+$",
-    # r"production-filter-\d+$",
-    # r"year-filter-\d+$",
-    # r"sentiment-analyzer-\d+$",
+     r"production-filter-\d+$",
+     r"year-filter-\d+$",
+     r"sentiment-analyzer-\d+$",
 ]
 REGEXS = [re.compile(exp) for exp in WHITELIST]
 

@@ -207,10 +207,6 @@ func (g *Gateway) handleResult1(msg common.Message) (*models.ResultWithId, error
 		return nil, fmt.Errorf("error consuming results: %w", err)
 	}
 
-	if len(batch.Data) == 0 && !batch.IsEof() {
-		return nil, nil
-	}
-
 	results := MovieToQResult(batch)
 	resultsWithId := models.ResultWithId{
 		Id:      batch.Header.ClientID,
@@ -230,8 +226,6 @@ func (g *Gateway) handleResults2(msg common.Message) (*models.ResultWithId, erro
 		return nil, fmt.Errorf("expected 5 countries, got %d", len(top5Countries.Countries))
 	}
 
-	slog.Info("Top 5 countries", slog.Any("top5Countries", top5Countries))
-
 	results := Top5CountriesToQResult(top5Countries)
 	resultsWithId := models.ResultWithId{
 		Id:      top5Countries.ClientId,
@@ -246,7 +240,6 @@ func (g *Gateway) handleResults3(msg common.Message) (*models.ResultWithId, erro
 	if err := json.Unmarshal(msg.Body, &bestAndWorstMovies); err != nil {
 		return nil, fmt.Errorf("error unmarshalling best and worst movies: %w", err)
 	}
-	slog.Info("Best and worst movies", slog.Any("bestAndWorstMovies", bestAndWorstMovies))
 
 	results := BestAndWorstToQResult(bestAndWorstMovies)
 	resultsWithId := models.ResultWithId{
@@ -262,8 +255,6 @@ func (g *Gateway) handleResults4(msg common.Message) (*models.ResultWithId, erro
 		return nil, fmt.Errorf("error unmarshalling top 10 actors: %w", err)
 	}
 
-	slog.Info("Top 10 actors", slog.Any("top10Actors", top10Actors))
-
 	results := Top10ActorsToQResult(top10Actors)
 	resultsWithId := models.ResultWithId{
 		Id:      top10Actors.ClientId,
@@ -277,8 +268,6 @@ func (g *Gateway) handleResults5(msg common.Message) (*models.ResultWithId, erro
 	if err := json.Unmarshal(msg.Body, &sentimentProfitRatio); err != nil {
 		return nil, fmt.Errorf("error unmarshalling sentiment profit ratio: %w", err)
 	}
-
-	slog.Info("received query 5 results", slog.Any("sentiment profit ratio", sentimentProfitRatio))
 
 	results := SentimentToQResult(sentimentProfitRatio)
 	resultsWithId := models.ResultWithId{
@@ -309,7 +298,7 @@ func (g *Gateway) handleResult(msg common.Message, query int) error {
 	}
 
 	if results != nil { // can be nil due to empty results in query 1
-		slog.Info("Received results", slog.String("clientId", results.Id), slog.Int("query", query))
+		// slog.Info("Got results", slog.String("client id", results.Id), slog.Int("query", query))
 		client, ok := g.clients[results.Id]
 		if !ok {
 			return fmt.Errorf("client %s not found", results.Id)
