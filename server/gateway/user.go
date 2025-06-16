@@ -131,13 +131,8 @@ func (c *Client) recvHandler() {
 			err := communication.SendQueryResults(c.conn, *results)
 			c.connMutex.Unlock()
 			if err != nil {
-				if errors.Is(err, io.EOF) {
-					slog.Info("Client Disconnected", slog.String("id", c.id))
-				} else if errors.Is(err, net.ErrClosed) {
-					slog.Error("Client Conn was already closed", slog.String("id", c.id))
-				} else {
-					slog.Error("error sending query results", slog.String("error", err.Error()), slog.String("id", c.id))
-				}
+				c.checkRecvError(err)
+				// TODO: Send flush message to control queue
 				return
 			}
 		}
@@ -197,5 +192,15 @@ func (c *Client) checkSendError(err error, msg string) {
 		slog.Error(msg, slog.String("error", err.Error()))
 	} else {
 		c.dead = true
+	}
+}
+
+func (c *Client) checkRecvError(err error) {
+	if errors.Is(err, io.EOF) {
+		slog.Info("Client Disconnected", slog.String("id", c.id))
+	} else if errors.Is(err, net.ErrClosed) {
+		slog.Error("Client Conn was already closed", slog.String("id", c.id))
+	} else {
+		slog.Error("error sending query results", slog.String("error", err.Error()), slog.String("id", c.id))
 	}
 }

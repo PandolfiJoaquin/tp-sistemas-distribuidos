@@ -200,7 +200,6 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context, ackChannel
 			}
 
 			typeOfRes, err := communication.RecvTypeOfResults(c.conn)
-			slog.Info("Received type of results", slog.Int("type", typeOfRes))
 			if err != nil {
 				c.CheckRecvError(err)
 				return
