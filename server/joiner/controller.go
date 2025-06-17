@@ -342,6 +342,7 @@ func (j *JoinerController) run(ctx context.Context) {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
+			slog.Info("DEBUG header credits", slog.Any("header", batch.Header))
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
 			if !session.FilterMoviesMsg(batch.Header.MessageID.ID) {
@@ -368,9 +369,11 @@ func (j *JoinerController) run(ctx context.Context) {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
+			slog.Info("DEBUG header credits", slog.Any("header", batch.Header))
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
 			if !session.FilterReviewsMsg(batch.MessageID.ID) {
+				slog.Info("Filtering Msg", slog.Any("msg", batch))
 				break
 			}
 			transaction.Do(FilterReviewsOP, batch.ClientID+separator+strconv.Itoa(batch.MessageID.ID))
@@ -389,9 +392,12 @@ func (j *JoinerController) run(ctx context.Context) {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
+
+			slog.Info("DEBUG header credits", slog.Any("header", batch.Header))
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
 			if !session.FilterCreditsMsg(batch.MessageID.ID) {
+				slog.Info("Filtering Msg", slog.Any("msg", batch))
 				break
 			}
 			transaction.Do(FilterCreditsOP, batch.ClientID+separator+strconv.Itoa(batch.MessageID.ID))
