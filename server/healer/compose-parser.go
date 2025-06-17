@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -23,7 +24,12 @@ func readContainerToMonitor(myName string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+
+		if err = f.Close(); err != nil {
+			slog.Error("Error closing file", slog.String("file", filepath))
+		}
+	}(f)
 
 	var dockerCompose DockerCompose
 	decoder := yaml.NewDecoder(f)
