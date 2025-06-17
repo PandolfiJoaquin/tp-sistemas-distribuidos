@@ -282,7 +282,7 @@ func (r *Reducer) reduceQ5(batch common.Batch[common.MovieWithSentiment]) (commo
 		}
 
 		if profitRatio > 10000 {
-			slog.Debug("ALOT profit ratio", slog.String("movie_id", movieWithSentiment.ID), slog.Any("revenue", movieWithSentiment.Revenue), slog.Any("budget", movieWithSentiment.Budget), slog.Float64("profit_ratio", profitRatio))
+			//slog.Debug("ALOT profit ratio", slog.String("movie_id", movieWithSentiment.ID), slog.Any("revenue", movieWithSentiment.Revenue), slog.Any("budget", movieWithSentiment.Budget), slog.Float64("profit_ratio", profitRatio))
 		}
 
 	}

@@ -84,7 +84,7 @@ func (a *Analyzer) processMessage(msg common.Message, nextChan chan<- []byte) er
 		return fmt.Errorf("error unmarshalling message: %v", err)
 
 	}
-	slog.Debug("Received message", slog.String("message", string(msg.Body)))
+	//slog.Debug("Received message", slog.String("message", string(msg.Body)))
 
 	batchWithSentiment := a.analyzeSentiment(batch)
 	serializedBatch, err := json.Marshal(batchWithSentiment)

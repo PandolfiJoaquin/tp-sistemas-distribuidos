@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	logger, err := log.SetupLogger("reducer", false, nil)
+	logger, err := log.SetupLogger("reducer", nil)
 	if err != nil {
 		fmt.Printf("error creating logger: %v", err)
 		return
@@ -28,7 +28,6 @@ func main() {
 		slog.Error("error creating reducer", slog.String("error", err.Error()))
 		return
 	}
-	
 
 	reducer.Start()
 }

@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	logger, err := log.SetupLogger("healer", false, nil)
+	logger, err := log.SetupLogger("healer", nil)
 	if err != nil {
 		fmt.Printf("error creating logger: %v", err)
 		return

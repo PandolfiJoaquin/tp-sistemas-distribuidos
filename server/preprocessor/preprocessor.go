@@ -176,7 +176,7 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 			// Check Q5 maybe
 			ch <- data
 		}
-		slog.Debug("preprocessing movies", slog.Int("size", int(mb.Header.Weight)))
+		//slog.Debug("preprocessing movies", slog.Int("size", int(mb.Header.Weight)))
 
 	case "reviews":
 		var rb models.RawBatch[models.RawReview]
@@ -193,7 +193,7 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 		); err != nil {
 			return fmt.Errorf("sending reviews: %w", err)
 		}
-		slog.Debug("preprocessing reviews", slog.Int("size", int(rb.Header.Weight)))
+		//slog.Debug("preprocessing reviews", slog.Int("size", int(rb.Header.Weight)))
 
 	case "credits":
 		var cb models.RawBatch[models.RawCredits]
@@ -210,7 +210,7 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 		); err != nil {
 			return fmt.Errorf("sending credits: %w", err)
 		}
-		slog.Debug("preprocessing credits", slog.Int("size", int(cb.Header.Weight)))
+		//slog.Debug("preprocessing credits", slog.Int("size", int(cb.Header.Weight)))
 
 	default:
 		return fmt.Errorf("unknown batch type %q", msg.Type)

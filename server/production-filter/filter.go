@@ -172,7 +172,7 @@ func (f *ProductionFilter) filterMessage(msg common.Message, filterFunc func(com
 	filteredMovies := batch.Data
 	if !batch.IsEof() {
 		filteredMovies = common.Filter(batch.Data, filterFunc)
-		slog.Debug("movies left after filtering by year", slog.Any("movies", filteredMovies))
+		//slog.Debug("movies left after filtering by year", slog.Any("movies", filteredMovies))
 	}
 
 	batch.Data = filteredMovies

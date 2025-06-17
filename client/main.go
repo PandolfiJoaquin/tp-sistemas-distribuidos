@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
 	"pkg/log"
+	"strconv"
 )
 
 const (
@@ -13,11 +13,11 @@ const (
 	MoviesBatch  = 30
 	ReviewsBatch = 5120
 	CreditsBatch = 30
-	sleep = 1
+	sleep        = 1
 )
 
 func main() {
-	logger, err := log.SetupLogger("client", false, nil)
+	logger, err := log.SetupLogger("client", nil)
 	if err != nil {
 		fmt.Printf("error creating logger: %v", err)
 		return
@@ -38,8 +38,6 @@ func main() {
 		slog.Error("env variable CLI_ID is invalid", slog.String("error", err.Error()))
 		return
 	}
-
-	
 
 	config := NewClientConfig(id, server, moviesFile, reviewsFile, creditsFile, MoviesBatch, ReviewsBatch, CreditsBatch, sleep)
 	client := NewClient(config)

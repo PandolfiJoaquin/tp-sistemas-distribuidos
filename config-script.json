@@ -1,4 +1,5 @@
 {
+  "logLevel": "DEBUG",
   "clients": 5,
   "joiners": 5,
   "healer": 1,
