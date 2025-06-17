@@ -109,7 +109,7 @@ def create_compose(cfg):
     compose = "name: tp-dist\nservices:\n"
 
     # Gateway
-    extra_env = "DEBUG=1" if debug else ""
+    extra_env = "\n      - DEBUG=1" if debug else ""
     compose += BASE_NODE.format(
         svc_name="gateway",
         node="gateway",
