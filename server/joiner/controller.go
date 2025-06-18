@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/middleware"
 	"tp-sistemas-distribuidos/server/common/persistency"
 )
 
@@ -45,17 +46,17 @@ const ( //TODO: Optimize encoding
 
 type JoinerController struct {
 	joinerId            int
-	middleware          *common.Middleware
+	m                   *middleware.Middleware
 	Sessions            map[string]*JoinerSession                `json:"sessions"`
 	StoredReviewBatches map[string][]common.Batch[common.Review] `json:"storedReviewBatches"`
 	StoredCreditBatches map[string][]common.Batch[common.Credit] `json:"storedCreditBatches"`
 	transactionsOnLog   int
 	persistencyHandler  *persistency.PersistencyHandler[JoinerController]
-	q3ToReduce          chan<- []byte
-	q4ToReduce          chan<- []byte
-	moviesChan          <-chan common.Message
-	reviewsChan         <-chan common.Message
-	creditChan          <-chan common.Message
+	q3ToReduce          middleware.SenderQueue
+	q4ToReduce          middleware.SenderQueue
+	moviesChan          <-chan middleware.Message
+	reviewsChan         <-chan middleware.Message
+	creditChan          <-chan middleware.Message
 }
 
 func (j JoinerController) ApplyFunc(entry persistency.TransactionEntry) (JoinerController, error) {
@@ -159,7 +160,7 @@ func extractIds(entry persistency.TransactionEntry) (string, int, error) {
 }
 
 func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerController, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
+	middleware, err := middleware.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
@@ -171,7 +172,7 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 
 	controller := JoinerController{
 		joinerId:            joinerId,
-		middleware:          middleware,
+		m:                   middleware,
 		persistencyHandler:  ph,
 		Sessions:            make(map[string]*JoinerSession),
 		StoredReviewBatches: make(map[string][]common.Batch[common.Review]),
@@ -205,27 +206,27 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 
 func (j *JoinerController) initializeChannels() error {
 	var err error
-	j.moviesChan, err = j.middleware.GetChanWithTopicToRecv(moviesExchange, fmt.Sprintf(moviestopic, j.joinerId))
+	j.moviesChan, err = j.m.GetChanWithTopicToRecv(moviesExchange, fmt.Sprintf(moviestopic, j.joinerId))
 	if err != nil {
 		return fmt.Errorf("error creating channel %s: %w", moviesExchange, err)
 	}
 
-	j.reviewsChan, err = j.middleware.GetChanWithTopicToRecv(reviewsExchange, fmt.Sprintf(reviewsTopic, j.joinerId))
+	j.reviewsChan, err = j.m.GetChanWithTopicToRecv(reviewsExchange, fmt.Sprintf(reviewsTopic, j.joinerId))
 	if err != nil {
 		return fmt.Errorf("error creating channel %s: %w", reviewsExchange, err)
 	}
 
-	j.creditChan, err = j.middleware.GetChanWithTopicToRecv(creditExchange, fmt.Sprintf(creditTopic, j.joinerId))
+	j.creditChan, err = j.m.GetChanWithTopicToRecv(creditExchange, fmt.Sprintf(creditTopic, j.joinerId))
 	if err != nil {
 		return fmt.Errorf("error creating channel %s: %w", creditExchange, err)
 	}
 
-	j.q3ToReduce, err = j.middleware.GetChanToSend(q3ToReduceQueue)
+	j.q3ToReduce, err = j.m.GetQueueToSend(q3ToReduceQueue)
 	if err != nil {
 		return fmt.Errorf("error creating channel %s: %w", q3ToReduceQueue, err)
 	}
 
-	j.q4ToReduce, err = j.middleware.GetChanToSend(q4ToReduceQueue)
+	j.q4ToReduce, err = j.m.GetQueueToSend(q4ToReduceQueue)
 	if err != nil {
 		return fmt.Errorf("error creating channel %s: %w", q4ToReduceQueue, err)
 	}
@@ -260,7 +261,9 @@ func (j *JoinerController) joinReviewBatch(clientId string, batch common.Batch[c
 	if err != nil {
 		slog.Error("error marshalling batch", slog.String("error", err.Error()))
 	}
-	j.q3ToReduce <- response
+	if err := j.q3ToReduce.Send(response); err != nil {
+		slog.Error("error sending batch", slog.String("error", err.Error()))
+	}
 }
 
 func (j *JoinerController) filterCreditBatch(clientId string, batch common.Batch[common.Credit]) {
@@ -277,8 +280,9 @@ func (j *JoinerController) filterCreditBatch(clientId string, batch common.Batch
 	if err != nil {
 		slog.Error("error marshalling batch", slog.String("error", err.Error()))
 	}
-	j.q4ToReduce <- response
-
+	if err := j.q4ToReduce.Send(response); err != nil {
+		slog.Error("error sending batch", slog.String("error", err.Error()))
+	}
 }
 
 func (j *JoinerController) storeReviewBatch(clientId string, batch common.Batch[common.Review]) {
@@ -329,7 +333,7 @@ func (j *JoinerController) save(transaction persistency.Transaction) error {
 func (j *JoinerController) run(ctx context.Context) {
 	j.cleanUpSessions()
 	for {
-		var msg common.Message
+		var msg middleware.Message
 		var clientId string
 		transaction := persistency.NewTransaction()
 		select {
@@ -442,7 +446,7 @@ func (j *JoinerController) cleanUpSession(id string) {
 }
 
 func (j *JoinerController) stop() {
-	if err := j.middleware.Close(); err != nil {
+	if err := j.m.Close(); err != nil {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
 	slog.Info("joiner stopped")

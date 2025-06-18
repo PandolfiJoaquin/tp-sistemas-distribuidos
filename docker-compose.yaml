@@ -9,7 +9,8 @@ services:
     container_name: gateway
     environment:
       - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1DEBUG=1
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
     depends_on:
       rabbitmq:
         condition: service_healthy

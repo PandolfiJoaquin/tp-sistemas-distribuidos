@@ -1,25 +1,11 @@
-package common
+package middleware
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
-
-type Message struct {
-	Body    []byte
-	amqpMsg amqp.Delivery
-}
-
-func (m *Message) Ack() error {
-
-	if err := m.amqpMsg.Ack(false); err != nil {
-		return fmt.Errorf("error acknowledging message: %s", err)
-	}
-	return nil
-}
 
 type Middleware struct {
 	conn *amqp.Connection
@@ -48,40 +34,13 @@ func NewMiddleware(rabbitUser string, rabbitPass string, host string) (*Middlewa
 	return &Middleware{conn: conn, ch: ch, hc: hc}, nil
 }
 
-func (m *Middleware) sendToQueue(queueName string, body []byte) error {
-	// TODO: Deberia ser publish with context?
-	err := m.ch.Publish(
-		"",
-		queueName, //routing key
-		false,
-		false,
-		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        body,
-		})
-	if err != nil {
-		return fmt.Errorf("error sending message: %s", err)
-	}
-	return nil
-}
-
-func (m *Middleware) GetChanToSend(name string) (chan<- []byte, error) {
+func (m *Middleware) GetQueueToSend(name string) (SenderQueue, error) {
 	queue, err := m.ch.QueueDeclare(name, false, false, false, false, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error declaring queue: %s", err)
 	}
 
-	chanToSend := make(chan []byte)
-	go func() {
-		for msg := range chanToSend {
-
-			if err := m.sendToQueue(queue.Name, msg); err != nil {
-				//TODO: deberia tener otro canal para devolver el error?
-				fmt.Printf("Error sending message: %s", err)
-			}
-		}
-	}()
-	return chanToSend, nil
+	return NewAmqpQueue(m.ch, queue.Name), nil
 }
 
 func (m *Middleware) GetChanToRecv(name string) (<-chan Message, error) {
@@ -114,7 +73,7 @@ func (m *Middleware) GetChanToRecv(name string) (<-chan Message, error) {
 	return inboxChan, nil
 }
 
-func (m *Middleware) GetChanWithTopicToSend(exchange, topic string) (chan<- []byte, error) {
+func (m *Middleware) GetQueueWithTopicToSend(exchange, topic string) (SenderQueue, error) {
 	if err := m.ch.ExchangeDeclare(exchange, "topic", false, false, false, false, nil); err != nil {
 		return nil, fmt.Errorf("error declaring exchange: %s", err)
 	}
@@ -128,15 +87,7 @@ func (m *Middleware) GetChanWithTopicToSend(exchange, topic string) (chan<- []by
 		return nil, fmt.Errorf("error binding queue: %s", err)
 	}
 
-	chanToSend := make(chan []byte)
-	go func() {
-		for msg := range chanToSend {
-			if err := m.sendToExchange(exchange, topic, msg); err != nil {
-				slog.Error("error sending message", slog.String("error", err.Error()))
-			}
-		}
-	}()
-	return chanToSend, nil
+	return NewAmqpQueueWithTopic(m.ch, exchange, topic), nil
 }
 
 func (m *Middleware) GetChanWithTopicToRecv(exchange, topic string) (<-chan Message, error) {
@@ -170,7 +121,6 @@ func (m *Middleware) GetChanWithTopicToRecv(exchange, topic string) (<-chan Mess
 	inboxChan := make(chan Message)
 	go func() {
 		for msg := range amqpChan {
-			//slog.Info("received message", slog.String("topic", topic), slog.String("exchange", exchange))
 			inboxChan <- Message{msg.Body, msg}
 		}
 	}()
@@ -190,22 +140,5 @@ func (m *Middleware) Close() error {
 		return fmt.Errorf("failed to close health check: %s", err)
 	}
 
-	return nil
-}
-
-func (m *Middleware) sendToExchange(exchange string, topic string, msg []byte) error {
-	err := m.ch.PublishWithContext(
-		context.Background(),
-		exchange,
-		topic,
-		false,
-		false,
-		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        msg,
-		})
-	if err != nil {
-		return fmt.Errorf("error sending message: %s", err)
-	}
 	return nil
 }

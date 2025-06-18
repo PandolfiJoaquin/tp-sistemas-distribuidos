@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/middleware"
 
 	cdipaoloSentiment "github.com/cdipaolo/sentiment"
 )
@@ -19,12 +20,12 @@ const (
 )
 
 type Analyzer struct {
-	middleware *common.Middleware
+	middleware *middleware.Middleware
 	model      cdipaoloSentiment.Models
 }
 
 func NewAnalyzer(rabbitUser, rabbitPass string) (*Analyzer, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
+	middleware, err := middleware.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
@@ -51,7 +52,7 @@ func (a *Analyzer) Start() {
 		return
 	}
 
-	nextChan, err := a.middleware.GetChanToSend(nextQueue)
+	nextChan, err := a.middleware.GetQueueToSend(nextQueue)
 	if err != nil {
 		slog.Error("error creating channel", slog.String("queue", nextQueue), slog.String("error", err.Error()))
 		return
@@ -60,7 +61,7 @@ func (a *Analyzer) Start() {
 	a.run(ctx, previousChan, nextChan)
 }
 
-func (a *Analyzer) run(ctx context.Context, previousChan <-chan common.Message, nextChan chan<- []byte) {
+func (a *Analyzer) run(ctx context.Context, previousChan <-chan middleware.Message, nextChan middleware.SenderQueue) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -78,7 +79,7 @@ func (a *Analyzer) run(ctx context.Context, previousChan <-chan common.Message, 
 	}
 }
 
-func (a *Analyzer) processMessage(msg common.Message, nextChan chan<- []byte) error {
+func (a *Analyzer) processMessage(msg middleware.Message, nextChan middleware.SenderQueue) error {
 	var batch common.Batch[common.Movie]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		return fmt.Errorf("error unmarshalling message: %v", err)
@@ -91,7 +92,9 @@ func (a *Analyzer) processMessage(msg common.Message, nextChan chan<- []byte) er
 	if err != nil {
 		return fmt.Errorf("error marshalling response: %v", err)
 	}
-	nextChan <- serializedBatch
+	if err := nextChan.Send(serializedBatch); err != nil {
+		return fmt.Errorf("error sending batch: %w", err)
+	}
 	return nil
 }
 

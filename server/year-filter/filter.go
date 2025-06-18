@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/middleware"
 )
 
 const (
@@ -20,42 +21,42 @@ const (
 )
 
 type YearFilter struct {
-	middleware       *common.Middleware
+	m       *middleware.Middleware
 	query1Connection connection
 	query3Connection connection
 }
 
 type connection struct {
-	ChanToRecv <-chan common.Message
-	ChanToSend chan<- []byte
+	ChanToRecv <-chan middleware.Message
+	ChanToSend middleware.SenderQueue
 }
 
 func NewYearFilter(rabbitUser, rabbitPass string) (*YearFilter, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
+	m, err := middleware.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
 
-	query1Connection, err := initializeConnection(middleware, previousQueueQuery1, nextQueueQuery1)
+	query1Connection, err := initializeConnection(m, previousQueueQuery1, nextQueueQuery1)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing connections: %w", err)
 	}
 
-	query3And4Connection, err := initializeConnection(middleware, previousQueueQuery3And4, nextQueueQuery3And4)
+	query3And4Connection, err := initializeConnection(m, previousQueueQuery3And4, nextQueueQuery3And4)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing connections: %w", err)
 	}
 
-	return &YearFilter{middleware: middleware, query1Connection: query1Connection, query3Connection: query3And4Connection}, nil
+	return &YearFilter{m: m, query1Connection: query1Connection, query3Connection: query3And4Connection}, nil
 }
 
-func initializeConnection(middleware *common.Middleware, previousQueue string, nextQueue string) (connection, error) {
-	previousChan, err := middleware.GetChanToRecv(previousQueue)
+func initializeConnection(m *middleware.Middleware, previousQueue string, nextQueue string) (connection, error) {
+	previousChan, err := m.GetChanToRecv(previousQueue)
 	if err != nil {
 		return connection{}, fmt.Errorf("error getting channel %s to receive: %w", previousQueue, err)
 	}
 
-	nextChan, err := middleware.GetChanToSend(nextQueue)
+	nextChan, err := m.GetQueueToSend(nextQueue)
 	if err != nil {
 		return connection{}, fmt.Errorf("error getting channel %s to send: %w", nextQueue, err)
 	}
@@ -96,7 +97,7 @@ func (f *YearFilter) start(ctx context.Context) {
 	}
 }
 
-func (f *YearFilter) processQueryMessage(chanToSend chan<- []byte, msg common.Message, filterFunc func(common.Movie) bool) error {
+func (f *YearFilter) processQueryMessage(chanToSend middleware.SenderQueue, msg middleware.Message, filterFunc func(common.Movie) bool) error {
 	batch, err := f.filterMessage(msg, filterFunc)
 	if err != nil {
 		return fmt.Errorf("error filtering message: %w", err)
@@ -107,7 +108,7 @@ func (f *YearFilter) processQueryMessage(chanToSend chan<- []byte, msg common.Me
 	return nil
 }
 
-func (f *YearFilter) filterMessage(msg common.Message, filterFunc func(common.Movie) bool) (common.Batch[common.Movie], error) {
+func (f *YearFilter) filterMessage(msg middleware.Message, filterFunc func(common.Movie) bool) (common.Batch[common.Movie], error) {
 	var batch common.Batch[common.Movie]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		return common.Batch[common.Movie]{}, fmt.Errorf("error unmarshalling message: %w", err)
@@ -122,12 +123,14 @@ func (f *YearFilter) filterMessage(msg common.Message, filterFunc func(common.Mo
 	return batch, nil
 }
 
-func (f *YearFilter) sendBatch(chanToSend chan<- []byte, batch common.Batch[common.Movie]) error {
+func (f *YearFilter) sendBatch(chanToSend middleware.SenderQueue, batch common.Batch[common.Movie]) error {
 	response, err := json.Marshal(batch)
 	if err != nil {
 		return fmt.Errorf("error marshalling batch: %w", err)
 	}
-	chanToSend <- response
+	if err := chanToSend.Send(response); err != nil {
+		return fmt.Errorf("error sending batch: %w", err)
+	}
 	return nil
 }
 
@@ -140,8 +143,10 @@ func (f *YearFilter) yearAfter2000sFilter(movie common.Movie) bool {
 }
 
 func (f *YearFilter) stop() {
-	if err := f.middleware.Close(); err != nil {
+	if err := f.m.Close(); err != nil {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
 	slog.Info("year filter stopped")
 }
+
+

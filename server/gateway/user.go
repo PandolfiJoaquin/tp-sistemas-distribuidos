@@ -13,6 +13,7 @@ import (
 	"pkg/models"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/middleware"
 )
 
 type q1State struct {
@@ -26,14 +27,14 @@ type Client struct {
 	conn            net.Conn
 	dead            bool
 	recvChannel     chan *models.TotalQueryResults
-	toPreprocess    *chan<- []byte
+	toPreprocess    middleware.SenderQueue
 	queriesReceived map[int]bool
 	q1State         *q1State
 	ctx             context.Context
 	cancel          context.CancelFunc
 }
 
-func NewClient(conn net.Conn, toPreprocess *chan<- []byte) *Client {
+func NewClient(conn net.Conn, toPreprocess middleware.SenderQueue) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
 		id:              uuid.NewString(),
@@ -71,19 +72,19 @@ func (c *Client) IsDead() bool {
 }
 
 func (c *Client) sendHandler() {
-	err := receiveData[models.RawMovie](*c.toPreprocess, "movies", &c.conn, c.id)
+	err := receiveData[models.RawMovie](c.toPreprocess, "movies", &c.conn, c.id)
 	if err != nil {
 		c.checkSendError(err, "error receiving movies")
 		return
 	}
 
-	err = receiveData[models.RawReview](*c.toPreprocess, "reviews", &c.conn, c.id)
+	err = receiveData[models.RawReview](c.toPreprocess, "reviews", &c.conn, c.id)
 	if err != nil {
 		c.checkSendError(err, "error receiving reviews")
 		return
 	}
 
-	err = receiveData[models.RawCredits](*c.toPreprocess, "credits", &c.conn, c.id)
+	err = receiveData[models.RawCredits](c.toPreprocess, "credits", &c.conn, c.id)
 	if err != nil {
 		c.checkSendError(err, "error receiving credits")
 		return
@@ -143,7 +144,7 @@ func (c *Client) GetId() string {
 	return c.id
 }
 
-func receiveData[T any](toPreprocess chan<- []byte, batchType string, client *net.Conn, id string) error {
+func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, client *net.Conn, id string) error {
 	total := 0
 	for {
 		batch, err := communication.RecvBatch[T](*client)
@@ -166,7 +167,7 @@ func receiveData[T any](toPreprocess chan<- []byte, batchType string, client *ne
 	return nil
 }
 
-func publishBatch[T any](batch models.RawBatch[T], batchType string, toPreprocess chan<- []byte, clientId string) error {
+func publishBatch[T any](batch models.RawBatch[T], batchType string, toPreprocess middleware.SenderQueue, clientId string) error {
 	bodyBytes, err := json.Marshal(batch)
 	if err != nil {
 		return fmt.Errorf("error marshalling batch: %w", err)
@@ -183,7 +184,9 @@ func publishBatch[T any](batch models.RawBatch[T], batchType string, toPreproces
 		return fmt.Errorf("error marshalling raw batch: %w", err)
 	}
 
-	toPreprocess <- batchToSend
+	if err := toPreprocess.Send(batchToSend); err != nil {
+		return fmt.Errorf("error sending batch: %w", err)
+	}
 	return nil
 }
 
