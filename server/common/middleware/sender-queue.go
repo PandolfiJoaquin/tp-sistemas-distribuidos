@@ -66,3 +66,29 @@ func (q *amqpSenderQueueWithTopic) Send(body []byte) error {
 	}
 	return nil
 }
+
+type amqpFanoutSenderQueue struct {
+	ch       *amqp.Channel
+	exchange string
+}
+
+func NewAmqpQueueWithFanout(ch *amqp.Channel, exchange string) SenderQueue {
+	return &amqpFanoutSenderQueue{ch: ch, exchange: exchange}
+}
+
+func (q *amqpFanoutSenderQueue) Send(body []byte) error {
+	err := q.ch.PublishWithContext(
+		context.Background(),
+		q.exchange,
+		"",
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        body,
+		})
+	if err != nil {
+		return fmt.Errorf("error sending message: %s", err)
+	}
+	return nil
+}

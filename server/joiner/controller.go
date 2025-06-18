@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"tp-sistemas-distribuidos/server/common"
 	"tp-sistemas-distribuidos/server/common/middleware"
 	"tp-sistemas-distribuidos/server/common/persistency"
@@ -27,6 +28,8 @@ const (
 	q4ToReduceQueue      = "q4-to-reduce"
 	maxTransactionsOnLog = 500
 	separator            = ";"
+	blacklistDuration    = 300 // 5 minutes
+	flushExchange        = "flush-exchange"
 )
 
 type LogOperations string
@@ -42,14 +45,17 @@ const ( //TODO: Optimize encoding
 	FilterMovieOP          = "filter-movie"
 	FilterReviewsOP        = "filter-reviews"
 	FilterCreditsOP        = "filter-credits"
+	DeleteClientOP         = "delete-client"
 )
 
 type JoinerController struct {
 	joinerId            int
 	m                   *middleware.Middleware
 	Sessions            map[string]*JoinerSession                `json:"sessions"`
-	StoredReviewBatches map[string][]common.Batch[common.Review] `json:"storedReviewBatches"`
-	StoredCreditBatches map[string][]common.Batch[common.Credit] `json:"storedCreditBatches"`
+	StoredReviewBatches map[string][]common.Batch[common.Review] `json:"stored_review_batches"`
+	StoredCreditBatches map[string][]common.Batch[common.Credit] `json:"stored_credit_batches"`
+	BlacklistedClients  map[string]int64                         `json:"blacklisted_clients"`
+	flushQueue          <-chan middleware.Message
 	transactionsOnLog   int
 	persistencyHandler  *persistency.PersistencyHandler[JoinerController]
 	q3ToReduce          middleware.SenderQueue
@@ -144,6 +150,10 @@ func (j JoinerController) ApplyFunc(entry persistency.TransactionEntry) (JoinerC
 		session := j.getSession(clientId)
 		session.FilterCreditsMsg(messageId)
 		return j, nil
+	case DeleteClientOP:
+		clientId := entry.Args
+		j.deleteClient(clientId)
+		return j, nil
 	default:
 		return JoinerController{}, fmt.Errorf("unknown log operation %v", entry.Op)
 	}
@@ -177,6 +187,7 @@ func NewJoinerController(joinerId int, rabbitUser, rabbitPass string) (*JoinerCo
 		Sessions:            make(map[string]*JoinerSession),
 		StoredReviewBatches: make(map[string][]common.Batch[common.Review]),
 		StoredCreditBatches: make(map[string][]common.Batch[common.Credit]),
+		BlacklistedClients:  make(map[string]int64),
 	}
 
 	if err := controller.initializeChannels(); err != nil {
@@ -230,6 +241,13 @@ func (j *JoinerController) initializeChannels() error {
 	if err != nil {
 		return fmt.Errorf("error creating channel %s: %w", q4ToReduceQueue, err)
 	}
+
+	flushChan, err := j.m.GetChanWithFanoutToRecv(flushExchange, fmt.Sprintf(flushExchange + "-" + "joiner-%d", j.joinerId))
+	if err != nil {
+		return fmt.Errorf("error creating channel %s: %w", flushExchange, err)
+	}
+	j.flushQueue = flushChan
+
 	return nil
 }
 
@@ -332,7 +350,6 @@ func (j *JoinerController) save(transaction persistency.Transaction) error {
 }
 
 func (j *JoinerController) run(ctx context.Context) {
-	j.cleanUpSessions()
 	for {
 		var msg middleware.Message
 		var clientId string
@@ -341,13 +358,44 @@ func (j *JoinerController) run(ctx context.Context) {
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping joiner")
 			return
+		case msg = <-j.flushQueue:
+			var flushClient common.FlushClient
+			if err := json.Unmarshal(msg.Body, &flushClient); err != nil {
+				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+				continue
+			}
+			transaction := persistency.NewTransaction()
+			if flushClient.ClientID != nil {
+				transaction.Do(DeleteClientOP, *flushClient.ClientID)
+				j.deleteClient(*flushClient.ClientID)
+				slog.Info("deleted client", slog.String("clientID", *flushClient.ClientID))
+			} else {
+				for clientID := range j.Sessions {
+					transaction.Do(DeleteClientOP, clientID)
+				}
+				j.deleteClients()
+				slog.Info("deleted all clients")
+			}
+			j.save(transaction)
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			}
+			continue
 		case msg = <-j.moviesChan:
 			var batch common.LoggableBatch[common.Movie]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			slog.Info("DEBUG header credits", slog.Any("header", batch.Header))
+
+			if j.isBlacklisted(batch.GetClientID()) {
+				if err := msg.Ack(); err != nil {
+					slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				}
+				slog.Info("Discarding message from blacklisted client", slog.String("clientID", batch.GetClientID()))
+				continue
+			}
+
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
 			if !session.FilterMoviesMsg(batch.Header.MessageID.ID) {
@@ -374,7 +422,15 @@ func (j *JoinerController) run(ctx context.Context) {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			slog.Info("DEBUG header credits", slog.Any("header", batch.Header))
+
+			if j.isBlacklisted(batch.GetClientID()) {
+				slog.Info("Discarding message from blacklisted client", slog.String("clientID", batch.GetClientID()))
+				if err := msg.Ack(); err != nil {
+					slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				}
+				continue
+			}
+
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
 			if !session.FilterReviewsMsg(batch.MessageID.ID) {
@@ -397,8 +453,15 @@ func (j *JoinerController) run(ctx context.Context) {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
+			
+			if j.isBlacklisted(batch.GetClientID()) {
+				slog.Info("Discarding message from blacklisted client", slog.String("clientID", batch.GetClientID()))
+				if err := msg.Ack(); err != nil {
+					slog.Error("error acknowledging message", slog.String("error", err.Error()))
+				}
+				continue
+			}
 
-			slog.Info("DEBUG header credits", slog.Any("header", batch.Header))
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
 			if !session.FilterCreditsMsg(batch.MessageID.ID) {
@@ -416,7 +479,11 @@ func (j *JoinerController) run(ctx context.Context) {
 			}
 		}
 
-		j.cleanUpSession(clientId)
+		if j.Sessions[clientId].IsDone() {
+			slog.Info("Done for client, deleting session", slog.String("clientId", clientId))
+			j.deleteClient(clientId)
+			transaction.Do(DeleteClientOP, clientId)
+		}
 		j.save(transaction)
 		if err := msg.Ack(); err != nil {
 			slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -432,17 +499,33 @@ func (j *JoinerController) getSession(clientId string) *JoinerSession {
 	return j.Sessions[clientId]
 }
 
-func (j *JoinerController) cleanUpSessions() {
+func (j *JoinerController) deleteClient(id string) {
+	delete(j.Sessions, id)
+	j.BlacklistedClients[id] = time.Now().Unix() + 10
+}
+
+func (j *JoinerController) deleteClients() {
+	clientsIds := make([]string, 0, len(j.Sessions))
 	for id := range j.Sessions {
-		j.cleanUpSession(id)
+		clientsIds = append(clientsIds, id)
+	}
+	for _, id := range clientsIds {
+		j.deleteClient(id)
 	}
 }
 
-// if the session is done, delete it
-func (j *JoinerController) cleanUpSession(id string) {
-	if j.Sessions[id].IsDone() {
-		slog.Info("Done for client, deleting session", slog.String("clientId", id))
-		delete(j.Sessions, id)
+func (j *JoinerController) isBlacklisted(id string) bool {
+	j.purgeBlacklist()
+	_, exists := j.BlacklistedClients[id]
+	return exists
+}
+
+func (j *JoinerController) purgeBlacklist() {
+	now := time.Now().Unix()
+	for clientID, timestamp := range j.BlacklistedClients {
+		if now-timestamp >= blacklistDuration {
+			delete(j.BlacklistedClients, clientID)
+		}
 	}
 }
 

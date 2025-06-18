@@ -90,6 +90,14 @@ func (m *Middleware) GetQueueWithTopicToSend(exchange, topic string) (SenderQueu
 	return NewAmqpQueueWithTopic(m.ch, exchange, topic), nil
 }
 
+func (m *Middleware) GetFanoutQueueToSend(exchange string) (SenderQueue, error) {
+	if err := m.ch.ExchangeDeclare(exchange, "fanout", false, false, false, false, nil); err != nil {
+		return nil, fmt.Errorf("error declaring exchange: %s", err)
+	}
+
+	return NewAmqpQueueWithFanout(m.ch, exchange), nil
+}
+
 func (m *Middleware) GetChanWithTopicToRecv(exchange, topic string) (<-chan Message, error) {
 	if err := m.ch.ExchangeDeclare(exchange, "topic", false, false, false, false, nil); err != nil {
 		return nil, fmt.Errorf("error declaring exchange: %s", err)
@@ -101,6 +109,44 @@ func (m *Middleware) GetChanWithTopicToRecv(exchange, topic string) (<-chan Mess
 	}
 
 	if err := m.ch.QueueBind(q.Name, topic, exchange, false, nil); err != nil {
+		return nil, fmt.Errorf("error binding queue: %s", err)
+	}
+
+	amqpChan, err := m.ch.Consume(
+		q.Name,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to register a consumer: %s", err)
+	}
+
+	inboxChan := make(chan Message)
+	go func() {
+		for msg := range amqpChan {
+			inboxChan <- Message{msg.Body, msg}
+		}
+	}()
+
+	return inboxChan, nil
+}
+
+func (m *Middleware) GetChanWithFanoutToRecv(exchange, queueName string) (<-chan Message, error) {
+	if err := m.ch.ExchangeDeclare(exchange, "fanout", false, false, false, false, nil); err != nil {
+		return nil, fmt.Errorf("error declaring exchange: %s", err)
+	}
+
+	q, err := m.ch.QueueDeclare(queueName, false, false, false, false, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error declaring queue: %s", err)
+	}
+
+	if err := m.ch.QueueBind(q.Name, "", exchange, false, nil); err != nil {
 		return nil, fmt.Errorf("error binding queue: %s", err)
 	}
 

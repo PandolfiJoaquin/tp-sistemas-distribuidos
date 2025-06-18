@@ -15,8 +15,10 @@ import (
 )
 
 const (
-	rabbitHost = "rabbitmq"
-	nextStep   = "to-preprocess"
+	rabbitHost    = "rabbitmq"
+	nextStep      = "to-preprocess"
+	flushExchange = "flush-exchange"
+	flushTopic    = "client-flush"
 )
 
 type GatewayConfig struct {
@@ -36,6 +38,7 @@ func NewGatewayConfig(rabbitUser, rabbitPass, port string) GatewayConfig {
 type Gateway struct {
 	middleware    *middleware.Middleware
 	resultsQueues map[int]<-chan middleware.Message
+	flushQueue    middleware.SenderQueue
 	toPreprocess  middleware.SenderQueue
 	config        GatewayConfig
 	listener      net.Listener
@@ -73,26 +76,33 @@ func (g *Gateway) middlewareSetup() error {
 	middleware, err := middleware.NewMiddleware(g.config.RabbitUser, g.config.RabbitPass, rabbitHost)
 	if err != nil {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
-		return err
+		return fmt.Errorf("error creating middleware: %w", err)
 	}
 	g.middleware = middleware
 
 	processorChan, err := g.middleware.GetQueueToSend(nextStep)
 	if err != nil {
 		slog.Error("error getting channel to send", slog.String("queue", nextStep), slog.String("error", err.Error()))
-		return err
+		return fmt.Errorf("error getting channel to send: %w", err)
 	}
 
 	for i := 1; i <= 5; i++ {
 		resultsChan, err := g.middleware.GetChanToRecv(fmt.Sprintf("q%d-results", i))
 		if err != nil {
 			slog.Error("error getting channel to receive", slog.String("queue", fmt.Sprintf("q%d-results", i)), slog.String("error", err.Error()))
-			return err
+			return fmt.Errorf("error getting channel to receive: %w", err)
 		}
 		g.resultsQueues[i] = resultsChan
 	}
 
 	g.toPreprocess = processorChan
+
+	flushChan, err := g.middleware.GetFanoutQueueToSend(flushExchange)
+	if err != nil {
+		slog.Error("error getting flush channel", slog.String("error", err.Error()))
+		return fmt.Errorf("error getting flush channel: %w", err)
+	}
+	g.flushQueue = flushChan
 
 	return nil
 }
