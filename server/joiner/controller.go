@@ -98,12 +98,12 @@ func (j JoinerController) ApplyFunc(entry persistency.TransactionEntry) (JoinerC
 			session := j.getSession(clientId)
 			session.UpdateReviewsWeights(batch.Header)
 		}
-		j.StoredReviewBatches[clientId] = []common.Batch[common.Review]{}
+		delete(j.StoredReviewBatches, clientId)
 		for _, batch := range j.StoredCreditBatches[clientId] {
 			session := j.getSession(clientId)
 			session.UpdateCreditsWeights(batch.Header)
 		}
-		j.StoredCreditBatches[clientId] = []common.Batch[common.Credit]{}
+		delete(j.StoredCreditBatches, clientId)
 		return j, nil
 	case UpdateCreditsWeightsOp:
 		header, err := common.HeaderFromString(entry.Args)
@@ -294,13 +294,14 @@ func (j *JoinerController) storeCreditsBatch(clientId string, batch common.Batch
 
 func (j *JoinerController) joinStoredBatches(clientId string) {
 	reviewBatches := j.StoredReviewBatches[clientId]
-	j.StoredReviewBatches[clientId] = []common.Batch[common.Review]{}
+	delete(j.StoredReviewBatches, clientId)
 	for _, batch := range reviewBatches {
 		j.joinReviewBatch(clientId, batch)
 	}
 
 	creditBatches := j.StoredCreditBatches[clientId]
 	j.StoredCreditBatches[clientId] = []common.Batch[common.Credit]{}
+	delete(j.StoredCreditBatches, clientId)
 	for _, batch := range creditBatches {
 		j.filterCreditBatch(clientId, batch)
 	}
