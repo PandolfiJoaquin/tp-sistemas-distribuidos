@@ -5,8 +5,13 @@ import (
 	"log/slog"
 	"net"
 	"pkg/communication"
+	"time"
 	"tp-sistemas-distribuidos/client/utils"
 )
+
+// Monke: 2.5
+// Joaco: 20.0
+const msToSleep = 20.0
 
 type Sender[T any] struct {
 	conn      *net.Conn
@@ -44,15 +49,17 @@ func (s *Sender[T]) Send() error {
 	return nil
 }
 
-func readAndSendData[T any](reader utils.BatchReader[T], conn net.Conn) error {
+func readAndSendData[T any](reader utils.BatchReader[T], conn net.Conn, batchID int) error {
 	batch, err := reader.ReadBatch()
 	if err != nil {
 		return fmt.Errorf("error reading batch: %w", err)
 	}
-	err = communication.SendData[T](conn, batch)
+
+	err = communication.SendData(conn, batch, batchID)
 	if err != nil {
 		return fmt.Errorf("error sending data: %w", err)
 	}
+	time.Sleep(time.Duration(msToSleep * float64(time.Millisecond)))
 	return nil
 }
 
@@ -64,14 +71,16 @@ func sendAllData[T any](reader utils.BatchReader[T], conn net.Conn) (int, error)
 		}
 	}(reader)
 
+	var batchID int = 0
 	for !reader.Finished() {
-		err := readAndSendData(reader, conn)
+		err := readAndSendData(reader, conn, batchID)
 		if err != nil {
 			return 0, fmt.Errorf("error sending data: %w", err)
 		}
+		batchID++
 	}
 
-	err := communication.SendBatchEOF(conn, int32(reader.TotalRead()))
+	err := communication.SendBatchEOF(conn, int32(reader.TotalRead()), batchID)
 	if err != nil {
 		return 0, fmt.Errorf("error sending EOF: %w", err)
 	}

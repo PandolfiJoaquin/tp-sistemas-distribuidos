@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	logger, err := log.SetupLogger("joiner", false, nil)
+	logger, err := log.SetupLogger("joiner", nil)
 	if err != nil {
 		fmt.Printf("error creating logger: %v", err)
 		return

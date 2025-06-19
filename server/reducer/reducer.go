@@ -9,19 +9,8 @@ import (
 	pkg "pkg/models"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/middleware"
 )
-
-// type queuesNames struct {
-// 	previousQueue string
-// 	nextQueue     string
-// }
-
-// var queriesQueues = map[int]queuesNames{
-// 	2: {previousQueue: "q2-to-reduce", nextQueue: "q2-to-final-reduce"},
-// 	3: {previousQueue: "q3-to-reduce", nextQueue: "q3-to-final-reduce"},
-// 	4: {previousQueue: "q4-to-reduce", nextQueue: "q4-to-final-reduce"},
-// 	5: {previousQueue: "q5-to-reduce", nextQueue: "q5-to-final-reduce"},
-// }
 
 const (
 	rabbitHost      = "rabbitmq"
@@ -36,7 +25,7 @@ const (
 )
 
 type Reducer struct {
-	middleware       *common.Middleware
+	m       *middleware.Middleware
 	query2Connection connection
 	query3Connection connection
 	query4Connection connection
@@ -44,38 +33,38 @@ type Reducer struct {
 }
 
 type connection struct {
-	ChanToRecv <-chan common.Message
-	ChanToSend chan<- []byte
+	ChanToRecv <-chan middleware.Message
+	ChanToSend middleware.SenderQueue
 }
 
 func NewReducer(rabbitUser, rabbitPass string) (*Reducer, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
+	m, err := middleware.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
 
-	query2Connection, err := initializeConnection(middleware, previousQueueQ2, nextQueueQ2)
+	query2Connection, err := initializeConnection(m, previousQueueQ2, nextQueueQ2)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing query 2 connection: %w", err)
 	}
 
-	query3Connection, err := initializeConnection(middleware, previousQueueQ3, nextQueueQ3)
+	query3Connection, err := initializeConnection(m, previousQueueQ3, nextQueueQ3)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing query 3 connection: %w", err)
 	}
 
-	query4Connection, err := initializeConnection(middleware, previousQueueQ4, nextQueueQ4)
+	query4Connection, err := initializeConnection(m, previousQueueQ4, nextQueueQ4)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing query 4 connection: %w", err)
 	}
 
-	query5Connection, err := initializeConnection(middleware, previousQueueQ5, nextQueueQ5)
+	query5Connection, err := initializeConnection(m, previousQueueQ5, nextQueueQ5)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing query 5 connection: %w", err)
 	}
 
 	return &Reducer{
-		middleware:       middleware,
+		m:       m,
 		query2Connection: query2Connection,
 		query3Connection: query3Connection,
 		query4Connection: query4Connection,
@@ -83,12 +72,12 @@ func NewReducer(rabbitUser, rabbitPass string) (*Reducer, error) {
 	}, nil
 }
 
-func initializeConnection(middleware *common.Middleware, previousQueue, nextQueue string) (connection, error) {
-	previousChan, err := middleware.GetChanToRecv(previousQueue)
+func initializeConnection(m *middleware.Middleware, previousQueue, nextQueue string) (connection, error) {
+	previousChan, err := m.GetChanToRecv(previousQueue)
 	if err != nil {
 		return connection{}, fmt.Errorf("error getting channel %s to receive: %w", previousQueue, err)
 	}
-	nextChan, err := middleware.GetChanToSend(nextQueue)
+	nextChan, err := m.GetQueueToSend(nextQueue)
 	if err != nil {
 		return connection{}, fmt.Errorf("error getting channel %s to send: %w", nextQueue, err)
 	}
@@ -115,10 +104,10 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 			reduced, err := reduceMessage(msg, r.reduceQ2)
 			if err != nil {
 				slog.Error("error processing query2 message", slog.String("error", err.Error()))
-			} else {
-				if err := sendResponse(reduced, r.query2Connection.ChanToSend); err != nil {
-					slog.Error("error sending response", slog.String("error", err.Error()))
-				}
+				continue
+			}
+			if err := sendResponse(reduced, r.query2Connection.ChanToSend); err != nil {
+				slog.Error("error sending response", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query2 message", slog.String("error", err.Error()))
@@ -127,10 +116,10 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 			reduced, err := reduceMessage(msg, r.reduceQ3)
 			if err != nil {
 				slog.Error("error processing query3 message", slog.String("error", err.Error()))
-			} else {
-				if err := sendResponse(reduced, r.query3Connection.ChanToSend); err != nil {
-					slog.Error("error sending response", slog.String("error", err.Error()))
-				}
+				continue
+			}
+			if err := sendResponse(reduced, r.query3Connection.ChanToSend); err != nil {
+				slog.Error("error sending response", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query3 message", slog.String("error", err.Error()))
@@ -139,10 +128,10 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 			reduced, err := reduceMessage(msg, r.reduceQ4)
 			if err != nil {
 				slog.Error("error processing query4 message", slog.String("error", err.Error()))
-			} else {
-				if err := sendResponse(reduced, r.query4Connection.ChanToSend); err != nil {
-					slog.Error("error sending response", slog.String("error", err.Error()))
-				}
+				continue
+			}
+			if err := sendResponse(reduced, r.query4Connection.ChanToSend); err != nil {
+				slog.Error("error sending response", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query4 message", slog.String("error", err.Error()))
@@ -151,10 +140,10 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 			reduced, err := reduceMessage(msg, r.reduceQ5)
 			if err != nil {
 				slog.Error("error processing query5 message", slog.String("error", err.Error()))
-			} else {
-				if err := sendResponse(reduced, r.query5Connection.ChanToSend); err != nil {
-					slog.Error("error sending response", slog.String("error", err.Error()))
-				}
+				continue
+			}
+			if err := sendResponse(reduced, r.query5Connection.ChanToSend); err != nil {
+				slog.Error("error sending response", slog.String("error", err.Error()))
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging query5 message", slog.String("error", err.Error()))
@@ -163,7 +152,7 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 	}
 }
 
-func reduceMessage[T any, R any](msg common.Message, reduceFunc func(common.Batch[T]) (R, error)) (R, error) {
+func reduceMessage[T any, R any](msg middleware.Message, reduceFunc func(common.Batch[T]) (R, error)) (R, error) {
 	var batch common.Batch[T]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		var zero R
@@ -179,12 +168,14 @@ func reduceMessage[T any, R any](msg common.Message, reduceFunc func(common.Batc
 	return reduced, nil
 }
 
-func sendResponse[T any](response T, sendChan chan<- []byte) error {
+func sendResponse[T any](response T, sendChan middleware.SenderQueue) error {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		return fmt.Errorf("error marshalling response: %w", err)
 	}
-	sendChan <- responseBytes
+	if err := sendChan.Send(responseBytes); err != nil {
+		return fmt.Errorf("error sending response: %w", err)
+	}
 	return nil
 }
 
@@ -282,7 +273,7 @@ func (r *Reducer) reduceQ5(batch common.Batch[common.MovieWithSentiment]) (commo
 		}
 
 		if profitRatio > 10000 {
-			slog.Debug("ALOT profit ratio", slog.String("movie_id", movieWithSentiment.ID), slog.Any("revenue", movieWithSentiment.Revenue), slog.Any("budget", movieWithSentiment.Budget), slog.Float64("profit_ratio", profitRatio))
+			//slog.Debug("ALOT profit ratio", slog.String("movie_id", movieWithSentiment.ID), slog.Any("revenue", movieWithSentiment.Revenue), slog.Any("budget", movieWithSentiment.Budget), slog.Float64("profit_ratio", profitRatio))
 		}
 
 	}
@@ -299,7 +290,7 @@ func (r *Reducer) reduceQ5(batch common.Batch[common.MovieWithSentiment]) (commo
 }
 
 func (r *Reducer) close() {
-	if err := r.middleware.Close(); err != nil {
+	if err := r.m.Close(); err != nil {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
 	slog.Info("reducer stopped")

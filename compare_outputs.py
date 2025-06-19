@@ -1,9 +1,10 @@
-import os
 import glob
 import json
+import os
 import sys
 
 tabulation = "   "
+
 
 def load_config(config_file):
     """Load and validate the configuration file."""
@@ -31,10 +32,11 @@ def load_config(config_file):
 
     return cfg
 
+
 def get_expected_results_for_file(file_path, cfg):
     """Get the expected results for a specific file based on the config."""
     client_num = int(file_path.split('-')[-1].split('.')[0])
-    
+
     review_file = cfg["files"]["reviews"][(client_num - 1) % len(cfg["files"]["reviews"])]
     movie_file = cfg["files"]["movies"][(client_num - 1) % len(cfg["files"]["movies"])]
     credits_file = cfg["files"]["credits"][(client_num - 1) % len(cfg["files"]["credits"])]
@@ -42,10 +44,10 @@ def get_expected_results_for_file(file_path, cfg):
     # Results are only available for movies_metadata.csv and credits.csv
     if "movies_metadata.csv" not in movie_file:
         return None
-    
+
     if "credits.csv" not in credits_file:
         return None
-    
+
     # Return the appropriate expected results based on the review file
     if "ratings_small.csv" in review_file:
         return expected_reviews_small
@@ -53,6 +55,7 @@ def get_expected_results_for_file(file_path, cfg):
         return expected_reviews_big
     else:
         return None
+
 
 def compare_results(actual_file_path, expected_results):
     """
@@ -75,7 +78,7 @@ def compare_results(actual_file_path, expected_results):
     # Read actual results
     with open(actual_file_path, 'r') as f:
         actual_lines = f.readlines()
-    
+
     # Parse actual results into a dictionary
     actual_results = {}
     for line in actual_lines:
@@ -99,20 +102,21 @@ def compare_results(actual_file_path, expected_results):
             if current:
                 results.append(current.strip())
             actual_results[query_num] = results
-    
+
     # Compare results
     comparison = {}
+
     for query_num, actual in actual_results.items():
         # Skip if we don't have expected results for this query
         if query_num not in expected_results:
-            continue
-            
+            print("ERROR")
+
         expected = expected_results[query_num]
-        
+
         # Compare sets to ignore order
         actual_set = set(actual)
         expected_set = set(expected)
-        
+
         comparison[query_num] = {
             "matches": actual_set == expected_set,
             "actual": actual,
@@ -120,8 +124,9 @@ def compare_results(actual_file_path, expected_results):
             "missing": list(expected_set - actual_set),
             "extra": list(actual_set - expected_set)
         }
-    
+
     return comparison
+
 
 def print_comparison(comparison, file_name, cfg):
     """Print the comparison results in a readable format."""
@@ -166,6 +171,7 @@ def print_comparison(comparison, file_name, cfg):
 
     if error_in_query:
         return False
+
 
 # Expected results dictionaries
 expected_reviews_big = {
@@ -276,30 +282,36 @@ expected_reviews_small = {
     ]
 }
 
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python compare_outputs.py <config.json>")
         sys.exit(1)
 
     cfg = load_config(sys.argv[1])
-    
+    client_ids = cfg["clients"]
+
     result_files = glob.glob("client-results/queries-results-*.txt")
     if not result_files:
         print("No result files found in client-results/")
         sys.exit(1)
 
     result_files.sort(key=lambda x: int(x.split('-')[-1].split('.')[0]))
-    
+
     processed_files = set()
     all_passed = True
 
-    for result_file in result_files:
-        if result_file in processed_files:
+    for client_id in range(1,client_ids+1):
+        result_file = f"client-results/queries-results-{client_id}.txt"
+        # Check if file exists and is not empty
+        if not os.path.isfile(result_file) or os.path.getsize(result_file) == 0:
+            print(f"{result_file}: ❌ Missing or empty result file!")
+            all_passed = False
             continue
 
         # Get the expected results based on the file and config
         expected_results = get_expected_results_for_file(result_file, cfg)
-        
+
         comparison = compare_results(result_file, expected_results)
 
         if not print_comparison(comparison, result_file, cfg):
@@ -307,12 +319,19 @@ def main():
 
         processed_files.add(result_file)
 
+        if len(comparison.items()) != 5:
+            print("\nMissing results! ❌")
+            missing = {1, 2, 3, 4, 5} - set([query_num for query_num, _ in comparison.items()])
+            print(missing)
+            sys.exit(1)
+
     if all_passed:
         print("\nAll comparisons passed! ✅")
         sys.exit(0)
     else:
         print("\nSome comparisons failed! ❌")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

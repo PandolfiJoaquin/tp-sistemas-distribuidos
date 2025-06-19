@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,7 +48,9 @@ func AtomicWriteFile(filename string, data []byte, hook HookFunc) error {
 	var success bool
 	defer func() {
 		if !success {
-			tmp.Close() // We close the temp file if we fail to rename it.
+			if err := tmp.Close(); err != nil {
+				slog.Error("failed to close temporary file", "error", err)
+			}
 		}
 		os.Remove(tmp.Name())
 	}()
@@ -78,7 +81,12 @@ func AtomicWriteFile(filename string, data []byte, hook HookFunc) error {
 		return err
 	}
 
-	// 5) rename
+	// 5) Set permissions before rename
+	if err := os.Chmod(tmp.Name(), 0777); err != nil {
+		return fmt.Errorf("failed to change permissions of temporary file %s: %w", tmp.Name(), err)
+	}
+
+	// 6) rename
 	err = os.Rename(tmp.Name(), filename)
 	if err != nil {
 		return fmt.Errorf("failed to rename temporary file %s to %s: %w", tmp.Name(), filename, err)
@@ -125,11 +133,15 @@ func CleanupOldTemps(dir, base string, olderThan time.Duration) error {
 // If the file does not exist, it will be created.
 func AppendLine(filename string, data []byte) error {
 	// open file for append
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s for appending: %w", filename, err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Error("failed to close file after appending", "error", err)
+		}
+	}()
 
 	// Write the record to the file
 	if _, err := io.Copy(f, bytes.NewReader(data)); err != nil {
@@ -138,6 +150,11 @@ func AppendLine(filename string, data []byte) error {
 	// sync file data
 	if err := f.Sync(); err != nil {
 		return fmt.Errorf("failed to sync file %s: %w", filename, err)
+	}
+
+	// Ensure the file has the correct permissions
+	if err := os.Chmod(filename, 0777); err != nil {
+		return fmt.Errorf("failed to change permissions of file %s: %w", filename, err)
 	}
 	return nil
 }

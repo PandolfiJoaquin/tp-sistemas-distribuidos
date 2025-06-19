@@ -3,6 +3,7 @@ package common
 import (
 	"encoding/json"
 	pkg "pkg/models"
+	"strconv"
 )
 
 type ToProcessMsg struct {
@@ -15,6 +16,10 @@ type ToProcessMsg struct {
 type CountryBudget struct {
 	Country pkg.Country `json:"country"`
 	Budget  uint64      `json:"budget"`
+}
+
+func (c CountryBudget) ToString() string {
+	return c.Country.Name + "," + strconv.FormatUint(c.Budget, 10)
 }
 
 type Top5Countries struct {
@@ -30,6 +35,10 @@ type MovieAvgRating struct {
 	RatingCount uint32  `json:"rating_count"`
 }
 
+func (m MovieAvgRating) ToString() string {
+	return m.MovieID + "," + m.Title + "," + strconv.FormatFloat(m.RatingSum, 'f', -1, 64) + "," + string(rune(m.RatingCount))
+}
+
 type BestAndWorstMovies struct {
 	ClientId   string      `json:"client_id"`
 	BestMovie  MovieReview `json:"best_movie"`
@@ -41,6 +50,10 @@ type ActorMoviesAmount struct {
 	ActorID      string `json:"actor_id"`
 	ActorName    string `json:"actor_name"`
 	MoviesAmount uint32 `json:"movies_amount"`
+}
+
+func (actor ActorMoviesAmount) ToString() string {
+	return actor.ActorID + "," + actor.ActorName + "," + string(rune(actor.MoviesAmount))
 }
 
 type Top10Actors struct {
@@ -57,6 +70,13 @@ type ProfitRatioAccumulator struct {
 type SentimentProfitRatioAccumulator struct {
 	PositiveProfitRatio ProfitRatioAccumulator `json:"positive_profit_ratio"`
 	NegativeProfitRatio ProfitRatioAccumulator `json:"negative_profit_ratio"`
+}
+
+func (s SentimentProfitRatioAccumulator) ToString() string {
+	return strconv.FormatFloat(s.PositiveProfitRatio.ProfitRatioSum, 'f', -1, 64) + "," +
+		strconv.FormatUint(uint64(s.PositiveProfitRatio.ProfitRatioCount), 10) + "," +
+		strconv.FormatFloat(s.NegativeProfitRatio.ProfitRatioSum, 'f', -1, 64) + "," +
+		strconv.FormatUint(uint64(s.NegativeProfitRatio.ProfitRatioCount), 10)
 }
 
 type SentimentProfitRatioAverage struct {

@@ -13,7 +13,7 @@ RUN go build -o client_bin
 
 
 # Run stage
-FROM busybox:1.32.1
+FROM ubuntu:latest
 
 WORKDIR /home/app
 

@@ -1,10 +1,13 @@
 import json
 import sys
 
+VOLUME = "    volumes:\n      - ./data/{type}/id-{node_id}/:/data/\n"
+
 YAML_FILE = "docker-compose.yaml"
 
 # nodes that inject JOINER_SHARDS automatically
 NEEDS_SHARDS = {"preprocessor", "production-filter"}
+NEEDS_VOLUME = {"joiner", "fina-reducer"}
 
 QUERY_AMNT = 5
 
@@ -23,6 +26,23 @@ BASE_NODE = """
       rabbitmq:
         condition: service_healthy
         restart: true
+"""
+
+HEALER_NODE= """
+  {svc_name}:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: {node}
+    container_name: {svc_name}
+    environment:
+      - HEALER_ID={node_id}
+      - DELAY=10
+    depends_on:
+      - gateway
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yaml:/docker-compose.yaml
 """
 
 CLIENT_NODE = """
@@ -55,26 +75,27 @@ RABBITMQ_SERVICE = """
     volumes:
       - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
-      interval: 2s
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 15
 """
 
-def get_node_env(node_type, node_id=None, joiners=None):
+def get_node_env(node_type, debug=False, node_id=None, joiners=None):
     """Generate environment variables for a node based on its type"""
     env_vars = []
-    
+    if debug:
+        env_vars.append("\n      - DEBUG=1")
     if node_type == "final-reducer":
-        env_vars.extend([
+        env_vars += [
             f"\n      - QUERY_NUM={node_id}",
             f"\n      - JOINER_SHARDS={joiners}"
-        ])
+        ]
     elif node_type == "joiner":
         env_vars.append(f"\n      - JOINER_ID={node_id}")
     elif node_type in NEEDS_SHARDS:
         env_vars.append(f"\n      - JOINER_SHARDS={joiners}")
-    
+
     return "".join(env_vars)
 
 def create_compose(cfg):
@@ -82,24 +103,27 @@ def create_compose(cfg):
     joiners = cfg["joiners"]
     nodes    = cfg["nodes"]    # dict: { "preprocessor": n, "production-filter": m, ... }
     files    = cfg["files"]    # dict: { "movies": [paths], "reviews": [paths], ... }
+    healer   = cfg["healer"]
+    debug   = cfg["logLevel"]  == "DEBUG"
 
     compose = "name: tp-dist\nservices:\n"
 
     # Gateway
+    extra_env = "\n      - DEBUG=1" if debug else ""
     compose += BASE_NODE.format(
         svc_name="gateway",
         node="gateway",
-        extra_env=""
+        extra_env=extra_env
     )
 
-    # RabbitMQ
+    # RabbitM
     compose += RABBITMQ_SERVICE
 
     # Nodos Dinamicos
     for node, count in nodes.items():
         for i in range(1, count+1):
             svc_name = f"{node}-{i}" if count > 1 else node
-            extra_env = get_node_env(node, joiners=joiners)
+            extra_env = get_node_env(node, debug, joiners=joiners)
             compose += BASE_NODE.format(
                 svc_name=svc_name,
                 node=node,
@@ -109,21 +133,31 @@ def create_compose(cfg):
     # Final Reducer
     for q in range(2, QUERY_AMNT+1):
         svc_name = f"final-reducer-q{q}"
-        extra_env = get_node_env("final-reducer", node_id=q, joiners=joiners)
+        extra_env = get_node_env("final-reducer", debug, node_id=q, joiners=joiners)
         compose += BASE_NODE.format(
             svc_name=svc_name,
             node="final-reducer",
             extra_env=extra_env
-        )
+        ) + VOLUME.format(node_id=q, type="final-reducer")
+
 
     # Joiners
     for j in range(1, joiners+1):
         svc_name = f"joiner-{j}"
-        extra_env = get_node_env("joiner", node_id=j)
+        extra_env = get_node_env("joiner", debug, node_id=j)
         compose += BASE_NODE.format(
             svc_name=svc_name,
             node="joiner",
             extra_env=extra_env
+        ) + VOLUME.format(node_id=j, type="joiner")
+
+    # Healer
+    for h in range (1, healer+1):
+        svc_name = f"healer-{h}"
+        compose += HEALER_NODE.format(
+            svc_name=svc_name,
+            node="healer",
+            node_id=h
         )
 
     # Clients
@@ -133,7 +167,7 @@ def create_compose(cfg):
         movies_file = files["movies"][(c-1) % len(files["movies"])]
         reviews_file = files["reviews"][(c-1) % len(files["reviews"])]
         credits_file = files["credits"][(c-1) % len(files["credits"])]
-        
+
         compose += CLIENT_NODE.format(
             idx=c,
             movies_file=movies_file,
@@ -145,6 +179,7 @@ def create_compose(cfg):
         f.write(compose)
 
     print(f"   • joiners ×{joiners}")
+    print(f"   • healers ×{healer}")
     for node, count in nodes.items():
         print(f"   • {node} ×{count}")
 
@@ -159,11 +194,11 @@ def main():
         print(f"Error reading {sys.argv[1]}: {e}")
         sys.exit(1)
 
-    for key in ("clients", "joiners", "nodes", "files"):
+    for key in ("clients", "joiners", "nodes", "files", "healer"):
         if key not in cfg:
             print(f"Missing key '{key}' in JSON")
             sys.exit(1)
-        
+
     for file_type, file_list in cfg["files"].items():
         if not isinstance(file_list, list):
             print(f"Error: '{file_type}' must be a list of files")

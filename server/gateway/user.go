@@ -13,29 +13,39 @@ import (
 	"pkg/models"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/middleware"
 )
 
-type Client struct {
-	id           string
-	conn         net.Conn
-	dead         bool
-	recvChannel  chan *models.TotalQueryResults
-	toPreprocess *chan<- []byte
-	done         uint8
-	ctx          context.Context
-	cancel       context.CancelFunc
+type q1State struct {
+	CurrentWeight   uint32
+	EofWeight       int32
+	DuplicateFilter *common.DuplicateFilter
 }
 
-func NewClient(conn net.Conn, toPreprocess *chan<- []byte) *Client {
+type Client struct {
+	id              string
+	conn            net.Conn
+	dead            bool
+	recvChannel     chan *models.TotalQueryResults
+	toPreprocess    middleware.SenderQueue
+	queriesReceived map[int]bool
+	q1State         *q1State
+	ctx             context.Context
+	cancel          context.CancelFunc
+}
+
+func NewClient(conn net.Conn, toPreprocess middleware.SenderQueue) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
-		id:           uuid.NewString(),
-		conn:         conn,
-		dead:         false,
-		recvChannel:  make(chan *models.TotalQueryResults),
-		toPreprocess: toPreprocess,
-		ctx:          ctx,
-		cancel:       cancel,
+		id:              uuid.NewString(),
+		conn:            conn,
+		dead:            false,
+		recvChannel:     make(chan *models.TotalQueryResults),
+		toPreprocess:    toPreprocess,
+		queriesReceived: make(map[int]bool),
+		q1State:         &q1State{DuplicateFilter: common.NewDuplicateFilter()},
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 }
 
@@ -62,37 +72,58 @@ func (c *Client) IsDead() bool {
 }
 
 func (c *Client) sendHandler() {
-
-	err := receiveData[models.RawMovie](*c.toPreprocess, "movies", &c.conn, c.id)
+	err := receiveData[models.RawMovie](c.toPreprocess, "movies", &c.conn, c.id)
 	if err != nil {
 		c.checkSendError(err, "error receiving movies")
 		return
 	}
 
-	err = receiveData[models.RawReview](*c.toPreprocess, "reviews", &c.conn, c.id)
+	err = receiveData[models.RawReview](c.toPreprocess, "reviews", &c.conn, c.id)
 	if err != nil {
 		c.checkSendError(err, "error receiving reviews")
 		return
 	}
 
-	err = receiveData[models.RawCredits](*c.toPreprocess, "credits", &c.conn, c.id)
+	err = receiveData[models.RawCredits](c.toPreprocess, "credits", &c.conn, c.id)
 	if err != nil {
 		c.checkSendError(err, "error receiving credits")
 		return
 	}
 }
 
+func (c *Client) handleQ1(results *models.TotalQueryResults) {
+	if !c.q1State.DuplicateFilter.Accept(results.Header.BatchID) {
+		slog.Warn("duplicate query received WINDOW", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
+		return
+	}
+	c.q1State.CurrentWeight += results.Header.Weight
+	if results.Header.TotalWeight > 0 {
+		c.q1State.EofWeight = int32(results.Header.TotalWeight)
+	}
+	if c.q1State.EofWeight > 0 && c.q1State.CurrentWeight == uint32(c.q1State.EofWeight) { //TODO: va a romper si el peso del archivo es 0
+		c.queriesReceived[1] = true
+		slog.Info("query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
+	}
+}
+
 func (c *Client) recvHandler() {
 	for {
-		if c.done == 5 {
+		if len(c.queriesReceived) == 5 {
 			slog.Info("client finished receiving all data", slog.String("id", c.id))
 			break
 		}
 		select {
 		case <-c.ctx.Done():
 		case results := <-c.recvChannel:
-			if results.Last {
-				c.done++
+			if _, ok := c.queriesReceived[results.QueryId]; ok {
+				slog.Warn("duplicate query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
+				continue
+			}
+			if results.QueryId == 1 {
+				c.handleQ1(results)
+			} else {
+				c.queriesReceived[results.QueryId] = true
+				slog.Info("query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
 			}
 			err := communication.SendQueryResults(c.conn, *results)
 			if err != nil {
@@ -113,7 +144,7 @@ func (c *Client) GetId() string {
 	return c.id
 }
 
-func receiveData[T any](toPreprocess chan<- []byte, batchType string, client *net.Conn, id string) error {
+func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, client *net.Conn, id string) error {
 	total := 0
 	for {
 		batch, err := communication.RecvBatch[T](*client)
@@ -136,7 +167,7 @@ func receiveData[T any](toPreprocess chan<- []byte, batchType string, client *ne
 	return nil
 }
 
-func publishBatch[T any](batch models.RawBatch[T], batchType string, toPreprocess chan<- []byte, clientId string) error {
+func publishBatch[T any](batch models.RawBatch[T], batchType string, toPreprocess middleware.SenderQueue, clientId string) error {
 	bodyBytes, err := json.Marshal(batch)
 	if err != nil {
 		return fmt.Errorf("error marshalling batch: %w", err)
@@ -153,7 +184,9 @@ func publishBatch[T any](batch models.RawBatch[T], batchType string, toPreproces
 		return fmt.Errorf("error marshalling raw batch: %w", err)
 	}
 
-	toPreprocess <- batchToSend
+	if err := toPreprocess.Send(batchToSend); err != nil {
+		return fmt.Errorf("error sending batch: %w", err)
+	}
 	return nil
 }
 
