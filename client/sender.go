@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"pkg/communication"
+	"time"
 	"tp-sistemas-distribuidos/client/utils"
 )
 
@@ -75,6 +76,8 @@ func (s *Sender[T]) SendBatch(batch []T, batchID int, total int) error {
 			return fmt.Errorf("ack value mismatch: expected %d, got %d", len(batch), ack)
 		}
 	}
+
+	time.Sleep(time.Duration(msToSleep) * time.Millisecond)
 	return nil
 }
 

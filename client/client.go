@@ -241,8 +241,6 @@ func (c *Client) handleQueryResult(queriesResults *map[int][]models.QueryResult,
 		return err
 	}
 
-	slog.Info("Received query results", slog.Int("queryId", results.QueryId), slog.Bool("last", results.Last))
-
 	_, alreadyHasResult := (*queriesResults)[results.QueryId]
 	isDuplicate := results.QueryId != 1 && alreadyHasResult
 	if results.Last && (!isDuplicate) {
