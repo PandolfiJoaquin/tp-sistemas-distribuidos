@@ -13,3 +13,8 @@ type Event struct {
 	Type      EventType
 	Parameter int
 }
+
+type Config struct {
+	Id           int
+	AmtOfHealers int
+}

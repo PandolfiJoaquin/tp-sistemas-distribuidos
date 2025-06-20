@@ -7,10 +7,12 @@ import (
 	"tp-sistemas-distribuidos/server/healer/election-model"
 )
 
-type NotACandidateState struct{}
+type NotACandidateState struct {
+	config election_model.Config
+}
 
-func NewNotACandidateState() *NotACandidateState {
-	return &NotACandidateState{}
+func NewNotACandidateState(config election_model.Config) *NotACandidateState {
+	return &NotACandidateState{config}
 }
 
 func (n *NotACandidateState) HandleMailBox(mailbox chan election_model.Event) ProcessState {
@@ -18,7 +20,7 @@ func (n *NotACandidateState) HandleMailBox(mailbox chan election_model.Event) Pr
 	select {
 	case <-ticker.C:
 		slog.Warn("a non-candidate process time'd out. Becoming candidate again")
-		return NewCandidateState()
+		return NewCandidateState(n.config)
 	case event := <-mailbox:
 		switch event.Type {
 		case election_model.HeartBeat:
@@ -29,7 +31,7 @@ func (n *NotACandidateState) HandleMailBox(mailbox chan election_model.Event) Pr
 		case election_model.Ok:
 			return n
 		case election_model.Victory:
-			return NewWorkerState()
+			return NewWorkerState(n.config)
 		default:
 			panic(fmt.Sprintf("Unknown event: %v", event.Type))
 		}

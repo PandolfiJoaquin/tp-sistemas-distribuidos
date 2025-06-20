@@ -11,10 +11,12 @@ const (
 	heartBeatTolerance = 3 * time.Second
 )
 
-type WorkerState struct{}
+type WorkerState struct {
+	config election_model.Config
+}
 
-func NewWorkerState() *WorkerState {
-	return &WorkerState{}
+func NewWorkerState(config election_model.Config) *WorkerState {
+	return &WorkerState{config}
 }
 
 func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event) ProcessState {
@@ -23,7 +25,7 @@ func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event) ProcessSt
 	select {
 	case <-ticker.C:
 		//broadcast mensaje de eleccion
-		return NewCandidateState()
+		return NewCandidateState(w.config)
 	case event := <-mailbox:
 		switch event.Type {
 		case election_model.HeartBeat:
@@ -31,11 +33,11 @@ func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event) ProcessSt
 		case election_model.Election:
 			if event.Parameter > 1 /*config.id*/ {
 				//answer with ok to the specific client
-				return NewNotACandidateState()
+				return NewNotACandidateState(w.config)
 			} else {
 				//tengo que enviar aca mensaje de eleccion?
 				// o muevo el broadcast de mensaje de eleccion a cuando se crea el candidate?
-				return NewCandidateState()
+				return NewCandidateState(w.config)
 			}
 		case election_model.Ok:
 			//TODO: mensaje viejo, ignoro, pero que hago si algun otro de los mensaes es viejo? revisar.
