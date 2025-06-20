@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	// "math/rand"
 	"os/signal"
 	"pkg/models"
 	"syscall"
@@ -38,7 +39,6 @@ type Preprocessor struct {
 	reviewsQueues    map[int]middleware.SenderQueue
 	creditsQueues    map[int]middleware.SenderQueue
 	moviesQueues     []middleware.SenderQueue
-	pesoTotalQuePaso int
 }
 
 func NewPreprocessor(rabbitUser string, rabbitPass string, shards int) *Preprocessor {
@@ -281,6 +281,13 @@ func sendBatchMap[T any](batch common.Batch[T], shards int, chans map[int]middle
 			if err := ch.Send(data); err != nil {
 				return fmt.Errorf("sending batch: %w", err)
 			}
+			//DUPLICATE: depending on the probability, send the batch again to the same channel
+			// if rand.Float64() < 0.5 {
+			// 	slog.Debug("duplicating batch message", slog.Int("shard", id), slog.Int("batch id", batch.Header.MessageID.ID))
+			// 	if err := ch.Send(data); err != nil {
+			// 		return fmt.Errorf("sending batch: %w", err)
+			// 	}
+			// }
 		}
 		return nil
 	}

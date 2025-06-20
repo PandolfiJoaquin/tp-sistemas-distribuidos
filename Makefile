@@ -68,3 +68,8 @@ run-kill-inf:
 		sleep 5; \
 	done
 	
+run-atomic-bomb: run
+	./kill-containers.sh 1
+
+run-deterministic: run
+	./kill-containers.sh 2

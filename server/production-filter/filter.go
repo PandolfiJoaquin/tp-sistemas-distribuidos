@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
-
+	// "math/rand"
 	pkg "pkg/models"
 	"tp-sistemas-distribuidos/server/common"
 	"tp-sistemas-distribuidos/server/common/middleware"
@@ -188,6 +188,12 @@ func (f *ProductionFilter) sendBatch(chanToSend middleware.SenderQueue, batch co
 	if err := chanToSend.Send(response); err != nil {
 		return fmt.Errorf("error sending batch: %w", err)
 	}
+	//DUPLICATE: depending on the probability, send the batch again to the same channel
+	// if rand.Float64() < 0.5 {
+	// 	if err := chanToSend.Send(response); err != nil {
+	// 		return fmt.Errorf("error sending batch: %w", err)
+	// 	}
+	// }
 	return nil
 }
 
