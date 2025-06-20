@@ -10,8 +10,8 @@ const (
 )
 
 type Event struct {
-	Type      EventType
-	Parameter int
+	Type      EventType `json:"type"`
+	Parameter int       `json:"parameter"`
 }
 
 type Config struct {

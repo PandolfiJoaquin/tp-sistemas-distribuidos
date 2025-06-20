@@ -3,12 +3,14 @@ package states
 import (
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"time"
+	concurrencyutils "tp-sistemas-distribuidos/server/healer/concurrency-utils"
 	"tp-sistemas-distribuidos/server/healer/election-model"
 )
 
 const (
-	heartBeatTolerance = 3 * time.Second
+	heartBeatTolerance = 5 * time.Second
 )
 
 type WorkerState struct {
@@ -19,31 +21,31 @@ func NewWorkerState(config election_model.Config) *WorkerState {
 	return &WorkerState{config}
 }
 
-func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event) ProcessState {
+func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers) ProcessState {
 	//TODO
-	ticker := time.NewTicker(heartBeatTolerance)
+	ticker := time.NewTicker(heartBeatTolerance + (time.Duration(rand.Int32N(2)))*time.Second)
 	select {
 	case <-ticker.C:
-		//broadcast mensaje de eleccion
-		return NewCandidateState(w.config)
+		slog.Info("Timeout, converting to candidate")
+		return NewCandidateState(w.config, peers)
 	case event := <-mailbox:
 		switch event.Type {
 		case election_model.HeartBeat:
 			return w
 		case election_model.Election:
-			if event.Parameter > 1 /*config.id*/ {
-				//answer with ok to the specific client
+			if event.Parameter > w.config.Id {
 				return NewNotACandidateState(w.config)
 			} else {
-				//tengo que enviar aca mensaje de eleccion?
-				// o muevo el broadcast de mensaje de eleccion a cuando se crea el candidate?
-				return NewCandidateState(w.config)
+				peers.SendToId(election_model.Event{Type: election_model.Ok, Parameter: w.config.Id}, event.Parameter)
+				return NewCandidateState(w.config, peers)
 			}
 		case election_model.Ok:
 			//TODO: mensaje viejo, ignoro, pero que hago si algun otro de los mensaes es viejo? revisar.
-			fallthrough
+			slog.Info("Received Ok event as a worker")
+			return w
 		case election_model.Victory:
 			//TODO: mensaje viejo, ignoro, pero que hago si algun otro de los mensaes es viejo? revisar.
+			slog.Info("Received Victory event as a worker", slog.Any("event.Parameter", event.Parameter))
 			return w
 		default:
 			panic(fmt.Sprintf("Unknown event: %v", event.Type))
@@ -52,4 +54,8 @@ func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event) ProcessSt
 	slog.Info("unreachable")
 	panic("unreachable")
 
+}
+
+func (w *WorkerState) GetName() string {
+	return "worker-state"
 }

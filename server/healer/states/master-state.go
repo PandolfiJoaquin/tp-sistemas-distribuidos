@@ -4,30 +4,32 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+	concurrencyutils "tp-sistemas-distribuidos/server/healer/concurrency-utils"
 	"tp-sistemas-distribuidos/server/healer/election-model"
 )
 
-const heartBeatPeriod = 10 * time.Millisecond
+const heartBeatPeriod = 100 * time.Millisecond
 
 type MasterState struct {
 	config election_model.Config
 }
 
 func NewMasterState(config election_model.Config) *MasterState {
+
 	return &MasterState{config}
 }
 
-func (m *MasterState) HandleMailBox(mailbox chan election_model.Event) ProcessState {
+func (m *MasterState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers) ProcessState {
 	ticker := time.NewTicker(heartBeatPeriod)
 	select {
 	case <-ticker.C:
-		//TODO: broadcast heartbeat
+		peers.Broadcast(election_model.Event{Type: election_model.HeartBeat, Parameter: m.config.Id})
 		return m
 	case event := <-mailbox:
 		switch event.Type {
 		case election_model.HeartBeat:
-			//TODO
 			slog.Warn("heartbeat received by master")
+
 			return m
 		case election_model.Election:
 			slog.Warn("election received by master", slog.Int("election_id", event.Parameter))
@@ -37,13 +39,14 @@ func (m *MasterState) HandleMailBox(mailbox chan election_model.Event) ProcessSt
 				return NewMasterState(m.config)
 			}
 		case election_model.Ok:
+			slog.Warn("OK received by master", slog.Int("sender id", event.Parameter))
 			return m
 		case election_model.Victory:
 			slog.Warn("master received victory")
 			if event.Parameter > 1 {
 				return NewWorkerState(m.config)
 			} else {
-				//TODO: respond with victory
+				peers.SendToId(election_model.Event{Type: election_model.Victory, Parameter: m.config.Id}, event.Parameter)
 				return NewMasterState(m.config)
 			}
 		default:
@@ -52,4 +55,9 @@ func (m *MasterState) HandleMailBox(mailbox chan election_model.Event) ProcessSt
 	}
 	slog.Info("unreachable")
 	panic("unreachable")
+}
+
+func (m *MasterState) GetName() string {
+
+	return "master-state"
 }

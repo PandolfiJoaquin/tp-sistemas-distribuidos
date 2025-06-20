@@ -9,16 +9,15 @@ import (
 	"os"
 	"pkg/communication"
 	"strconv"
-	"sync"
 	"time"
+	concurrencyutils "tp-sistemas-distribuidos/server/healer/concurrency-utils"
 	"tp-sistemas-distribuidos/server/healer/election-model"
 	"tp-sistemas-distribuidos/server/healer/states"
 )
 
 // Process Represents a process. More specifically, a master or a worker.
 type Process struct {
-	peers     map[int]chan election_model.Event
-	mutex     *sync.RWMutex
+	peers     *concurrencyutils.Peers
 	ProcState states.ProcessState
 	running   bool
 	config    election_model.Config
@@ -44,7 +43,7 @@ func NewProcess() (*Process, error) {
 	}
 	mailbox := make(chan election_model.Event)
 	return &Process{
-		peers:     make(map[int]chan election_model.Event),
+		peers:     concurrencyutils.NewPeers(),
 		ProcState: states.NewWorkerState(config),
 		running:   true,
 		config:    config,
@@ -52,13 +51,24 @@ func NewProcess() (*Process, error) {
 	}, nil
 }
 
-func (p *Process) StartProcess(id, totalHealers int) {
+func (p *Process) StartProcess() {
+	delay, err := strconv.Atoi(os.Getenv("DELAY"))
+	if err != nil {
+		slog.Error("Error converting DELAY env var to int", slog.String("error", err.Error()))
+		return
+	}
 
 	go p.listener()
 	go p.connector()
 
+	time.Sleep(time.Duration(delay) * time.Second)
+	slog.Info(p.ProcState.GetName())
 	for p.running {
-		p.ProcState = p.ProcState.HandleMailBox(p.mailbox)
+		oldState := p.ProcState.GetName()
+		p.ProcState = p.ProcState.HandleMailBox(p.mailbox, p.peers)
+		if p.ProcState.GetName() != oldState {
+			slog.Info(p.ProcState.GetName())
+		}
 
 	}
 }
@@ -72,46 +82,27 @@ func (p *Process) listener() {
 	}
 	for p.running {
 		conn, err := listener.Accept()
-		if err != nil {
-			slog.Error("error accepting connection", slog.Any("error", err))
-		}
+		go func(p *Process) {
+			if err != nil {
+				slog.Error("error accepting connection", slog.Any("error", err))
+			}
 
-		id, err := getServiceId(conn)
-		if err != nil {
-			slog.Error("error getting service name", slog.Any("error", err))
-			wrapDeferredError(conn)
-		}
-		peerMailBox := p.startPeer(conn, id)
-		p.SafeAddPeer(id, peerMailBox)
+			id, err := getServiceId(conn)
+			if err != nil {
+				slog.Error("error getting service name", slog.Any("error", err))
+				wrapDeferredError(conn)
+			}
+			peerMailBox := p.startPeer(conn, id)
+			p.peers.SafeAddPeer(id, peerMailBox)
+		}(p)
 	}
-}
-
-func (p *Process) SafeAddPeer(id int, mailbox chan election_model.Event) {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	p.peers[id] = mailbox
-}
-
-func (p *Process) SafeRemovePeer(id int) {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	delete(p.peers, id)
-}
-
-func (p *Process) SafeContains(id int) bool {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-	_, ok := p.peers[id]
-	return ok
 }
 
 func (p *Process) connector() {
 	for p.running {
-		for id := 0; id < p.config.AmtOfHealers; id++ {
-			if id == p.config.Id {
-				continue
-			}
-			if p.SafeContains(id) {
+
+		for id := p.config.Id + 1; id <= p.config.AmtOfHealers; id++ {
+			if p.peers.SafeContains(id) {
 				continue
 			}
 			slog.Info("attemping to connecto to peer", slog.Int("peer", id))
@@ -120,11 +111,14 @@ func (p *Process) connector() {
 				slog.Debug("error connecting to healer", slog.Any("error", err))
 				continue
 			}
+			slog.Debug("connected to peer", slog.Any("peer", id))
+			if err := sendServiceID(conn, uint16(id)); err != nil {
+				return
+			}
 			peerMailbox := p.startPeer(conn, id)
-			p.SafeAddPeer(id, peerMailbox)
-
+			p.peers.SafeAddPeer(id, peerMailbox)
 		}
-		time.Sleep(4 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 
 }
