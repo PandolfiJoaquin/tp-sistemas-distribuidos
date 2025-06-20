@@ -11,11 +11,14 @@ import (
 	"sync"
 	"syscall"
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/middleware"
 )
 
 const (
-	rabbitHost = "rabbitmq"
-	nextStep   = "to-preprocess"
+	rabbitHost    = "rabbitmq"
+	nextStep      = "to-preprocess"
+	flushExchange = "flush-exchange"
+	flushTopic    = "client-flush"
 )
 
 type GatewayConfig struct {
@@ -33,9 +36,10 @@ func NewGatewayConfig(rabbitUser, rabbitPass, port string) GatewayConfig {
 }
 
 type Gateway struct {
-	middleware    *common.Middleware
-	resultsQueues map[int]<-chan common.Message
-	toPreprocess  chan<- []byte
+	middleware    *middleware.Middleware
+	resultsQueues map[int]<-chan middleware.Message
+	flushQueue    middleware.SenderQueue
+	toPreprocess  middleware.SenderQueue
 	config        GatewayConfig
 	listener      net.Listener
 	clients       map[string]*Client
@@ -48,7 +52,7 @@ func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
 	gateway := &Gateway{
 		config:        config,
 		running:       true,
-		resultsQueues: make(map[int]<-chan common.Message),
+		resultsQueues: make(map[int]<-chan middleware.Message),
 		clients:       make(map[string]*Client),
 	}
 
@@ -69,29 +73,36 @@ func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
 }
 
 func (g *Gateway) middlewareSetup() error {
-	middleware, err := common.NewMiddleware(g.config.RabbitUser, g.config.RabbitPass, rabbitHost)
+	middleware, err := middleware.NewMiddleware(g.config.RabbitUser, g.config.RabbitPass, rabbitHost)
 	if err != nil {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
-		return err
+		return fmt.Errorf("error creating middleware: %w", err)
 	}
 	g.middleware = middleware
 
-	processorChan, err := g.middleware.GetChanToSend(nextStep)
+	processorChan, err := g.middleware.GetQueueToSend(nextStep)
 	if err != nil {
 		slog.Error("error getting channel to send", slog.String("queue", nextStep), slog.String("error", err.Error()))
-		return err
+		return fmt.Errorf("error getting channel to send: %w", err)
 	}
 
 	for i := 1; i <= 5; i++ {
 		resultsChan, err := g.middleware.GetChanToRecv(fmt.Sprintf("q%d-results", i))
 		if err != nil {
 			slog.Error("error getting channel to receive", slog.String("queue", fmt.Sprintf("q%d-results", i)), slog.String("error", err.Error()))
-			return err
+			return fmt.Errorf("error getting channel to receive: %w", err)
 		}
 		g.resultsQueues[i] = resultsChan
 	}
 
 	g.toPreprocess = processorChan
+
+	flushChan, err := g.middleware.GetFanoutQueueToSend(flushExchange)
+	if err != nil {
+		slog.Error("error getting flush channel", slog.String("error", err.Error()))
+		return fmt.Errorf("error getting flush channel: %w", err)
+	}
+	g.flushQueue = flushChan
 
 	return nil
 }
@@ -107,7 +118,7 @@ func (g *Gateway) listen() {
 			}
 			return
 		}
-		client := NewClient(conn, &g.toPreprocess)
+		client := NewClient(conn, g.toPreprocess)
 		slog.Info("Client connected", slog.String("address", conn.RemoteAddr().String()))
 		g.clients[client.GetId()] = client
 		fmt.Printf("Client %s connected\n", client.GetId())
@@ -119,21 +130,19 @@ func (g *Gateway) signalHandler(wg *sync.WaitGroup) {
 	defer wg.Done()
 	// Hears SIGINT and SIGTERM signals
 	// and closes the listener and current connection
-	select {
-	case <-g.ctx.Done():
-		slog.Info("Received shutdown signal")
-		g.running = false
-		if err := g.listener.Close(); err != nil {
-			slog.Error("error closing listener", slog.String("error", err.Error()))
-		}
-		slog.Info("listener closed")
+	<-g.ctx.Done()
+	slog.Info("Received shutdown signal")
+	g.running = false
+	if err := g.listener.Close(); err != nil {
+		slog.Error("error closing listener", slog.String("error", err.Error()))
 	}
+	slog.Info("listener closed")
 }
 
 func (g *Gateway) Start() {
 	wg := &sync.WaitGroup{}
 
-	defer func(middleware *common.Middleware) {
+	defer func(middleware *middleware.Middleware) {
 		err := middleware.Close()
 		if err != nil {
 			slog.Error("error closing middleware", slog.String("error", err.Error()))
@@ -201,7 +210,7 @@ func (g *Gateway) reapDeadClients() {
 	}
 }
 
-func (g *Gateway) handleResult1(msg common.Message) (*models.ResultWithId, error) {
+func (g *Gateway) handleResult1(msg middleware.Message) (*models.ResultWithId, error) {
 	batch, err := g.consumeBatch(msg.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error consuming results: %w", err)
@@ -216,7 +225,7 @@ func (g *Gateway) handleResult1(msg common.Message) (*models.ResultWithId, error
 	return &resultsWithId, err
 }
 
-func (g *Gateway) handleResults2(msg common.Message) (*models.ResultWithId, error) {
+func (g *Gateway) handleResults2(msg middleware.Message) (*models.ResultWithId, error) {
 	var top5Countries common.Top5Countries
 	if err := json.Unmarshal(msg.Body, &top5Countries); err != nil {
 		return nil, fmt.Errorf("error unmarshalling top 5 countries: %w", err)
@@ -235,7 +244,7 @@ func (g *Gateway) handleResults2(msg common.Message) (*models.ResultWithId, erro
 	return &resultsWithId, nil
 }
 
-func (g *Gateway) handleResults3(msg common.Message) (*models.ResultWithId, error) {
+func (g *Gateway) handleResults3(msg middleware.Message) (*models.ResultWithId, error) {
 	var bestAndWorstMovies common.BestAndWorstMovies
 	if err := json.Unmarshal(msg.Body, &bestAndWorstMovies); err != nil {
 		return nil, fmt.Errorf("error unmarshalling best and worst movies: %w", err)
@@ -249,7 +258,7 @@ func (g *Gateway) handleResults3(msg common.Message) (*models.ResultWithId, erro
 	return &resultsWithId, nil
 }
 
-func (g *Gateway) handleResults4(msg common.Message) (*models.ResultWithId, error) {
+func (g *Gateway) handleResults4(msg middleware.Message) (*models.ResultWithId, error) {
 	var top10Actors common.Top10Actors
 	if err := json.Unmarshal(msg.Body, &top10Actors); err != nil {
 		return nil, fmt.Errorf("error unmarshalling top 10 actors: %w", err)
@@ -263,7 +272,7 @@ func (g *Gateway) handleResults4(msg common.Message) (*models.ResultWithId, erro
 	return &resultsWithId, nil
 }
 
-func (g *Gateway) handleResults5(msg common.Message) (*models.ResultWithId, error) {
+func (g *Gateway) handleResults5(msg middleware.Message) (*models.ResultWithId, error) {
 	var sentimentProfitRatio common.SentimentProfitRatioAverage
 	if err := json.Unmarshal(msg.Body, &sentimentProfitRatio); err != nil {
 		return nil, fmt.Errorf("error unmarshalling sentiment profit ratio: %w", err)
@@ -277,7 +286,7 @@ func (g *Gateway) handleResults5(msg common.Message) (*models.ResultWithId, erro
 	return &resultsWithId, nil
 }
 
-func (g *Gateway) handleResult(msg common.Message, query int) error {
+func (g *Gateway) handleResult(msg middleware.Message, query int) error {
 	var results *models.ResultWithId
 	var err error
 	switch query {

@@ -10,14 +10,14 @@ import (
 
 const (
 	server       = "gateway:12345"
-	MoviesBatch  = 200
+	MoviesBatch  = 30
 	ReviewsBatch = 5120
-	CreditsBatch = 500
+	CreditsBatch = 30
 	sleep        = 1
 )
 
 func main() {
-	logger, err := log.SetupLogger("client", false, nil)
+	logger, err := log.SetupLogger("client", nil)
 	if err != nil {
 		fmt.Printf("error creating logger: %v", err)
 		return

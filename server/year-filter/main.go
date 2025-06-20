@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	logger, err := log.SetupLogger("year-filter", false, nil)
+	logger, err := log.SetupLogger("year-filter", nil)
 	if err != nil {
 		fmt.Printf("error creating logger: %v", err)
 		return

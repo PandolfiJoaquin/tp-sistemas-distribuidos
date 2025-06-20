@@ -8,6 +8,7 @@ run:
 	./generate-compose.sh config-script.json
 	docker compose down -v
 	sudo rm -rf data
+	sudo rm -rf client-results
 	docker compose build
 	docker compose up -d --remove-orphans
 down:
@@ -24,6 +25,7 @@ run-no-cache:
 
 run-local:
 	sudo rm -rf server/data
+	sudo rm -rf client-results
 	docker compose down -v
 	docker compose up rabbitmq -d
 	@echo "Esperando que RabbitMQ esté healthy..."

@@ -221,6 +221,7 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context, ackChannel
 				slog.Error("unknown message type received", slog.Int("type", typeOfRes))
 				return
 			}
+
 		}
 	}
 }

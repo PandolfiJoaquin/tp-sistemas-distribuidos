@@ -81,10 +81,11 @@ RABBITMQ_SERVICE = """
       retries: 15
 """
 
-def get_node_env(node_type, node_id=None, joiners=None):
+def get_node_env(node_type, debug=False, node_id=None, joiners=None):
     """Generate environment variables for a node based on its type"""
     env_vars = []
-
+    if debug:
+        env_vars.append("\n      - DEBUG=1")
     if node_type == "final-reducer":
         env_vars += [
             f"\n      - QUERY_NUM={node_id}",
@@ -103,24 +104,26 @@ def create_compose(cfg):
     nodes    = cfg["nodes"]    # dict: { "preprocessor": n, "production-filter": m, ... }
     files    = cfg["files"]    # dict: { "movies": [paths], "reviews": [paths], ... }
     healer   = cfg["healer"]
+    debug   = cfg["logLevel"]  == "DEBUG"
 
     compose = "name: tp-dist\nservices:\n"
 
     # Gateway
+    extra_env = "\n      - DEBUG=1" if debug else ""
     compose += BASE_NODE.format(
         svc_name="gateway",
         node="gateway",
-        extra_env=""
+        extra_env=extra_env
     )
 
-    # RabbitMQ
+    # RabbitM
     compose += RABBITMQ_SERVICE
 
     # Nodos Dinamicos
     for node, count in nodes.items():
         for i in range(1, count+1):
             svc_name = f"{node}-{i}" if count > 1 else node
-            extra_env = get_node_env(node, joiners=joiners)
+            extra_env = get_node_env(node, debug, joiners=joiners)
             compose += BASE_NODE.format(
                 svc_name=svc_name,
                 node=node,
@@ -130,7 +133,7 @@ def create_compose(cfg):
     # Final Reducer
     for q in range(2, QUERY_AMNT+1):
         svc_name = f"final-reducer-q{q}"
-        extra_env = get_node_env("final-reducer", node_id=q, joiners=joiners)
+        extra_env = get_node_env("final-reducer", debug, node_id=q, joiners=joiners)
         compose += BASE_NODE.format(
             svc_name=svc_name,
             node="final-reducer",
@@ -141,7 +144,7 @@ def create_compose(cfg):
     # Joiners
     for j in range(1, joiners+1):
         svc_name = f"joiner-{j}"
-        extra_env = get_node_env("joiner", node_id=j)
+        extra_env = get_node_env("joiner", debug, node_id=j)
         compose += BASE_NODE.format(
             svc_name=svc_name,
             node="joiner",

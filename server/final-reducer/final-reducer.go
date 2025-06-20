@@ -13,15 +13,20 @@ import (
 	"time"
 	"tp-sistemas-distribuidos/server/common"
 	"tp-sistemas-distribuidos/server/common/persistency"
+	"tp-sistemas-distribuidos/server/common/middleware"
 
 	pkg "pkg/models"
 )
 
-const rabbitHost = "rabbitmq"
+const (
+	// const rabbitHost = "127.0.0.1"
+	rabbitHost = "rabbitmq"
+	flushExchange = "flush-exchange"
+	maxTransactionsOnLog = 500
+	separator = ";"
+	blacklistDuration = 300 // 5 minutes
 
-// const rabbitHost = "127.0.0.1"
-const maxTransactionsOnLog = 500
-const separator = ";"
+)
 
 type queuesNames struct {
 	previousQueue string
@@ -36,21 +41,22 @@ var queriesQueues = map[int]queuesNames{
 }
 
 const ( //TODO: Optimize encoding
-	AggCountriesBudgetOp        = "AGG_COUNTRIES_BUDGET"
-	AggMovieRatingsOp           = "AGG_MOVIE_RATINGS"
-	AggActorMoviesOp            = "AGG_ACTOR_MOVIES"
-	AggSentimentProfitRatioOP   = "AGG_SENTIMENT_PROFIT_RATIO"
-	UpdateWeightsOp             = "UPDATE_WEIGHTS"
-	FilterDuplicatesOp          = "FILTER_DUPLICATES"
-	DeleteClientOp              = "DELETE_CLIENT"
+	AggCountriesBudgetOp      = "AGG_COUNTRIES_BUDGET"
+	AggMovieRatingsOp         = "AGG_MOVIE_RATINGS"
+	AggActorMoviesOp          = "AGG_ACTOR_MOVIES"
+	AggSentimentProfitRatioOP = "AGG_SENTIMENT_PROFIT_RATIO"
+	UpdateWeightsOp           = "UPDATE_WEIGHTS"
+	FilterDuplicatesOp        = "FILTER_DUPLICATES"
+	DeleteClientOp            = "DELETE_CLIENT"
 )
 
 type FinalReducer struct {
-	middleware         *common.Middleware
+	m         *middleware.Middleware
 	connection         connection
 	queryNum           int
 	joinerShards       int
 	Sessions           map[string]*ClientSession `json:"sessions"`
+	flushQueue         <-chan middleware.Message
 	persistencyHandler *persistency.PersistencyHandler[FinalReducer]
 	transactionsOnLog  int
 	BlacklistedClients map[string]int64 `json:"blacklisted_clients"`
@@ -121,12 +127,12 @@ func (r FinalReducer) ApplyFunc(entry persistency.TransactionEntry) (FinalReduce
 }
 
 type connection struct {
-	ChanToRecv <-chan common.Message
-	ChanToSend chan<- []byte
+	ChanToRecv <-chan middleware.Message
+	ChanToSend middleware.SenderQueue
 }
 
 func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards int) (*FinalReducer, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
+	middleware, err := middleware.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
@@ -135,17 +141,23 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 		return nil, fmt.Errorf("error initializing connection for query %d: %w", queryNum, err)
 	}
 
+	flushChan, err := initializeFlushConnection(middleware, queryNum)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing flush connection: %w", err)
+	}
+
 	persistencyHandler, err := persistency.NewPersistencyHandler[FinalReducer]()
 	if err != nil {
 		return nil, fmt.Errorf("error creating persistency handler: %w", err)
 	}
 
 	finalReducer := FinalReducer{
-		middleware:         middleware,
+		m:         middleware,
 		connection:         connection,
 		queryNum:           queryNum,
 		joinerShards:       amtOfShards,
 		Sessions:           make(map[string]*ClientSession),
+		flushQueue:         flushChan,
 		persistencyHandler: persistencyHandler,
 		transactionsOnLog:  0,
 		BlacklistedClients: make(map[string]int64),
@@ -172,7 +184,7 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 	return &finalReducer, nil
 }
 
-func initializeConnectionForQuery(queryNum int, middleware *common.Middleware) (connection, error) {
+func initializeConnectionForQuery(queryNum int, middleware *middleware.Middleware) (connection, error) {
 	queuesNames, ok := queriesQueues[queryNum]
 	if !ok {
 		return connection{}, fmt.Errorf("query number %d not found", queryNum)
@@ -183,12 +195,21 @@ func initializeConnectionForQuery(queryNum int, middleware *common.Middleware) (
 		return connection{}, fmt.Errorf("error getting channel %s to receive: %w", queuesNames.previousQueue, err)
 	}
 
-	nextChan, err := middleware.GetChanToSend(queuesNames.nextQueue)
+	nextChan, err := middleware.GetQueueToSend(queuesNames.nextQueue)
 	if err != nil {
 		return connection{}, fmt.Errorf("error getting channel %s to send: %w", queuesNames.nextQueue, err)
 	}
 
 	return connection{previousChan, nextChan}, nil
+}
+
+func initializeFlushConnection(middleware *middleware.Middleware, queryNum int) (<-chan middleware.Message, error) {
+	flushChan, err := middleware.GetChanWithFanoutToRecv(flushExchange, fmt.Sprintf(flushExchange + "-" + "final-reducer-%d", queryNum))
+	if err != nil {
+		return nil, fmt.Errorf("error getting channel %s to receive: %w", fmt.Sprintf(flushExchange + "-" + "final-reducer-%d", queryNum), err)
+	}
+
+	return flushChan, nil
 }
 
 func (r *FinalReducer) Start() {
@@ -217,38 +238,43 @@ func (r *FinalReducer) Start() {
 
 func startReceiving[T common.Stringer](
 	ctx context.Context,
-	chanToRecv <-chan common.Message,
-	sessions map[string]*ClientSession,
-	finishAndSendBatch func(clientId string) persistency.Transaction,
+	chanToRecv <-chan middleware.Message,
+	finishAndSendBatch func(clientId string),
 	processBatch func(batch common.LoggableBatch[T]) persistency.Transaction,
 	freddyFazbear *FinalReducer,
 ) error {
-	for clientID, session := range sessions {
-		if session.IsFinished() {
-			finishAndSendBatch(clientID)
-		}
-	}
-	freddyFazbear.purgeBlacklist()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case msg := <-freddyFazbear.flushQueue:
+			var flushClient common.FlushClient
+			if err := json.Unmarshal(msg.Body, &flushClient); err != nil {
+				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
+				continue
+			}
+			transaction := persistency.NewTransaction()
+			if flushClient.ClientID != nil {
+				transaction.Do(DeleteClientOp, *flushClient.ClientID)
+				freddyFazbear.deleteClient(*flushClient.ClientID)
+				slog.Info("deleted client", slog.String("clientID", *flushClient.ClientID))
+			} else {
+				for id := range freddyFazbear.Sessions {
+					transaction.Do(DeleteClientOp, id)
+				}
+				freddyFazbear.deleteClients()
+				slog.Info("deleted all clients")
+			}
+			freddyFazbear.save(transaction)
+			if err := msg.Ack(); err != nil {
+				slog.Error("error acknowledging message", slog.String("error", err.Error()))
+			}
 		case msg := <-chanToRecv:
 			var batch common.LoggableBatch[T]
 			if err := json.Unmarshal(msg.Body, &batch); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-
-			// if batch.IsFlush() {
-			// 	deletedClients := freddyFazbear.deleteClients()
-			// 	transaction := persistency.NewTransaction()
-			// 	for _, clientID := range deletedClients {
-			// 		transaction.Do(DeleteClientOp, clientID)
-			// 	}
-			// 	freddyFazbear.save(transaction)
-			// 	continue
-			// }
 
 			if freddyFazbear.isBlacklisted(batch.GetClientID()) {
 				slog.Info("Discarding message from blacklisted client", slog.String("clientID", batch.GetClientID()))
@@ -280,7 +306,6 @@ func startReceiving[T common.Stringer](
 				finishAndSendBatch(session.SessionId)
 				freddyFazbear.deleteClient(session.SessionId)
 				transaction.Do(DeleteClientOp, session.SessionId)
-				freddyFazbear.purgeBlacklist()
 			}
 
 			freddyFazbear.save(transaction)
@@ -317,7 +342,6 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 	err := startReceiving(
 		ctx,
 		r.connection.ChanToRecv,
-		r.Sessions,
 		r.finishAndSendBatchForQuery2,
 		r.aggCountriesBudget,
 		r)
@@ -328,7 +352,7 @@ func (r *FinalReducer) startReceivingQ2(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
-	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery3, r.aggMovieRatings, r)
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.finishAndSendBatchForQuery3, r.aggMovieRatings, r)
 
 	if err != nil {
 		slog.Error("error receiving", slog.String("error", err.Error()))
@@ -336,7 +360,7 @@ func (r *FinalReducer) startReceivingQ3(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
-	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery4, r.aggActorMovies, r)
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.finishAndSendBatchForQuery4, r.aggActorMovies, r)
 
 	if err != nil {
 		slog.Error("error receiving", slog.String("error", err.Error()))
@@ -344,14 +368,14 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
-	err := startReceiving(ctx, r.connection.ChanToRecv, r.Sessions, r.finishAndSendBatchForQuery5, r.aggSentimentProfitRatio, r)
+		err := startReceiving(ctx, r.connection.ChanToRecv, r.finishAndSendBatchForQuery5, r.aggSentimentProfitRatio, r)
 
 	if err != nil {
 		slog.Error("error receiving", slog.String("error", err.Error()))
 	}
 }
 
-func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) persistency.Transaction {
+func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
 	slog.Info("finishing and sending batch for query 2", slog.String("client id", clientId))
 	countries := r.Sessions[clientId].Q2Data
 	top5Countries := calculateTop5Countries(countries)
@@ -360,13 +384,12 @@ func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) persistency.
 	if err != nil {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
-	r.connection.ChanToSend <- response
-	r.addToBlacklist(clientId)
-	delete(r.Sessions, clientId)
-	return persistency.NewTransaction()
+	if err := r.connection.ChanToSend.Send(response); err != nil {
+		slog.Error("error sending response", slog.String("error", err.Error()))
+	}
 }
 
-func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) persistency.Transaction {
+func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
 	slog.Info("finishing and sending batch for query 3", slog.String("client id", clientId))
 	movies := r.Sessions[clientId].Q3Data
 	bestAndWorstMovies := calculateBestAndWorstMovie(movies)
@@ -375,13 +398,12 @@ func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) persistency.
 	if err != nil {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
-	r.connection.ChanToSend <- response
-	r.addToBlacklist(clientId)
-	delete(r.Sessions, clientId)
-	return persistency.NewTransaction()
+	if err := r.connection.ChanToSend.Send(response); err != nil {
+		slog.Error("error sending response", slog.String("error", err.Error()))
+	}
 }
 
-func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) persistency.Transaction {
+func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
 	slog.Info("finishing and sending batch for query 4", slog.String("client id", clientId))
 	actorMovies := r.Sessions[clientId].Q4Data
 	top10Actors := calculateTop10Actors(actorMovies)
@@ -390,13 +412,12 @@ func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) persistency.
 	if err != nil {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
-	r.connection.ChanToSend <- response
-	r.addToBlacklist(clientId)
-	delete(r.Sessions, clientId)
-	return persistency.NewTransaction()
+	if err := r.connection.ChanToSend.Send(response); err != nil {
+		slog.Error("error sending response", slog.String("error", err.Error()))
+	}
 }
 
-func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) persistency.Transaction {
+func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
 	slog.Info("finishing and sending batch for query 5", slog.String("client id", clientId))
 	sentimentProfitRatios := r.Sessions[clientId].Q5Data
 	sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
@@ -405,10 +426,9 @@ func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) persistency.
 	if err != nil {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
-	r.connection.ChanToSend <- response
-	r.addToBlacklist(clientId)
-	delete(r.Sessions, clientId)
-	return persistency.NewTransaction()
+	if err := r.connection.ChanToSend.Send(response); err != nil {
+		slog.Error("error sending response", slog.String("error", err.Error()))
+	}
 }
 
 func calculateTop5Countries(countries map[string]uint64) common.Top5Countries {
@@ -510,7 +530,7 @@ func calculateSentimentProfitRatioAverage(sentimentProfitRatios common.Sentiment
 }
 
 func (r *FinalReducer) stop() {
-	if err := r.middleware.Close(); err != nil {
+	if err := r.m.Close(); err != nil {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
 	slog.Info("final reducer stopped")
@@ -609,34 +629,32 @@ func (r *FinalReducer) aggSentimentProfitRatio(batch common.LoggableBatch[common
 	return transaction
 }
 
-func (r *FinalReducer) addToBlacklist(clientID string) {
-	r.BlacklistedClients[clientID] = time.Now().Unix()
-}
-
 func (r *FinalReducer) purgeBlacklist() {
 	now := time.Now().Unix()
 	for clientID, timestamp := range r.BlacklistedClients {
-		if now-timestamp >= 10 { // 10 seconds
+		if now-timestamp >= blacklistDuration {
 			delete(r.BlacklistedClients, clientID)
 		}
 	}
 }
 
 func (r *FinalReducer) isBlacklisted(clientID string) bool {
+	r.purgeBlacklist()
 	_, exists := r.BlacklistedClients[clientID]
 	return exists
 }
 
 func (r *FinalReducer) deleteClient(clientID string) {
 	delete(r.Sessions, clientID)
-	r.addToBlacklist(clientID)
+	r.BlacklistedClients[clientID] = time.Now().Unix()
 }
 
-func (r *FinalReducer) deleteClients() []string {
-	deletedClients := make([]string, 0, len(r.Sessions))
+func (r *FinalReducer) deleteClients() {
+	clientsIds := make([]string, 0, len(r.Sessions))
 	for clientID := range r.Sessions {
-		r.deleteClient(clientID)
-		deletedClients = append(deletedClients, clientID)
+		clientsIds = append(clientsIds, clientID)
 	}
-	return deletedClients
+	for _, clientID := range clientsIds {
+		r.deleteClient(clientID)
+	}
 }
