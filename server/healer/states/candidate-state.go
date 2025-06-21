@@ -1,6 +1,7 @@
 package states
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"time"
@@ -19,15 +20,14 @@ func NewCandidateState(config election_model.Config, peers *concurrencyutils.Pee
 	return &CandidateState{config}
 }
 
-func (c *CandidateState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers) ProcessState {
-
-	ticker := time.NewTicker(timeToWinElection)
-	defer ticker.Stop()
+func (c *CandidateState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers, ctx context.Context) ProcessState {
 	select {
-	case <-ticker.C:
+	case <-ctx.Done():
+		return nil
+	case <-time.After(timeToWinElection):
 		slog.Info("Timeout, converting to master")
 		peers.Broadcast(election_model.Event{Type: election_model.Victory, Parameter: c.config.Id})
-		return NewMasterState(c.config)
+		return NewMasterState(c.config, ctx)
 	case event := <-mailbox:
 		switch event.Type {
 		case election_model.HeartBeat:
@@ -55,6 +55,8 @@ func (c *CandidateState) HandleMailBox(mailbox chan election_model.Event, peers 
 	slog.Info("unreachable")
 	panic("unreachable")
 }
+
+func (c *CandidateState) Close() {}
 
 func (c *CandidateState) GetName() string {
 

@@ -1,6 +1,7 @@
 package states
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"time"
@@ -20,18 +21,17 @@ func NewWorkerState(config election_model.Config) *WorkerState {
 	return &WorkerState{config}
 }
 
-func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers) ProcessState {
-	//TODO
-	ticker := time.NewTicker(heartBeatTolerance)
-	defer ticker.Stop()
+func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers, ctx context.Context) ProcessState {
 	select {
-	case <-ticker.C:
+	case <-ctx.Done():
+		slog.Info("Context cancelled")
+		return nil
+	case <-time.After(heartBeatTolerance):
 		slog.Info("Timeout, converting to candidate")
 		return NewCandidateState(w.config, peers)
 	case event := <-mailbox:
 		switch event.Type {
 		case election_model.HeartBeat:
-			slog.Info("HeartBeat")
 			return w
 		case election_model.Election:
 			if event.Parameter > w.config.Id {
@@ -56,6 +56,8 @@ func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event, peers *co
 	panic("unreachable")
 
 }
+
+func (w *WorkerState) Close() {}
 
 func (w *WorkerState) GetName() string {
 	return "worker-state"

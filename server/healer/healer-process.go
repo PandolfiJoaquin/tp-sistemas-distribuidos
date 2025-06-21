@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -25,8 +26,6 @@ type Process struct {
 }
 
 func NewProcess() (*Process, error) {
-	//todo: leer aca los archivos y variables de entorno necesarios
-
 	id, err := strconv.Atoi(os.Getenv("HEALER_ID"))
 	if err != nil {
 		return nil, fmt.Errorf("error getting process id: %w", err)
@@ -51,29 +50,26 @@ func NewProcess() (*Process, error) {
 	}, nil
 }
 
-func (p *Process) StartProcess() {
-	delay, err := strconv.Atoi(os.Getenv("DELAY"))
-	if err != nil {
-		slog.Error("Error converting DELAY env var to int", slog.String("error", err.Error()))
-		return
-	}
+func (p *Process) StartProcess(ctx context.Context) {
+	go p.listener(ctx)
+	go p.connector(ctx)
 
-	go p.listener()
-	go p.connector()
-
-	time.Sleep(time.Duration(delay) * time.Second)
 	slog.Info(p.ProcState.GetName())
 	for p.running {
 		oldState := p.ProcState.GetName()
-		p.ProcState = p.ProcState.HandleMailBox(p.mailbox, p.peers)
+		p.ProcState = p.ProcState.HandleMailBox(p.mailbox, p.peers, ctx)
+		if p.ProcState == nil {
+			return
+		}
 		if p.ProcState.GetName() != oldState {
 			slog.Info(p.ProcState.GetName())
 		}
-
 	}
+	//p.ProcState.Close()
+	//TODO: the defere stop is enough? if yes then remove close from interface and states
 }
 
-func (p *Process) listener() {
+func (p *Process) listener(ctx context.Context) {
 	listener, err := net.Listen("tcp", "0.0.0.0:"+"1234")
 	defer wrapDeferredError(listener)
 	if err != nil {
@@ -82,45 +78,49 @@ func (p *Process) listener() {
 	}
 	for p.running {
 		conn, err := listener.Accept()
+		if err != nil {
+			slog.Error("error accepting connection", slog.Any("error", err))
+		}
 		go func(p *Process) {
-			if err != nil {
-				slog.Error("error accepting connection", slog.Any("error", err))
-			}
-
 			id, err := getServiceId(conn)
 			if err != nil {
 				slog.Error("error getting service name", slog.Any("error", err))
 				wrapDeferredError(conn)
 			}
-			peerMailBox := p.startPeer(conn, id)
+			slog.Info("Accepted connection", slog.Int("id", id))
+			peerMailBox := p.startPeer(conn, id, ctx)
 			p.peers.SafeAddPeer(id, peerMailBox)
 		}(p)
 	}
 }
 
-func (p *Process) connector() {
-	for p.running {
-
-		for id := p.config.Id + 1; id <= p.config.AmtOfHealers; id++ {
-			if p.peers.SafeContains(id) {
-				continue
+func (p *Process) connector(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(3 * time.Second):
+			for id := p.config.Id + 1; id <= p.config.AmtOfHealers; id++ {
+				if p.peers.SafeContains(id) {
+					continue
+				}
+				conn, err := net.DialTimeout("tcp", "healer-"+strconv.Itoa(id)+":1234", 1*time.Second)
+				if err != nil {
+					slog.Debug("error connecting to healer", slog.Any("error", err))
+					continue
+				}
+				if err := sendServiceID(conn, uint16(p.config.Id)); err != nil {
+					slog.Error("error sending healer", slog.Any("error", err))
+					if err := conn.Close(); err != nil {
+						slog.Error("error closing connection", slog.Any("error", err))
+					}
+					return
+				}
+				peerMailbox := p.startPeer(conn, id, ctx)
+				p.peers.SafeAddPeer(id, peerMailbox)
 			}
-			slog.Info("attemping to connecto to peer", slog.Int("peer", id))
-			conn, err := net.DialTimeout("tcp", "healer-"+strconv.Itoa(id)+":1234", 1*time.Second)
-			if err != nil {
-				slog.Debug("error connecting to healer", slog.Any("error", err))
-				continue
-			}
-			slog.Debug("connected to peer", slog.Any("peer", id))
-			if err := sendServiceID(conn, uint16(id)); err != nil {
-				return
-			}
-			peerMailbox := p.startPeer(conn, id)
-			p.peers.SafeAddPeer(id, peerMailbox)
 		}
-		time.Sleep(3 * time.Second)
 	}
-
 }
 
 func wrapDeferredError(conn io.Closer) {

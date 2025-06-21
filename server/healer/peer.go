@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -14,35 +15,50 @@ import (
 
 const EventLenBytes = 4
 
-func (p *Process) startPeer(conn net.Conn, peerId int) chan electionmodel.Event {
+func (p *Process) startPeer(conn net.Conn, peerId int, ctx context.Context) chan electionmodel.Event {
 	peerMailbox := make(chan electionmodel.Event)
-	go p.startSender(conn, peerMailbox, peerId)
-	go p.startReceiver(conn, peerId)
+	go p.startSender(conn, peerMailbox, peerId, ctx)
+	go p.startReceiver(conn, peerId) //sender will close its connection so no need to pass it a context
 	return peerMailbox
 }
 
-func (p *Process) startSender(conn net.Conn, mailbox chan electionmodel.Event, id int) {
-	for p.running {
-		event := <-mailbox
-		serialized, err := json.Marshal(event)
-		if err != nil {
-			slog.Error("Error serializing event", err)
-			return
+func (p *Process) startSender(conn net.Conn, mailbox chan electionmodel.Event, id int, ctx context.Context) {
+	defer func(conn net.Conn) {
+		if err := conn.Close(); err != nil {
+			slog.Error(err.Error())
 		}
+	}(conn)
 
-		serializedLen := make([]byte, EventLenBytes)
-		binary.BigEndian.PutUint32(serializedLen, uint32(len(serialized)))
-		if err := communication.SendAll(conn, serializedLen); err != nil {
-			if errors.Is(err, net.ErrClosed) {
-				p.peers.SafeRemovePeer(id)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event := <-mailbox:
+			serialized, err := json.Marshal(event)
+			if err != nil {
+				slog.Error("Error serializing event", err)
 				return
-			} else {
-				slog.Error("Error sending event len:", err)
-				continue
 			}
-		}
-		if err := communication.SendAll(conn, serialized); err != nil {
-			slog.Error("Error sending event:", err)
+
+			serializedLen := make([]byte, EventLenBytes)
+			binary.BigEndian.PutUint32(serializedLen, uint32(len(serialized)))
+			if err := communication.SendAll(conn, serializedLen); err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					p.peers.SafeRemovePeer(id)
+					return
+				} else {
+					return
+				}
+			}
+			if err := communication.SendAll(conn, serialized); err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					p.peers.SafeRemovePeer(id)
+					return
+				} else {
+					slog.Error("Error sending event:", err)
+					return
+				}
+			}
 		}
 	}
 }

@@ -1,4 +1,4 @@
-package main
+package healer_utils
 
 import (
 	"context"

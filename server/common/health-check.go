@@ -17,7 +17,7 @@ type HealthCheck struct {
 	listener net.Listener
 }
 
-func startHealthCheck() (*HealthCheck, error) {
+func StartHealthCheck() (*HealthCheck, error) {
 	listener, err := net.Listen("tcp", "0.0.0.0:"+port)
 	if err != nil {
 		return nil, err

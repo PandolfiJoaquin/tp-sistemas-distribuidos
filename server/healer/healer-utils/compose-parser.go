@@ -1,4 +1,4 @@
-package main
+package healer_utils
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ type Service struct {
 	ContainerName string `yaml:"container_name"`
 }
 
-func readContainerToMonitor(myName string) ([]string, error) {
+func ReadContainerToMonitor(myName string) ([]string, error) {
 	f, err := os.Open(filepath)
 	if err != nil {
 		return nil, err

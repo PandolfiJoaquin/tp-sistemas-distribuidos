@@ -1,6 +1,7 @@
 package states
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"time"
@@ -16,12 +17,11 @@ func NewNotACandidateState(config election_model.Config) *NotACandidateState {
 	return &NotACandidateState{config}
 }
 
-func (n *NotACandidateState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers) ProcessState {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
+func (n *NotACandidateState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers, ctx context.Context) ProcessState {
+
 	select {
-	case <-ticker.C:
-		slog.Warn("a non-candidate process time'd out. Becoming candidate again")
+	case <-time.After(time.Second * 10):
+		slog.Warn("process time'd out as a non-candidate. Becoming candidate again")
 		return NewCandidateState(n.config, peers)
 	case event := <-mailbox:
 		switch event.Type {
@@ -41,6 +41,8 @@ func (n *NotACandidateState) HandleMailBox(mailbox chan election_model.Event, pe
 	slog.Info("unreachable")
 	panic("unreachable")
 }
+
+func (n *NotACandidateState) Close() {}
 
 func (n *NotACandidateState) GetName() string {
 	return "not-a-candidate-state"

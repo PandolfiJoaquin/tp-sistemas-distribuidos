@@ -38,6 +38,7 @@ HEALER_NODE= """
     environment:
       - HEALER_ID={node_id}
       - DELAY=10
+      - HEALERS_AMOUNT={healers_amt}
     depends_on:
       - gateway
     volumes:
@@ -157,7 +158,8 @@ def create_compose(cfg):
         compose += HEALER_NODE.format(
             svc_name=svc_name,
             node="healer",
-            node_id=h
+            node_id=h,
+            healers_amt=healer
         )
 
     # Clients
