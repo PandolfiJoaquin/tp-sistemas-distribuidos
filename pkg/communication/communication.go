@@ -10,7 +10,10 @@ import (
 
 const (
 	MaxPacketSize = 1024 * 32 // 32 KB
-	size          = 4
+	weightSize    = 4
+	resSize       = 1
+	QueryMsg      = 0
+	AckMsg        = 1
 )
 
 func RecvAll(conn net.Conn, size int) ([]byte, error) {
@@ -42,7 +45,7 @@ func SendAll(conn net.Conn, message []byte) error {
 }
 
 func sendFixedSize(conn net.Conn, data []byte) error {
-	sizeBuf := make([]byte, size)
+	sizeBuf := make([]byte, weightSize)
 	binary.BigEndian.PutUint32(sizeBuf, uint32(len(data)))
 	dataBin := append(sizeBuf, data...)
 
@@ -59,7 +62,7 @@ func sendBatch[T any](conn net.Conn, batch models.RawBatch[T]) error {
 	}
 
 	// Adding the header
-	header := make([]byte, size)
+	header := make([]byte, weightSize)
 	binary.BigEndian.PutUint32(header, uint32(len(data)))
 	current := append([]byte(nil), header...)
 
@@ -69,7 +72,7 @@ func sendBatch[T any](conn net.Conn, batch models.RawBatch[T]) error {
 			end = len(data)
 		}
 		chunk := data[offset:end]
-		// Sends current if its size + chunk size is greater than MaxPacketSize
+		// Sends current if its weightSize + chunk weightSize is greater than MaxPacketSize
 		if len(current)+len(chunk) > MaxPacketSize {
 			if err := SendAll(conn, current); err != nil {
 				return fmt.Errorf("error sending batch: %w", err)
@@ -93,9 +96,9 @@ func sendBatch[T any](conn net.Conn, batch models.RawBatch[T]) error {
 func recvBatch[T any](conn net.Conn) (models.RawBatch[T], error) {
 	var batch models.RawBatch[T]
 
-	sizeBuf, err := RecvAll(conn, size)
+	sizeBuf, err := RecvAll(conn, weightSize)
 	if err != nil {
-		return batch, fmt.Errorf("error reading size: %w", err)
+		return batch, fmt.Errorf("error reading weightSize: %w", err)
 	}
 
 	size := binary.BigEndian.Uint32(sizeBuf)
@@ -114,6 +117,13 @@ func recvBatch[T any](conn net.Conn) (models.RawBatch[T], error) {
 }
 
 func sendResults(conn net.Conn, results models.RawQueryResults) error {
+	resType := make([]byte, resSize)
+	resType[0] = QueryMsg // Set the message type to QueryMsg
+	err := SendAll(conn, resType)
+	if err != nil {
+		return fmt.Errorf("error sending type of results: %w", err)
+	}
+
 	data, err := json.Marshal(results)
 	if err != nil {
 		return fmt.Errorf("error marshalling results: %w", err)
@@ -130,9 +140,9 @@ func sendResults(conn net.Conn, results models.RawQueryResults) error {
 func recvResults(conn net.Conn) (models.RawQueryResults, error) {
 	var results models.RawQueryResults
 
-	sizeBuf, err := RecvAll(conn, size)
+	sizeBuf, err := RecvAll(conn, weightSize)
 	if err != nil {
-		return results, fmt.Errorf("error reading size: %w", err)
+		return results, fmt.Errorf("error reading weightSize: %w", err)
 	}
 
 	size := binary.BigEndian.Uint32(sizeBuf)
@@ -148,4 +158,38 @@ func recvResults(conn net.Conn) (models.RawQueryResults, error) {
 	}
 
 	return results, nil
+}
+
+func recvTypeOfResults(conn net.Conn) (int, error) {
+	typeBuf, err := RecvAll(conn, resSize)
+	if err != nil {
+		return -1, err
+	}
+
+	resType := int(typeBuf[0])
+
+	return resType, nil
+}
+
+func recvAck(conn net.Conn) (int, error) {
+	ackBuf, err := RecvAll(conn, weightSize)
+	if err != nil {
+		return -1, fmt.Errorf("error reading ack: %w", err)
+	}
+
+	received := int(binary.BigEndian.Uint32(ackBuf))
+
+	return received, nil
+}
+
+func sendAck(conn net.Conn, received int) error {
+	ack := make([]byte, resSize+weightSize)
+	ack[0] = AckMsg
+	binary.BigEndian.PutUint32(ack[resSize:], uint32(received))
+
+	if err := SendAll(conn, ack); err != nil {
+		return fmt.Errorf("error sending ack: %w", err)
+	}
+
+	return nil
 }
