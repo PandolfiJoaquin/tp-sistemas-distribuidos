@@ -11,6 +11,7 @@ import (
 
 	pkg "pkg/models"
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/middleware"
 )
 
 const (
@@ -25,25 +26,25 @@ const (
 )
 
 type ProductionFilter struct {
-	middleware              *common.Middleware
+	m              *middleware.Middleware
 	query1Connection        connection
 	query2Connection        connection
 	query3ShardsConnections shardConnection
 }
 
 type shardConnection struct {
-	previousChan <-chan common.Message
-	nextChan     map[int]chan<- []byte
+	previousChan <-chan middleware.Message
+	nextChan     map[int]middleware.SenderQueue
 	shards       int
 }
 
 type connection struct {
-	ChanToRecv <-chan common.Message
-	ChanToSend chan<- []byte
+	ChanToRecv <-chan middleware.Message
+	ChanToSend middleware.SenderQueue
 }
 
 func NewProductionFilter(rabbitUser, rabbitPass string, shards int) (*ProductionFilter, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
+	middleware, err := middleware.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
@@ -63,35 +64,35 @@ func NewProductionFilter(rabbitUser, rabbitPass string, shards int) (*Production
 		return nil, fmt.Errorf("error initializing query 3 shards connections: %w", err)
 	}
 
-	return &ProductionFilter{middleware: middleware,
+	return &ProductionFilter{m: middleware,
 		query1Connection:        query1Connection,
 		query2Connection:        query2Connection,
 		query3ShardsConnections: query3ShardsConnections,
 	}, nil
 }
 
-func initializeConnection(middleware *common.Middleware, previousQueue string, nextQueue string) (connection, error) {
+func initializeConnection(middleware *middleware.Middleware, previousQueue string, nextQueue string) (connection, error) {
 	previousChan, err := middleware.GetChanToRecv(previousQueue)
 	if err != nil {
 		return connection{}, fmt.Errorf("error getting channel %s to receive: %w", previousQueue, err)
 	}
 
-	nextChan, err := middleware.GetChanToSend(nextQueue)
+	nextChan, err := middleware.GetQueueToSend(nextQueue)
 	if err != nil {
 		return connection{}, fmt.Errorf("error getting channel %s to send: %w", nextQueue, err)
 	}
 	return connection{previousChan, nextChan}, nil
 }
 
-func initializeShardsConnections(middleware *common.Middleware, previousQueue string, shards int) (shardConnection, error) {
-	previousChan, err := middleware.GetChanToRecv(previousQueue)
+func initializeShardsConnections(m *middleware.Middleware, previousQueue string, shards int) (shardConnection, error) {
+	previousChan, err := m.GetChanToRecv(previousQueue)
 	if err != nil {
 		return shardConnection{}, fmt.Errorf("error getting channel %s to receive: %w", previousQueue, err)
 	}
 
-	nextChan := make(map[int]chan<- []byte)
+	nextChan := make(map[int]middleware.SenderQueue)
 	for i := 1; i <= shards; i++ {
-		nextChan[i], err = middleware.GetChanWithTopicToSend(moviesExchange, fmt.Sprintf(topic, i))
+		nextChan[i], err = m.GetQueueWithTopicToSend(moviesExchange, fmt.Sprintf(topic, i))
 		if err != nil {
 			return shardConnection{}, fmt.Errorf("error getting channel %s to receive: %w", fmt.Sprintf(topic, i), err)
 		}
@@ -155,7 +156,7 @@ func (f *ProductionFilter) start(ctx context.Context) {
 	}
 }
 
-func (f *ProductionFilter) processQueryMessage(msg common.Message, filterFunc func(common.Movie) bool) (common.Batch[common.Movie], error) {
+func (f *ProductionFilter) processQueryMessage(msg middleware.Message, filterFunc func(common.Movie) bool) (common.Batch[common.Movie], error) {
 	batch, err := f.filterMessage(msg, filterFunc)
 	if err != nil {
 		return common.Batch[common.Movie]{}, fmt.Errorf("error filtering message: %w", err)
@@ -163,7 +164,7 @@ func (f *ProductionFilter) processQueryMessage(msg common.Message, filterFunc fu
 	return batch, nil
 }
 
-func (f *ProductionFilter) filterMessage(msg common.Message, filterFunc func(common.Movie) bool) (common.Batch[common.Movie], error) {
+func (f *ProductionFilter) filterMessage(msg middleware.Message, filterFunc func(common.Movie) bool) (common.Batch[common.Movie], error) {
 	var batch common.Batch[common.Movie]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		return common.Batch[common.Movie]{}, fmt.Errorf("error unmarshalling message: %w", err)
@@ -179,12 +180,14 @@ func (f *ProductionFilter) filterMessage(msg common.Message, filterFunc func(com
 	return batch, nil
 }
 
-func (f *ProductionFilter) sendBatch(chanToSend chan<- []byte, batch common.Batch[common.Movie]) error {
+func (f *ProductionFilter) sendBatch(chanToSend middleware.SenderQueue, batch common.Batch[common.Movie]) error {
 	response, err := json.Marshal(batch)
 	if err != nil {
 		return fmt.Errorf("error marshalling batch: %w", err)
 	}
-	chanToSend <- response
+	if err := chanToSend.Send(response); err != nil {
+		return fmt.Errorf("error sending batch: %w", err)
+	}
 	return nil
 }
 
@@ -211,7 +214,6 @@ func (f *ProductionFilter) filterByProductionQ1(movie common.Movie) bool {
 	return slices.Contains(movie.ProductionCountries, arg) &&
 		slices.Contains(movie.ProductionCountries, esp)
 }
-
 func (f *ProductionFilter) filterByProductionQ2(movie common.Movie) bool {
 	return len(movie.ProductionCountries) == 1 && movie.Budget > 0
 }
@@ -222,7 +224,7 @@ func (f *ProductionFilter) filterByProductionQ3(movie common.Movie) bool {
 }
 
 func (f *ProductionFilter) stop() {
-	if err := f.middleware.Close(); err != nil {
+	if err := f.m.Close(); err != nil {
 		slog.Error("error closing middleware", slog.String("error", err.Error()))
 	}
 	slog.Info("production filter stopped")

@@ -1,3 +1,4 @@
+import os
 import glob
 import json
 import os
@@ -172,7 +173,6 @@ def print_comparison(comparison, file_name, cfg):
     if error_in_query:
         return False
 
-
 # Expected results dictionaries
 expected_reviews_big = {
     1: [
@@ -289,6 +289,7 @@ def main():
         sys.exit(1)
 
     cfg = load_config(sys.argv[1])
+    client_ids = cfg["clients"]
 
     result_files = glob.glob("client-results/queries-results-*.txt")
     if not result_files:
@@ -300,8 +301,12 @@ def main():
     processed_files = set()
     all_passed = True
 
-    for result_file in result_files:
-        if result_file in processed_files:
+    for client_id in range(1,client_ids+1):
+        result_file = f"client-results/queries-results-{client_id}.txt"
+        # Check if file exists and is not empty
+        if not os.path.isfile(result_file) or os.path.getsize(result_file) == 0:
+            print(f"{result_file}: ❌ Missing or empty result file!")
+            all_passed = False
             continue
 
         # Get the expected results based on the file and config

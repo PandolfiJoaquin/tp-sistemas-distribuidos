@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"syscall"
 	"time"
-	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/middleware"
 )
 
 func main() {
@@ -38,7 +38,7 @@ func main() {
 		return
 	}
 
-	_, err = common.StartHealthCheck()
+	_, err = middleware.StartHealthCheck()
 	if err != nil {
 		slog.Error("Error starting health check", err)
 		return

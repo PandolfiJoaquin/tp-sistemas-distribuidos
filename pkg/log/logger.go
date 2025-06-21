@@ -6,7 +6,7 @@ import (
 )
 
 func SetupLogger(appName string, file *string) (*slog.Logger, error) {
-	debug := true //os.Getenv("DEBUG") == "1"
+	debug := os.Getenv("DEBUG") == "1"
 	level := slog.LevelInfo
 	if debug {
 		level = slog.LevelDebug
