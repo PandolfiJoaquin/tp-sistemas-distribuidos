@@ -20,11 +20,11 @@ import (
 
 const (
 	// const rabbitHost = "127.0.0.1"
-	rabbitHost = "rabbitmq"
-	flushExchange = "flush-exchange"
+	rabbitHost           = "rabbitmq"
+	flushExchange        = "flush-exchange"
 	maxTransactionsOnLog = 500
-	separator = ";"
-	blacklistDuration = 300 // 5 minutes
+	separator            = ";"
+	blacklistDuration    = 300 // 5 minutes
 
 )
 
@@ -51,7 +51,7 @@ const ( //TODO: Optimize encoding
 )
 
 type FinalReducer struct {
-	m         *middleware.Middleware
+	m                  *middleware.Middleware
 	connection         connection
 	queryNum           int
 	joinerShards       int
@@ -152,7 +152,7 @@ func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards in
 	}
 
 	finalReducer := FinalReducer{
-		m:         middleware,
+		m:                  middleware,
 		connection:         connection,
 		queryNum:           queryNum,
 		joinerShards:       amtOfShards,
@@ -204,9 +204,9 @@ func initializeConnectionForQuery(queryNum int, middleware *middleware.Middlewar
 }
 
 func initializeFlushConnection(middleware *middleware.Middleware, queryNum int) (<-chan middleware.Message, error) {
-	flushChan, err := middleware.GetChanWithFanoutToRecv(flushExchange, fmt.Sprintf(flushExchange + "-" + "final-reducer-%d", queryNum))
+	flushChan, err := middleware.GetChanWithFanoutToRecv(flushExchange, fmt.Sprintf(flushExchange+"-"+"final-reducer-%d", queryNum))
 	if err != nil {
-		return nil, fmt.Errorf("error getting channel %s to receive: %w", fmt.Sprintf(flushExchange + "-" + "final-reducer-%d", queryNum), err)
+		return nil, fmt.Errorf("error getting channel %s to receive: %w", fmt.Sprintf(flushExchange+"-"+"final-reducer-%d", queryNum), err)
 	}
 
 	return flushChan, nil
@@ -277,7 +277,9 @@ func startReceiving[T common.Stringer](
 			}
 
 			if freddyFazbear.isBlacklisted(batch.GetClientID()) {
-				slog.Info("Discarding message from blacklisted client", slog.String("clientID", batch.GetClientID()))
+				if !batch.IsEof() {
+					slog.Info("Discarding message from blacklisted client", slog.String("clientID", batch.GetClientID()))
+				}
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				}
@@ -368,7 +370,7 @@ func (r *FinalReducer) startReceivingQ4(ctx context.Context) {
 }
 
 func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
-		err := startReceiving(ctx, r.connection.ChanToRecv, r.finishAndSendBatchForQuery5, r.aggSentimentProfitRatio, r)
+	err := startReceiving(ctx, r.connection.ChanToRecv, r.finishAndSendBatchForQuery5, r.aggSentimentProfitRatio, r)
 
 	if err != nil {
 		slog.Error("error receiving", slog.String("error", err.Error()))
