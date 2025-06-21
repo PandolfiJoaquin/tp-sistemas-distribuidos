@@ -3,7 +3,6 @@ package utils
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"pkg/models"
 )
 
@@ -51,7 +50,6 @@ var ErrInvalidMovie = errors.New("invalid movie")
 // parseMovie builds a RawMovie from a CSV record slice.
 func parseMovie(record []string) (*models.RawMovie, error) {
 	if hasNaNValues(record, moviesNotNa) {
-		slog.Debug("invalid movie, dropping", slog.Any("record", record[colID]))
 		return nil, ErrInvalidMovie
 	}
 

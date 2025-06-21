@@ -417,17 +417,6 @@ func (g *Gateway) persistencyHandler(wg *sync.WaitGroup) {
 				} else {
 					slog.Info("Dead client removed and clients saved", slog.String("client_id", deadClient))
 				}
-				flushMsg := common.FlushClient{ClientID: &deadClient}
-				data, err := json.Marshal(flushMsg)
-				if err != nil {
-					slog.Error("error marshalling dead client for flush", slog.String("error", err.Error()))
-				} else {
-					if err := g.flushQueue.Send(data); err != nil {
-						slog.Error("error sending dead client to flush", slog.String("error", err.Error()))
-					} else {
-						slog.Info("Dead client sent to flush", slog.String("client_id", deadClient))
-					}
-				}
 			} else {
 				slog.Warn("Dead client not found in clients map", slog.String("client_id", deadClient))
 			}
