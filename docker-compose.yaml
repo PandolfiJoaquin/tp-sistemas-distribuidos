@@ -1,5 +1,404 @@
 name: tp-dist
 services:
+
+  gateway:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: gateway
+    container_name: gateway
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  preprocessor-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: preprocessor
+    container_name: preprocessor-1
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  preprocessor-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: preprocessor
+    container_name: preprocessor-2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  preprocessor-3:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: preprocessor
+    container_name: preprocessor-3
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  production-filter-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: production-filter
+    container_name: production-filter-1
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  production-filter-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: production-filter
+    container_name: production-filter-2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  year-filter-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: year-filter
+    container_name: year-filter-1
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  year-filter-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: year-filter
+    container_name: year-filter-2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  sentiment-analyzer-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: sentiment-analyzer
+    container_name: sentiment-analyzer-1
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  sentiment-analyzer-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: sentiment-analyzer
+    container_name: sentiment-analyzer-2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  reducer-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: reducer
+    container_name: reducer-1
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  reducer-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: reducer
+    container_name: reducer-2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  reducer-3:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: reducer
+    container_name: reducer-3
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  reducer-4:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: reducer
+    container_name: reducer-4
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  final-reducer-q2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: final-reducer
+    container_name: final-reducer-q2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - QUERY_NUM=2
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/final-reducer/id-2/:/data/
+
+  final-reducer-q3:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: final-reducer
+    container_name: final-reducer-q3
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - QUERY_NUM=3
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/final-reducer/id-3/:/data/
+
+  final-reducer-q4:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: final-reducer
+    container_name: final-reducer-q4
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - QUERY_NUM=4
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/final-reducer/id-4/:/data/
+
+  final-reducer-q5:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: final-reducer
+    container_name: final-reducer-q5
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - QUERY_NUM=5
+      - JOINER_SHARDS=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/final-reducer/id-5/:/data/
+
+  joiner-1:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-1
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_ID=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-1/:/data/
+
+  joiner-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-2
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_ID=2
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-2/:/data/
+
+  joiner-3:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-3
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_ID=3
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-3/:/data/
+
+  joiner-4:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-4
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_ID=4
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-4/:/data/
+
+  joiner-5:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-5
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_ID=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-5/:/data/
+
   healer-1:
     build:
       dockerfile: ./server/Dockerfile
@@ -8,11 +407,14 @@ services:
     container_name: healer-1
     environment:
       - HEALER_ID=1
-      - HEALERS_AMOUNT=4
       - DELAY=3
+      - HEALERS_AMOUNT=3
+    depends_on:
+      - gateway
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yaml:/docker-compose.yaml
+
   healer-2:
     build:
       dockerfile: ./server/Dockerfile
@@ -21,11 +423,14 @@ services:
     container_name: healer-2
     environment:
       - HEALER_ID=2
-      - HEALERS_AMOUNT=4
       - DELAY=3
+      - HEALERS_AMOUNT=3
+    depends_on:
+      - gateway
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yaml:/docker-compose.yaml
+
   healer-3:
     build:
       dockerfile: ./server/Dockerfile
@@ -34,23 +439,85 @@ services:
     container_name: healer-3
     environment:
       - HEALER_ID=3
-      - HEALERS_AMOUNT=4
       - DELAY=3
+      - HEALERS_AMOUNT=3
+    depends_on:
+      - gateway
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yaml:/docker-compose.yaml
 
-  healer-4:
+  client1:
+    container_name: client1
     build:
-      dockerfile: ./server/Dockerfile
-      args:
-        NODE: healer
-    container_name: healer-4
+      dockerfile: ./client/Dockerfile
     environment:
-      - HEALER_ID=4
-      - HEALERS_AMOUNT=4
-      - DELAY=3
+      - CLI_ID=1
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./docker-compose.yaml:/docker-compose.yaml
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
 
+  client2:
+    container_name: client2
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=2
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client3:
+    container_name: client3
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=3
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client4:
+    container_name: client4
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=4
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client5:
+    container_name: client5
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=5
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/

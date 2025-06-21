@@ -37,7 +37,7 @@ HEALER_NODE= """
     container_name: {svc_name}
     environment:
       - HEALER_ID={node_id}
-      - DELAY=10
+      - DELAY=3
       - HEALERS_AMOUNT={healers_amt}
     depends_on:
       - gateway
