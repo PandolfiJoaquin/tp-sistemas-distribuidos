@@ -137,10 +137,10 @@ func (c *Client) sendAllData(ctx context.Context, ackChannel <-chan int) {
 }
 
 func (c *Client) checkSendError(err error, msg string) {
-	// ignore EOF and closed errors (detection happens in recv)
 	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
 		slog.Error(msg, slog.String("error", err.Error()))
 	}
+	slog.Debug("Client send error", slog.String("message", msg), slog.String("error", err.Error()))
 }
 
 func (c *Client) CheckRecvError(err error) {
@@ -148,9 +148,6 @@ func (c *Client) CheckRecvError(err error) {
 		slog.Info("Server closed connection")
 		return
 	}
-	//if errors.Is(err, net.ErrClosed) {
-	//	return
-	//}
 	slog.Error("error receiving query results", slog.String("error", err.Error()))
 	return
 }

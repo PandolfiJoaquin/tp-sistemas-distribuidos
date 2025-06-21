@@ -15,6 +15,8 @@ services:
       rabbitmq:
         condition: service_healthy
         restart: true
+    volumes:
+      - ./data/gateway/id-1/:/data/
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -43,7 +45,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -59,7 +61,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -75,7 +77,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -91,7 +93,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -107,7 +109,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -244,7 +246,7 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
       - QUERY_NUM=2
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -263,7 +265,7 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
       - QUERY_NUM=3
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -282,7 +284,7 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
       - QUERY_NUM=4
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -301,7 +303,7 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
       - QUERY_NUM=5
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -363,6 +365,42 @@ services:
     volumes:
       - ./data/joiner/id-3/:/data/
 
+  joiner-4:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-4
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_ID=4
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-4/:/data/
+
+  joiner-5:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-5
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_ID=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-5/:/data/
+
   healer-1:
     build:
       dockerfile: ./server/Dockerfile
@@ -386,51 +424,6 @@ services:
       - CLI_ID=1
       - MOVIES_FILE=archive/movies_metadata.csv
       - REVIEWS_FILE=archive/ratings_small.csv
-      - CREDITS_FILE=archive/credits.csv
-    depends_on:
-      - gateway
-    volumes:
-      - ./archive/:/home/app/archive/
-      - ./client-results/:/home/app/results/
-
-  client2:
-    container_name: client2
-    build:
-      dockerfile: ./client/Dockerfile
-    environment:
-      - CLI_ID=2
-      - MOVIES_FILE=archive/movies_metadata.csv
-      - REVIEWS_FILE=archive/ratings.csv
-      - CREDITS_FILE=archive/credits.csv
-    depends_on:
-      - gateway
-    volumes:
-      - ./archive/:/home/app/archive/
-      - ./client-results/:/home/app/results/
-
-  client3:
-    container_name: client3
-    build:
-      dockerfile: ./client/Dockerfile
-    environment:
-      - CLI_ID=3
-      - MOVIES_FILE=archive/movies_metadata.csv
-      - REVIEWS_FILE=archive/ratings_small.csv
-      - CREDITS_FILE=archive/credits.csv
-    depends_on:
-      - gateway
-    volumes:
-      - ./archive/:/home/app/archive/
-      - ./client-results/:/home/app/results/
-
-  client4:
-    container_name: client4
-    build:
-      dockerfile: ./client/Dockerfile
-    environment:
-      - CLI_ID=4
-      - MOVIES_FILE=archive/movies_metadata.csv
-      - REVIEWS_FILE=archive/ratings.csv
       - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway

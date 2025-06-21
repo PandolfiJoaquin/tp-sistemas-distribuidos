@@ -115,6 +115,7 @@ def create_compose(cfg):
         node="gateway",
         extra_env=extra_env
     )
+    compose += VOLUME.format(node_id=1, type="gateway")
 
     # RabbitM
     compose += RABBITMQ_SERVICE

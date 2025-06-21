@@ -24,31 +24,37 @@ type q1State struct {
 }
 
 type Client struct {
-	id              string
-	connMutex       sync.Mutex
-	conn            net.Conn
-	dead            bool
-	recvChannel     chan *models.TotalQueryResults
-	toPreprocess    middleware.SenderQueue
-	queriesReceived map[int]bool
-	q1State         *q1State
-	ctx             context.Context
-	cancel          context.CancelFunc
+	id               string
+	connMutex        sync.Mutex
+	conn             net.Conn
+	dead             bool
+	recvChannel      chan *models.TotalQueryResults
+	toPreprocess     middleware.SenderQueue
+	flushQueue       middleware.SenderQueue
+	deadChan         chan<- string
+	deadWhileSending chan string // used to notify that the client is dead while sending data
+	queriesReceived  map[int]bool
+	q1State          *q1State
+	ctx              context.Context
+	cancel           context.CancelFunc
 }
 
-func NewClient(conn net.Conn, toPreprocess middleware.SenderQueue) *Client {
+func NewClient(conn net.Conn, toPreprocess middleware.SenderQueue, flushQueue middleware.SenderQueue, deadChan chan<- string) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
-		id:              uuid.NewString(),
-		connMutex: 		 sync.Mutex{},
-		conn:            conn,
-		dead:            false,
-		recvChannel:     make(chan *models.TotalQueryResults),
-		toPreprocess:    toPreprocess,
-		queriesReceived: make(map[int]bool),
-		q1State:         &q1State{DuplicateFilter: common.NewDuplicateFilter()},
-		ctx:             ctx,
-		cancel:          cancel,
+		id:               uuid.NewString(),
+		connMutex:        sync.Mutex{},
+		conn:             conn,
+		dead:             false,
+		recvChannel:      make(chan *models.TotalQueryResults),
+		toPreprocess:     toPreprocess,
+		flushQueue:       flushQueue,
+		deadChan:         deadChan,
+		deadWhileSending: make(chan string, 1),
+		queriesReceived:  make(map[int]bool),
+		q1State:          &q1State{DuplicateFilter: common.NewDuplicateFilter()},
+		ctx:              ctx,
+		cancel:           cancel,
 	}
 }
 
@@ -78,18 +84,21 @@ func (c *Client) sendHandler() {
 	err := receiveData[models.RawMovie](c.toPreprocess, "movies", &c.conn, c.id, &c.connMutex)
 	if err != nil {
 		c.checkSendError(err, "error receiving movies")
+		c.deadWhileSending <- c.id
 		return
 	}
 
 	err = receiveData[models.RawReview](c.toPreprocess, "reviews", &c.conn, c.id, &c.connMutex)
 	if err != nil {
 		c.checkSendError(err, "error receiving reviews")
+		c.deadWhileSending <- c.id
 		return
 	}
 
 	err = receiveData[models.RawCredits](c.toPreprocess, "credits", &c.conn, c.id, &c.connMutex)
 	if err != nil {
 		c.checkSendError(err, "error receiving credits")
+		c.deadWhileSending <- c.id
 		return
 	}
 }
@@ -113,10 +122,17 @@ func (c *Client) recvHandler() {
 	for {
 		if len(c.queriesReceived) == 5 {
 			slog.Info("client finished receiving all data", slog.String("id", c.id))
+			c.deadChan <- c.id
 			break
 		}
 		select {
 		case <-c.ctx.Done():
+		case dead := <-c.deadWhileSending:
+			slog.Debug("client is dead while sending data", slog.String("id", dead))
+			c.dead = true
+			c.deadChan <- dead
+			return
+
 		case results := <-c.recvChannel:
 			if _, ok := c.queriesReceived[results.QueryId]; ok {
 				slog.Warn("duplicate query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
@@ -133,8 +149,17 @@ func (c *Client) recvHandler() {
 			c.connMutex.Unlock()
 			if err != nil {
 				c.checkRecvError(err)
-				// TODO: Send flush message to control queue
-				return
+				clientIdToFlush := common.FlushClient{ClientID: &c.id}
+				data, err := json.Marshal(clientIdToFlush)
+				if err != nil {
+					slog.Error("error marshalling client id to flush", slog.String("error", err.Error()))
+				} else {
+					if err := c.flushQueue.Send(data); err != nil {
+						slog.Error("error sending client id to flush", slog.String("error", err.Error()))
+					} else {
+						slog.Info("client id flushed", slog.String("id", c.id))
+					}
+				}
 			}
 		}
 	}
