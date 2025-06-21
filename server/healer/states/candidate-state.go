@@ -22,8 +22,10 @@ func NewCandidateState(config election_model.Config, peers *concurrencyutils.Pee
 func (c *CandidateState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers) ProcessState {
 
 	ticker := time.NewTicker(timeToWinElection)
+	defer ticker.Stop()
 	select {
 	case <-ticker.C:
+		slog.Info("Timeout, converting to master")
 		peers.Broadcast(election_model.Event{Type: election_model.Victory, Parameter: c.config.Id})
 		return NewMasterState(c.config)
 	case event := <-mailbox:

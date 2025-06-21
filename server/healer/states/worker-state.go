@@ -3,7 +3,6 @@ package states
 import (
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
 	"time"
 	concurrencyutils "tp-sistemas-distribuidos/server/healer/concurrency-utils"
 	"tp-sistemas-distribuidos/server/healer/election-model"
@@ -23,7 +22,8 @@ func NewWorkerState(config election_model.Config) *WorkerState {
 
 func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers) ProcessState {
 	//TODO
-	ticker := time.NewTicker(heartBeatTolerance + (time.Duration(rand.Int32N(2)))*time.Second)
+	ticker := time.NewTicker(heartBeatTolerance)
+	defer ticker.Stop()
 	select {
 	case <-ticker.C:
 		slog.Info("Timeout, converting to candidate")
@@ -31,6 +31,7 @@ func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event, peers *co
 	case event := <-mailbox:
 		switch event.Type {
 		case election_model.HeartBeat:
+			slog.Info("HeartBeat")
 			return w
 		case election_model.Election:
 			if event.Parameter > w.config.Id {

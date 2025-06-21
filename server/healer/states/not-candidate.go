@@ -18,6 +18,7 @@ func NewNotACandidateState(config election_model.Config) *NotACandidateState {
 
 func (n *NotACandidateState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers) ProcessState {
 	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
 	select {
 	case <-ticker.C:
 		slog.Warn("a non-candidate process time'd out. Becoming candidate again")

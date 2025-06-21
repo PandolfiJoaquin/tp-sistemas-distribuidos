@@ -21,6 +21,7 @@ func NewMasterState(config election_model.Config) *MasterState {
 
 func (m *MasterState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers) ProcessState {
 	ticker := time.NewTicker(heartBeatPeriod)
+	defer ticker.Stop()
 	select {
 	case <-ticker.C:
 		peers.Broadcast(election_model.Event{Type: election_model.HeartBeat, Parameter: m.config.Id})
@@ -43,7 +44,7 @@ func (m *MasterState) HandleMailBox(mailbox chan election_model.Event, peers *co
 			return m
 		case election_model.Victory:
 			slog.Warn("master received victory")
-			if event.Parameter > 1 {
+			if event.Parameter > m.config.Id {
 				return NewWorkerState(m.config)
 			} else {
 				peers.SendToId(election_model.Event{Type: election_model.Victory, Parameter: m.config.Id}, event.Parameter)

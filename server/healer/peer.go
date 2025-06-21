@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"pkg/communication"
@@ -50,12 +51,13 @@ func (p *Process) startReceiver(conn net.Conn, id int) {
 	for p.running {
 		event, err := p.RecvEvent(conn)
 		if err != nil {
-			if errors.Is(err, net.ErrClosed) {
+			if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
 				p.peers.SafeRemovePeer(id)
 				return
 			} else {
 				slog.Error("Error receiving event:", slog.Any("error", err))
-				continue
+				p.peers.SafeRemovePeer(id)
+				return
 			}
 		}
 		p.mailbox <- event
