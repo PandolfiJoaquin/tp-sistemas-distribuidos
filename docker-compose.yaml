@@ -91,7 +91,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
-      - JOINER_SHARDS=5
+      - JOINER_SHARDS=3
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -263,7 +263,7 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
       - QUERY_NUM=3
-      - JOINER_SHARDS=5
+      - JOINER_SHARDS=3
     depends_on:
       rabbitmq:
         condition: service_healthy

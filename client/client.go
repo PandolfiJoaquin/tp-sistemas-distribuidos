@@ -107,27 +107,29 @@ func (c *Client) Start() {
 
 	slog.Info("client connected to server", slog.String("serverAddress", c.config.ServerAddress))
 
+	AckChannel := make(chan int)
+
 	wg.Add(1)
-	go c.RecvAnswers(wg, ctx)
-	c.sendAllData()
+	go c.RecvAnswers(wg, ctx, AckChannel)
+	c.sendAllData(ctx, AckChannel)
 	wg.Wait()
 	close(finishedChan)
 	slog.Info("Shutting down client")
 }
 
-func (c *Client) sendAllData() {
-	MovieSender := NewSender(&c.conn, c.config.MoviesFile, c.config.MaxBatchMovie, utils.NewMoviesReader, "movies")
+func (c *Client) sendAllData(ctx context.Context, ackChannel <-chan int) {
+	MovieSender := NewSender(&c.conn, c.config.MoviesFile, c.config.MaxBatchMovie, utils.NewMoviesReader, "movies", ackChannel, ctx)
 	if err := MovieSender.Send(); err != nil {
 		c.checkSendError(err, "error sending movies")
 		return
 	}
-	ReviewSender := NewSender(&c.conn, c.config.ReviewsFile, c.config.MaxBatchReview, utils.NewReviewReader, "reviews")
+	ReviewSender := NewSender(&c.conn, c.config.ReviewsFile, c.config.MaxBatchReview, utils.NewReviewReader, "reviews", ackChannel, ctx)
 	if err := ReviewSender.Send(); err != nil {
 		c.checkSendError(err, "error sending reviews")
 		return
 	}
 
-	CreditsSender := NewSender(&c.conn, c.config.CreditsFile, c.config.MaxBatchCredit, utils.NewCreditsReader, "credits")
+	CreditsSender := NewSender(&c.conn, c.config.CreditsFile, c.config.MaxBatchCredit, utils.NewCreditsReader, "credits", ackChannel, ctx)
 	if err := CreditsSender.Send(); err != nil {
 		c.checkSendError(err, "error sending credits")
 		return
@@ -139,6 +141,18 @@ func (c *Client) checkSendError(err error, msg string) {
 	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
 		slog.Error(msg, slog.String("error", err.Error()))
 	}
+}
+
+func (c *Client) CheckRecvError(err error) {
+	if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) {
+		slog.Info("Server closed connection")
+		return
+	}
+	//if errors.Is(err, net.ErrClosed) {
+	//	return
+	//}
+	slog.Error("error receiving query results", slog.String("error", err.Error()))
+	return
 }
 
 func (c *Client) writeQueryResults(queriesResults map[int][]models.QueryResult) {
@@ -170,7 +184,7 @@ func (c *Client) writeQueryResults(queriesResults map[int][]models.QueryResult) 
 	}
 }
 
-func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
+func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context, ackChannel chan<- int) {
 	queriesReceived := make([]bool, 0) // Array to store when we get the complete query
 	queriesResults := make(map[int][]models.QueryResult)
 	defer wg.Done()
@@ -185,29 +199,58 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
 				return
 			}
 
-			results, err := communication.RecvQueryResults(c.conn)
+			typeOfRes, err := communication.RecvTypeOfResults(c.conn)
 			if err != nil {
-				if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) {
-					slog.Info("Server closed connection")
-					return
-				}
-				if errors.Is(err, net.ErrClosed) {
-					return
-				}
-				slog.Error("error receiving query results", slog.String("error", err.Error()))
+				c.CheckRecvError(err)
 				return
 			}
-			_, alreadyHasResult := queriesResults[results.QueryId]
-			isDuplicate := results.QueryId != 1 && alreadyHasResult
-			if results.Last && (!isDuplicate) {
-				queriesReceived = append(queriesReceived, true)
+
+			if typeOfRes == communication.AckMsg {
+				err = c.handleAck(ackChannel)
+				if err != nil {
+					c.CheckRecvError(err)
+					return
+				}
+			} else if typeOfRes == communication.QueryMsg {
+				err = c.handleQueryResult(&queriesResults, &queriesReceived)
+				if err != nil {
+					c.CheckRecvError(err)
+					return
+				}
+			} else {
+				slog.Error("unknown message type received", slog.Int("type", typeOfRes))
+				return
 			}
 
-			for _, result := range results.Items {
-				txt := fmt.Sprintf("Query result %d", results.QueryId)
-				slog.Info(txt, slog.String("result", result.String()))
-				queriesResults[results.QueryId] = append(queriesResults[results.QueryId], result)
-			}
 		}
 	}
+}
+
+func (c *Client) handleAck(ackChannel chan<- int) error {
+	acked, err := communication.RecvAck(c.conn)
+	if err != nil {
+		return fmt.Errorf("error receiving ack: %w", err)
+	}
+	ackChannel <- acked
+	return nil
+}
+
+func (c *Client) handleQueryResult(queriesResults *map[int][]models.QueryResult, queriesReceived *[]bool) error {
+	results, err := communication.RecvQueryResults(c.conn)
+	if err != nil {
+		return err
+	}
+
+	_, alreadyHasResult := (*queriesResults)[results.QueryId]
+	isDuplicate := results.QueryId != 1 && alreadyHasResult
+	if results.Last && (!isDuplicate) {
+		*queriesReceived = append(*queriesReceived, true)
+	}
+
+	for _, result := range results.Items {
+		txt := fmt.Sprintf("Query result %d", results.QueryId)
+		slog.Info(txt, slog.String("result", result.String()))
+		(*queriesResults)[results.QueryId] = append((*queriesResults)[results.QueryId], result)
+	}
+	return nil
 }
