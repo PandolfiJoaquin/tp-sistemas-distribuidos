@@ -55,6 +55,7 @@ CLIENT_NODE = """
       - MOVIES_FILE={movies_file}
       - REVIEWS_FILE={reviews_file}
       - CREDITS_FILE={credits_file}
+      - DEBUG={debug}
     depends_on:
       - gateway
     volumes:
@@ -173,7 +174,8 @@ def create_compose(cfg):
             idx=c,
             movies_file=movies_file,
             reviews_file=reviews_file,
-            credits_file=credits_file
+            credits_file=credits_file,
+            debug=1 if debug else 0
         )
 
     with open(YAML_FILE, "w") as f:

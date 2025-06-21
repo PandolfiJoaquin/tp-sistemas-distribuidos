@@ -425,6 +425,7 @@ services:
       - MOVIES_FILE=archive/movies_metadata.csv
       - REVIEWS_FILE=archive/ratings_small.csv
       - CREDITS_FILE=archive/credits.csv
+      - DEBUG=1
     depends_on:
       - gateway
     volumes:
