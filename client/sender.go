@@ -20,17 +20,19 @@ type Sender[T any] struct {
 	newReader  func(string, int) (utils.BatchReader[T], error)
 	path       string
 	batchSize  int
+	signalCtx  context.Context
 	ctx        context.Context
 	ackChannel <-chan int
 }
 
-func NewSender[T any](conn *net.Conn, path string, batchSize int, newReader func(string, int) (utils.BatchReader[T], error), dataType string, ackChannel <-chan int, ctx context.Context) *Sender[T] {
+func NewSender[T any](conn *net.Conn, path string, batchSize int, newReader func(string, int) (utils.BatchReader[T], error), dataType string, ackChannel <-chan int, signalCtx context.Context, ctx context.Context) *Sender[T] {
 	return &Sender[T]{
 		conn:       conn,
 		dataType:   dataType,
 		newReader:  newReader,
 		path:       path,
 		batchSize:  batchSize,
+		signalCtx:  signalCtx,
 		ctx:        ctx,
 		ackChannel: ackChannel,
 	}
@@ -67,8 +69,9 @@ func (s *Sender[T]) SendBatch(batch []T, batchID int, total int) error {
 	}
 
 	select {
-	case <-s.ctx.Done():
+	case <-s.signalCtx.Done():
 		slog.Info("Context done, stopping sending data")
+	case <-s.ctx.Done():
 	case ack := <-s.ackChannel:
 		if batch == nil && ack != 0 {
 			return fmt.Errorf("eof ack value mismatch: expected 0, got %d", ack)
