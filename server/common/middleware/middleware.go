@@ -29,7 +29,7 @@ func NewMiddleware(rabbitUser string, rabbitPass string, host string) (*Middlewa
 
 	heartbeatChan := make(chan struct{}, 1)
 
-	hc, err := startHealthCheck(heartbeatChan)
+	hc, err := StartHealthCheck(heartbeatChan)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start health check: %s", err)
 	}

@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"time"
 	concurrencyutils "tp-sistemas-distribuidos/server/healer/concurrency-utils"
-	"tp-sistemas-distribuidos/server/healer/election-model"
+	election_model "tp-sistemas-distribuidos/server/healer/election-model"
 	"tp-sistemas-distribuidos/server/healer/states"
 )
 
@@ -50,20 +50,39 @@ func NewProcess() (*Process, error) {
 	}, nil
 }
 
-func (p *Process) StartProcess(ctx context.Context) {
+func sendHeartbeat(heartbeatChan chan struct{}) {
+	select {
+	case heartbeatChan <- struct{}{}:
+	default:
+		slog.Error("failed to send heartbeat: channel is full")
+	}
+}
+
+func (p *Process) StartProcess(ctx context.Context, heartbeatChan chan struct{}) {
 	go p.listener(ctx)
 	go p.connector(ctx)
 
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
 	slog.Info(p.ProcState.GetName())
 	for p.running {
-		oldState := p.ProcState.GetName()
-		p.ProcState = p.ProcState.HandleMailBox(p.mailbox, p.peers, ctx)
-		if p.ProcState == nil {
+		select {
+		case <-ctx.Done():
+			slog.Info("context done")
 			return
+		case <-ticker.C:
+		default:
+			oldState := p.ProcState.GetName()
+			p.ProcState = p.ProcState.HandleMailBox(p.mailbox, p.peers, ctx)
+			if p.ProcState == nil {
+				return
+			}
+			if p.ProcState.GetName() != oldState {
+				slog.Info(p.ProcState.GetName())
+			}
 		}
-		if p.ProcState.GetName() != oldState {
-			slog.Info(p.ProcState.GetName())
-		}
+		sendHeartbeat(heartbeatChan)
 	}
 	//p.ProcState.Close()
 	//TODO: the defere stop is enough? if yes then remove close from interface and states

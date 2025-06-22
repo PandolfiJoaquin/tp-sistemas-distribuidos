@@ -20,7 +20,7 @@ type HealthCheck struct {
 	listener *net.Listener
 }
 
-func startHealthCheck(hb <-chan struct{}) (*HealthCheck, error) {
+func StartHealthCheck(hb <-chan struct{}) (*HealthCheck, error) {
 	listener, err := net.Listen("tcp", "0.0.0.0:"+port)
 	if err != nil {
 		return nil, err
