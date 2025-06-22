@@ -394,7 +394,7 @@ func (g *Gateway) consumeBatch(msg []byte) (common.Batch[common.Movie], error) {
 
 func (g *Gateway) saveClients() error {
 	clients := make([]common.FlushClient, 0, len(g.clients))
-	for id := range g.clients {
+	for id, _ := range g.clients {
 		clients = append(clients, common.FlushClient{ClientID: id})
 	}
 
@@ -448,9 +448,10 @@ func (g *Gateway) persistencyHandler(wg *sync.WaitGroup) {
 			} else {
 				slog.Warn("Dead client not found in clients map", slog.String("client_id", deadClientState.ClientID))
 			}
-
 		case <-g.ctx.Done():
 			return
 		}
+
 	}
+
 }
