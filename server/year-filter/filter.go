@@ -66,6 +66,7 @@ func initializeConnection(m *middleware.Middleware, previousQueue string, nextQu
 }
 
 func (f *YearFilter) Start() {
+	slog.Info("starting year filter")
 	defer f.stop()
 
 	// Sigterm , sigint

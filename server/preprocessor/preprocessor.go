@@ -75,7 +75,6 @@ func (p *Preprocessor) middlewareSetup() error {
 
 	for i := range p.shards {
 		shard := i + 1
-		slog.Info("Creating channel to send reviews", slog.Int("shard", shard))
 		p.reviewsQueues[shard], err = m.GetQueueWithTopicToSend(reviewsExchange, fmt.Sprintf(reviewsTopic, shard))
 		if err != nil {
 			return fmt.Errorf("error getting channel to send reviews: %s", err)
@@ -121,6 +120,7 @@ func (p *Preprocessor) close() {
 }
 
 func (p *Preprocessor) Start() {
+	slog.Info("starting preprocessor")
 	defer p.close()
 
 	// Sigterm , sigint

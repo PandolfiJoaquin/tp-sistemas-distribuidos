@@ -351,6 +351,7 @@ func (j *JoinerController) save(transaction persistency.Transaction) error {
 }
 
 func (j *JoinerController) run(ctx context.Context) {
+	slog.Info("starting joiner", slog.Int("joinerID", j.joinerId))
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -406,7 +407,7 @@ func (j *JoinerController) run(ctx context.Context) {
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
 			if !session.FilterMoviesMsg(batch.Header.MessageID.ID) {
-				slog.Info("Filtering Msg", slog.Any("msg", batch))
+				slog.Info("Filtering Msg", slog.Any("header", batch.Header))
 				break
 			}
 			transaction.Do(FilterMovieOP, batch.ClientID+separator+strconv.Itoa(batch.MessageID.ID))
@@ -441,7 +442,7 @@ func (j *JoinerController) run(ctx context.Context) {
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
 			if !session.FilterReviewsMsg(batch.MessageID.ID) {
-				slog.Info("Filtering Msg", slog.Any("msg", batch))
+				slog.Info("Filtering Msg", slog.Any("header", batch.Header))
 				break
 			}
 			transaction.Do(FilterReviewsOP, batch.ClientID+separator+strconv.Itoa(batch.MessageID.ID))
@@ -472,7 +473,7 @@ func (j *JoinerController) run(ctx context.Context) {
 			clientId = batch.GetClientID()
 			session := j.getSession(clientId)
 			if !session.FilterCreditsMsg(batch.MessageID.ID) {
-				slog.Info("Filtering Msg", slog.Any("msg", batch))
+				slog.Info("Filtering Msg", slog.Any("header", batch.Header))
 				break
 			}
 			transaction.Do(FilterCreditsOP, batch.ClientID+separator+strconv.Itoa(batch.MessageID.ID))

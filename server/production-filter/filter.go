@@ -105,6 +105,7 @@ func initializeShardsConnections(m *middleware.Middleware, previousQueue string,
 }
 
 func (f *ProductionFilter) Start() {
+	slog.Info("starting production filter")
 	defer f.stop()
 
 	// Sigterm , sigint

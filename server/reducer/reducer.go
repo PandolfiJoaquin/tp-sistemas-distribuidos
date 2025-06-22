@@ -87,6 +87,7 @@ func initializeConnection(m *middleware.Middleware, previousQueue, nextQueue str
 }
 
 func (r *Reducer) Start() {
+	slog.Info("starting reducer")
 	defer r.close()
 
 	// Sigterm , sigint

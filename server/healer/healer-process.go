@@ -54,7 +54,6 @@ func sendHeartbeat(heartbeatChan chan struct{}) {
 	select {
 	case heartbeatChan <- struct{}{}:
 	default:
-		slog.Error("failed to send heartbeat: channel is full")
 	}
 }
 

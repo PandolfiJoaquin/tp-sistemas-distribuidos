@@ -261,7 +261,7 @@ func startReceiving[T common.Stringer](
 			if flushClient.ClientID != nil {
 				transaction.Do(DeleteClientOp, *flushClient.ClientID)
 				freddyFazbear.deleteClient(*flushClient.ClientID)
-				slog.Info("deleted client", slog.String("clientID", *flushClient.ClientID))
+				slog.Info("flushing client", slog.String("clientID", *flushClient.ClientID))
 			} else {
 				for id := range freddyFazbear.Sessions {
 					transaction.Do(DeleteClientOp, id)
@@ -282,7 +282,7 @@ func startReceiving[T common.Stringer](
 
 			if freddyFazbear.isBlacklisted(batch.GetClientID()) {
 				if !batch.IsEof() {
-					slog.Info("Discarding message from blacklisted client", slog.String("clientID", batch.GetClientID()))
+					slog.Info("Discarding message from blacklisted client", slog.Any("header", batch.Header))
 				}
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -293,7 +293,7 @@ func startReceiving[T common.Stringer](
 
 			session := freddyFazbear.getSession(batch.GetClientID(), freddyFazbear.queryNum)
 			if !session.FilterMsg(batch.MessageID.ID, batch.MessageID.JoinerID) {
-				slog.Info("Filtering Msg", slog.Any("msg", batch))
+				slog.Info("Filtering Msg", slog.Any("header", batch.Header))
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				}
@@ -314,6 +314,7 @@ func startReceiving[T common.Stringer](
 				finishAndSendBatch(session.SessionId)
 				freddyFazbear.deleteClient(session.SessionId)
 				transaction.Do(DeleteClientOp, session.SessionId)
+				slog.Info("deleted client session", slog.String("clientID", session.SessionId))
 			}
 
 			freddyFazbear.save(transaction)
@@ -330,6 +331,7 @@ func (r *FinalReducer) getSession(clientID string, queryNum int) *ClientSession 
 	if _, ok := r.Sessions[clientID]; ok {
 		return r.Sessions[clientID]
 	}
+	slog.Info("detected new client", slog.String("clientID", clientID))
 	switch queryNum {
 	case 2:
 		r.Sessions[clientID] = NewClientSession(clientID, 1)
