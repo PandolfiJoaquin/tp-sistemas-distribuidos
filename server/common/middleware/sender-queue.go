@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	// "math/rand"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -28,6 +29,21 @@ func NewAmqpQueue(ch *amqp.Channel, name string) SenderQueue {
 func (q *amqpSenderQueue) Send(body []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	if err := q.sendMessage(ctx, body); err != nil {
+		return err
+	}
+
+	// DUPLICATE: 20% probability of resending
+	// if rand.Float64() < 0.2 {
+	// 	slog.Info("Duplicating message due to 20% probability")
+	// 	return q.sendMessage(ctx, body)
+	// }
+
+	return nil
+}
+
+func (q *amqpSenderQueue) sendMessage(ctx context.Context, body []byte) error {
 	confirmChan, err := q.ch.PublishWithDeferredConfirmWithContext(
 		ctx,
 		"",
@@ -63,6 +79,20 @@ func NewAmqpQueueWithTopic(ch *amqp.Channel, exchange, topic string) SenderQueue
 }
 
 func (q *amqpSenderQueueWithTopic) Send(body []byte) error {
+	if err := q.sendMessage(body); err != nil {
+		return err
+	}
+
+	// DUP{LICATE: 20% probability of resending
+	// if rand.Float64() < 0.2 {
+	// 	slog.Info("Duplicating message due to 20% probability")
+	// 	return q.sendMessage(body)
+	// }
+
+	return nil
+}
+
+func (q *amqpSenderQueueWithTopic) sendMessage(body []byte) error {
 	confirmChan, err := q.ch.PublishWithDeferredConfirmWithContext(
 		context.Background(),
 		q.exchange,
@@ -97,6 +127,20 @@ func NewAmqpQueueWithFanout(ch *amqp.Channel, exchange string) SenderQueue {
 }
 
 func (q *amqpFanoutSenderQueue) Send(body []byte) error {
+	if err := q.sendMessage(body); err != nil {
+		return err
+	}
+
+	// // DUPLICATE: 20% probability of resending
+	// if rand.Float64() < 0.2 {
+	// 	slog.Info("Duplicating message due to 20% probability")
+	// 	return q.sendMessage(body)
+	// }
+
+	return nil
+}
+
+func (q *amqpFanoutSenderQueue) sendMessage(body []byte) error {
 	confirmChan, err := q.ch.PublishWithDeferredConfirmWithContext(
 		context.Background(),
 		q.exchange,

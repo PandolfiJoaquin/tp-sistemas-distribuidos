@@ -13,7 +13,7 @@ import (
 const (
 	port            = "1500"
 	healthyResponse = "K"
-	watchdogTimeout = 10 * time.Second
+	watchdogTimeout = 30 * time.Second
 )
 
 type HealthCheck struct {
