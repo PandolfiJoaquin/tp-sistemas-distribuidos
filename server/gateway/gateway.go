@@ -182,7 +182,7 @@ func (g *Gateway) flushOldClients() error {
 			return fmt.Errorf("error marshalling old client: %w", err)
 		}
 		err = g.flushQueue.Send(clientData)
-		slog.Debug("Flushing old client", slog.String("client_id", *c.ClientID))
+		slog.Debug("Flushing old client", slog.String("client_id", c.ClientID))
 		if err != nil {
 			return fmt.Errorf("error flushing old clients: %w", err)
 		}
@@ -394,8 +394,8 @@ func (g *Gateway) consumeBatch(msg []byte) (common.Batch[common.Movie], error) {
 
 func (g *Gateway) saveClients() error {
 	clients := make([]common.FlushClient, 0, len(g.clients))
-	for id, _ := range g.clients {
-		clients = append(clients, common.FlushClient{ClientID: &id})
+	for id := range g.clients {
+		clients = append(clients, common.FlushClient{ClientID: id})
 	}
 
 	data, err := json.Marshal(clients)

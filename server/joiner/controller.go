@@ -373,17 +373,9 @@ func (j *JoinerController) run(ctx context.Context) {
 				continue
 			}
 			transaction := persistency.NewTransaction()
-			if flushClient.ClientID != nil {
-				transaction.Do(DeleteClientOP, *flushClient.ClientID)
-				j.deleteClient(*flushClient.ClientID)
-				slog.Info("deleted client", slog.String("clientID", *flushClient.ClientID))
-			} else {
-				for clientID := range j.Sessions {
-					transaction.Do(DeleteClientOP, clientID)
-				}
-				j.deleteClients()
-				slog.Info("deleted all clients")
-			}
+			transaction.Do(DeleteClientOP, flushClient.ClientID)
+			j.deleteClient(flushClient.ClientID)
+			slog.Info("flushing client", slog.String("clientID", flushClient.ClientID))
 			j.save(transaction)
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -511,16 +503,6 @@ func (j *JoinerController) getSession(clientId string) *JoinerSession {
 func (j *JoinerController) deleteClient(id string) {
 	delete(j.Sessions, id)
 	j.BlacklistedClients[id] = time.Now().Unix() + 10
-}
-
-func (j *JoinerController) deleteClients() {
-	clientsIds := make([]string, 0, len(j.Sessions))
-	for id := range j.Sessions {
-		clientsIds = append(clientsIds, id)
-	}
-	for _, id := range clientsIds {
-		j.deleteClient(id)
-	}
 }
 
 func (j *JoinerController) isBlacklisted(id string) bool {

@@ -218,19 +218,20 @@ func (r *FinalReducer) Start() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	if r.queryNum == 2 {
+	switch r.queryNum {
+	case 2:
 		slog.Info("starting final reducer for query 2")
 		r.startReceivingQ2(ctx)
-	} else if r.queryNum == 3 {
+	case 3:
 		slog.Info("starting final reducer for query 3")
 		r.startReceivingQ3(ctx)
-	} else if r.queryNum == 4 {
+	case 4:
 		slog.Info("starting final reducer for query 4")
 		r.startReceivingQ4(ctx)
-	} else if r.queryNum == 5 {
+	case 5:
 		slog.Info("starting final reducer for query 5")
 		r.startReceivingQ5(ctx)
-	} else {
+	default:
 		slog.Error("query number not found", slog.Int("query number", r.queryNum))
 		return
 	}
@@ -258,17 +259,9 @@ func startReceiving[T common.Stringer](
 				continue
 			}
 			transaction := persistency.NewTransaction()
-			if flushClient.ClientID != nil {
-				transaction.Do(DeleteClientOp, *flushClient.ClientID)
-				freddyFazbear.deleteClient(*flushClient.ClientID)
-				slog.Info("flushing client", slog.String("clientID", *flushClient.ClientID))
-			} else {
-				for id := range freddyFazbear.Sessions {
-					transaction.Do(DeleteClientOp, id)
-				}
-				freddyFazbear.deleteClients()
-				slog.Info("deleted all clients")
-			}
+			transaction.Do(DeleteClientOp, flushClient.ClientID)
+			freddyFazbear.deleteClient(flushClient.ClientID)
+			slog.Info("flushing client", slog.String("clientID", flushClient.ClientID))
 			freddyFazbear.save(transaction)
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -659,12 +652,3 @@ func (r *FinalReducer) deleteClient(clientID string) {
 	r.BlacklistedClients[clientID] = time.Now().Unix()
 }
 
-func (r *FinalReducer) deleteClients() {
-	clientsIds := make([]string, 0, len(r.Sessions))
-	for clientID := range r.Sessions {
-		clientsIds = append(clientsIds, clientID)
-	}
-	for _, clientID := range clientsIds {
-		r.deleteClient(clientID)
-	}
-}

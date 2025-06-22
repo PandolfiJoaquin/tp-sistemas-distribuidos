@@ -149,7 +149,7 @@ func (c *Client) recvHandler() {
 			c.connMutex.Unlock()
 			if err != nil {
 				c.checkRecvError(err)
-				clientIdToFlush := common.FlushClient{ClientID: &c.id}
+				clientIdToFlush := common.FlushClient{ClientID: c.id}
 				data, err := json.Marshal(clientIdToFlush)
 				if err != nil {
 					slog.Error("error marshalling client id to flush", slog.String("error", err.Error()))
