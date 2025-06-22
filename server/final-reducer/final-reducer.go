@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 	"tp-sistemas-distribuidos/server/common"
-	"tp-sistemas-distribuidos/server/common/persistency"
 	"tp-sistemas-distribuidos/server/common/middleware"
+	"tp-sistemas-distribuidos/server/common/persistency"
 
 	pkg "pkg/models"
 )
@@ -25,7 +25,7 @@ const (
 	maxTransactionsOnLog = 500
 	separator            = ";"
 	blacklistDuration    = 300 // 5 minutes
-
+	heartbeatInterval    = 1 * time.Second
 )
 
 type queuesNames struct {
@@ -243,10 +243,14 @@ func startReceiving[T common.Stringer](
 	processBatch func(batch common.LoggableBatch[T]) persistency.Transaction,
 	freddyFazbear *FinalReducer,
 ) error {
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-ticker.C:
 		case msg := <-freddyFazbear.flushQueue:
 			var flushClient common.FlushClient
 			if err := json.Unmarshal(msg.Body, &flushClient); err != nil {
@@ -283,6 +287,7 @@ func startReceiving[T common.Stringer](
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				}
+				freddyFazbear.m.SendHeartbeat()
 				continue
 			}
 
@@ -292,6 +297,7 @@ func startReceiving[T common.Stringer](
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				}
+				freddyFazbear.m.SendHeartbeat()
 				continue
 			}
 
@@ -316,8 +322,8 @@ func startReceiving[T common.Stringer](
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
 		}
+		freddyFazbear.m.SendHeartbeat()
 	}
-
 }
 
 func (r *FinalReducer) getSession(clientID string, queryNum int) *ClientSession {

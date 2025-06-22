@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	pkg "pkg/models"
 	"syscall"
+	"time"
 	"tp-sistemas-distribuidos/server/common"
 	"tp-sistemas-distribuidos/server/common/middleware"
 )
@@ -22,10 +23,11 @@ const (
 	nextQueueQ4     = "q4-to-final-reduce"
 	previousQueueQ5 = "q5-to-reduce"
 	nextQueueQ5     = "q5-to-final-reduce"
+	heartbeatInterval = 1 * time.Second
 )
 
 type Reducer struct {
-	m       *middleware.Middleware
+	m                *middleware.Middleware
 	query2Connection connection
 	query3Connection connection
 	query4Connection connection
@@ -64,7 +66,7 @@ func NewReducer(rabbitUser, rabbitPass string) (*Reducer, error) {
 	}
 
 	return &Reducer{
-		m:       m,
+		m:                m,
 		query2Connection: query2Connection,
 		query3Connection: query3Connection,
 		query4Connection: query4Connection,
@@ -95,11 +97,15 @@ func (r *Reducer) Start() {
 }
 
 func (r *Reducer) startReceiving(ctx context.Context) {
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping")
 			return
+		case <-ticker.C:
 		case msg := <-r.query2Connection.ChanToRecv:
 			reduced, err := reduceMessage(msg, r.reduceQ2)
 			if err != nil {
@@ -149,6 +155,7 @@ func (r *Reducer) startReceiving(ctx context.Context) {
 				slog.Error("error acknowledging query5 message", slog.String("error", err.Error()))
 			}
 		}
+		r.m.SendHeartbeat()
 	}
 }
 

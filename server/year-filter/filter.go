@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"tp-sistemas-distribuidos/server/common"
 	"tp-sistemas-distribuidos/server/common/middleware"
@@ -18,10 +19,11 @@ const (
 	previousQueueQuery3And4 = "filter-year-q3q4"
 	nextQueueQuery1         = "filter-production-q1"
 	nextQueueQuery3And4     = "filter-production-q3q4"
+	heartbeatInterval       = 1 * time.Second
 )
 
 type YearFilter struct {
-	m       *middleware.Middleware
+	m                *middleware.Middleware
 	query1Connection connection
 	query3Connection connection
 }
@@ -74,11 +76,15 @@ func (f *YearFilter) Start() {
 }
 
 func (f *YearFilter) start(ctx context.Context) {
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping year filter")
 			return
+		case <-ticker.C:
 		case msg := <-f.query1Connection.ChanToRecv:
 			if err := f.processQueryMessage(f.query1Connection.ChanToSend, msg, f.year2000sFilter); err != nil {
 				slog.Error("error processing q1 message", slog.String("error", err.Error()))
@@ -94,6 +100,7 @@ func (f *YearFilter) start(ctx context.Context) {
 				slog.Error("error acknowledging q3/q4 message", slog.String("error", err.Error()))
 			}
 		}
+		f.m.SendHeartbeat()
 	}
 }
 
@@ -148,5 +155,3 @@ func (f *YearFilter) stop() {
 	}
 	slog.Info("year filter stopped")
 }
-
-

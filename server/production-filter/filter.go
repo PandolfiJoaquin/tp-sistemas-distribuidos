@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
+	"time"
+
 	// "math/rand"
 	pkg "pkg/models"
 	"tp-sistemas-distribuidos/server/common"
@@ -23,10 +25,11 @@ const (
 	nextQueueQuery2     = "q2-to-reduce"
 	topic               = "movies-to-join-%d"
 	moviesExchange      = "movies-exchange"
+	heartbeatInterval   = 1 * time.Second
 )
 
 type ProductionFilter struct {
-	m              *middleware.Middleware
+	m                       *middleware.Middleware
 	query1Connection        connection
 	query2Connection        connection
 	query3ShardsConnections shardConnection
@@ -112,11 +115,15 @@ func (f *ProductionFilter) Start() {
 }
 
 func (f *ProductionFilter) start(ctx context.Context) {
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping production filter")
 			return
+		case <-ticker.C:
 		case msg := <-f.query1Connection.ChanToRecv:
 			batch, err := f.processQueryMessage(msg, f.filterByProductionQ1)
 			if err != nil {
@@ -153,6 +160,7 @@ func (f *ProductionFilter) start(ctx context.Context) {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
 		}
+		f.m.SendHeartbeat()
 	}
 }
 
