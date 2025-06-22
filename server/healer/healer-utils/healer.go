@@ -64,13 +64,13 @@ func (h *Healer) checkAndHandleHealth(containerName string, currentFailures int)
 
 func (h *Healer) handleUnhealthyContainer(containerName string, failures int) int {
 	failures++
-	slog.Warn("Health check failed",
+	slog.Debug("Health check failed",
 		"name", containerName,
 		"failures", failures,
 		"max_retries", maxRetries)
 
 	if failures >= maxRetries {
-		slog.Info("Max retries reached, attempting to restart container", "name", containerName)
+		slog.Warn("Max retries reached, attempting to restart container", "name", containerName)
 		if err := h.restartContainer(containerName); err != nil {
 			slog.Error("Failted To restart container", "error", err)
 			// If restart fails, we can try again
@@ -85,7 +85,7 @@ func (h *Healer) handleUnhealthyContainer(containerName string, failures int) in
 func (h *Healer) isHealthy(containerName string) bool {
 	conn, err := net.DialTimeout("tcp", containerName+healthCheckPort, connectionTimeout)
 	if err != nil {
-		slog.Warn("dial error", "error", err)
+		slog.Debug("dial error", "error", err)
 		return false
 	}
 	defer conn.Close()
