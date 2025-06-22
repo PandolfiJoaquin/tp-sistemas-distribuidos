@@ -43,7 +43,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -59,7 +59,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -75,7 +75,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -91,7 +91,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -107,7 +107,7 @@ services:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -244,7 +244,7 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
       - QUERY_NUM=2
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -263,7 +263,7 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
       - QUERY_NUM=3
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -282,7 +282,7 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
       - QUERY_NUM=4
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -301,7 +301,7 @@ services:
       - RABBITMQ_DEFAULT_PASS=joaco1
       - DEBUG=1
       - QUERY_NUM=5
-      - JOINER_SHARDS=3
+      - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -363,6 +363,42 @@ services:
     volumes:
       - ./data/joiner/id-3/:/data/
 
+  joiner-4:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-4
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_ID=4
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-4/:/data/
+
+  joiner-5:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: joiner
+    container_name: joiner-5
+    environment:
+      - RABBITMQ_DEFAULT_USER=monke
+      - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
+      - JOINER_ID=5
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data/joiner/id-5/:/data/
+
   healer-1:
     build:
       dockerfile: ./server/Dockerfile
@@ -371,7 +407,40 @@ services:
     container_name: healer-1
     environment:
       - HEALER_ID=1
-      - DELAY=10
+      - DELAY=3
+      - HEALERS_AMOUNT=3
+    depends_on:
+      - gateway
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yaml:/docker-compose.yaml
+
+  healer-2:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: healer
+    container_name: healer-2
+    environment:
+      - HEALER_ID=2
+      - DELAY=3
+      - HEALERS_AMOUNT=3
+    depends_on:
+      - gateway
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yaml:/docker-compose.yaml
+
+  healer-3:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: healer
+    container_name: healer-3
+    environment:
+      - HEALER_ID=3
+      - DELAY=3
+      - HEALERS_AMOUNT=3
     depends_on:
       - gateway
     volumes:
@@ -431,6 +500,21 @@ services:
       - CLI_ID=4
       - MOVIES_FILE=archive/movies_metadata.csv
       - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client5:
+    container_name: client5
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=5
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
       - CREDITS_FILE=archive/credits.csv
     depends_on:
       - gateway

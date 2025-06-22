@@ -1,3 +1,4 @@
+import os
 import glob
 import json
 import os
@@ -171,7 +172,6 @@ def print_comparison(comparison, file_name, cfg):
 
     if error_in_query:
         return False
-
 
 # Expected results dictionaries
 expected_reviews_big = {

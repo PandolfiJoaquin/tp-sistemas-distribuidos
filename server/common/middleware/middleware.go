@@ -26,7 +26,7 @@ func NewMiddleware(rabbitUser string, rabbitPass string, host string) (*Middlewa
 		return nil, fmt.Errorf("failed to open a channel: %s", err)
 	}
 
-	hc, err := startHealthCheck()
+	hc, err := StartHealthCheck()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start health check: %s", err)
 	}
