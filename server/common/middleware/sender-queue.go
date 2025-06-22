@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	// "math/rand"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
