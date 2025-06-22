@@ -34,7 +34,7 @@ def remove_first_healer_container(containers_to_kill):
         c for c in containers_to_kill if REGEXS_WHITELIST["healer"].match(c.name)
     ]
     if healer_containers:
-        healer_to_remove = healer_containers[0]
+        healer_to_remove = healer_containers[randint(0, len(healer_containers) - 1)]
         containers_to_kill.remove(healer_to_remove)
     else:
         print("No healer containers found. Skipping...")
@@ -69,18 +69,19 @@ def run_kill_mode(client, running_containers):
         running_containers = client.containers.list(filters={"status": "running"})
     print("No more clients. Terminating...")
 
-def run_atomic_bomb_mode(client, running_containers):
+def run_atomic_bomb_mode(client):
+    #sleep for a random time between 10 and 20 seconds before killing the containers
+    print(f"Waiting perfect time to drop DA BOMB (1 minute)")
+    time.sleep(60)
+
     #Kill all containers in whitelist except 1 healer container
+    running_containers = client.containers.list(filters={"status": "running"})
     containers_to_kill = list(
         filter(
             lambda c: is_whitelisted(c.name, REGEXS_WHITELIST.values()), running_containers
         )
     )
     remove_first_healer_container(containers_to_kill)
-
-    #sleep for a random time between 10 and 20 seconds before killing the containers
-    print(f"Waiting perfect time to drop DA BOMB")
-    time.sleep(random.randint(10, 20))
 
     for container in containers_to_kill:
         print(f"Matando contenedor: {container.name}")
@@ -94,36 +95,46 @@ def run_atomic_bomb_mode(client, running_containers):
 
 def run_deterministic_mode(client, running_containers):
     """Kill exactly one container per regex in REGEXS_WHITELIST at every iteration."""
+    killed = set()
+    
     while (
         any(REGEX_CLIENT.match(c.name) for c in running_containers)
         and len(running_containers) > 0
     ):
         print("iteration")
-
-        running_containers_names = {c.name: c for c in running_containers}
-
-        for name, pattern in REGEXS_WHITELIST.items():
-            matched = [c for c in running_containers_names.values() if pattern.match(c.name)]
-
-            # Keep at least one healer alive
-            if name == "healer":
-                remove_first_healer_container(matched)
-
-            if not matched:
-                print(f"No containers to kill for regex '{name}'")
-                continue
-
-            target = random.choice(matched)
+        running_containers = client.containers.list(filters={"status": "running"})
+        
+        # Get all containers that match whitelist patterns
+        all_whitelisted = []
+        for container in running_containers:
+            if is_whitelisted(container.name, REGEXS_WHITELIST.values()):
+                all_whitelisted.append(container)
+        
+        # Remove one healer to keep at least one alive
+        remove_first_healer_container(all_whitelisted)
+        
+        # Filter containers that haven't been killed yet
+        not_killed_yet = [c for c in all_whitelisted if c.name not in killed]
+        
+        # If all containers have been killed at least once, reset the killed set
+        if not not_killed_yet:
+            print("✅ All containers in whitelist have been killed at least once. Resetting...")
+            killed.clear()
+            not_killed_yet = all_whitelisted
+        
+        if not_killed_yet:
+            target = random.choice(not_killed_yet)
             try:
                 print(f"Killing container: {target.name}")
                 target.kill()
+                killed.add(target.name)
             except Exception as e:
                 print(f"Error killing {target.name}: {e}")
-
-        time.sleep(randint(10, 20))
-        running_containers = client.containers.list(filters={"status": "running"})
-
+        
+        time.sleep(1)  
+        
     print("No more clients. Terminating deterministic mode...")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Container killer script")
