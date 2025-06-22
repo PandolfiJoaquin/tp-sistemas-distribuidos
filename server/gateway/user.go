@@ -31,7 +31,7 @@ type Client struct {
 	recvChannel      chan *models.TotalQueryResults
 	toPreprocess     middleware.SenderQueue
 	flushQueue       middleware.SenderQueue
-	deadChan         chan<- string
+	deadChan         chan<- deadState
 	deadWhileSending chan string // used to notify that the client is dead while sending data
 	queriesReceived  map[int]bool
 	q1State          *q1State
@@ -39,7 +39,7 @@ type Client struct {
 	cancel           context.CancelFunc
 }
 
-func NewClient(conn net.Conn, toPreprocess middleware.SenderQueue, flushQueue middleware.SenderQueue, deadChan chan<- string) *Client {
+func NewClient(conn net.Conn, toPreprocess middleware.SenderQueue, flushQueue middleware.SenderQueue, deadChan chan<- deadState) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
 		id:               uuid.NewString(),
@@ -122,7 +122,7 @@ func (c *Client) recvHandler() {
 	for {
 		if len(c.queriesReceived) == 5 {
 			slog.Info("client finished receiving all data", slog.String("id", c.id))
-			c.deadChan <- c.id
+			c.deadChan <- deadState{ClientID: c.id, finishedCorrectly: true}
 			break
 		}
 		select {
@@ -130,7 +130,7 @@ func (c *Client) recvHandler() {
 		case dead := <-c.deadWhileSending:
 			slog.Debug("client is dead while sending data", slog.String("id", dead))
 			c.dead = true
-			c.deadChan <- dead
+			c.deadChan <- deadState{ClientID: dead, finishedCorrectly: false}
 			return
 
 		case results := <-c.recvChannel:
@@ -148,18 +148,12 @@ func (c *Client) recvHandler() {
 			err := communication.SendQueryResults(c.conn, *results)
 			c.connMutex.Unlock()
 			if err != nil {
-				c.checkRecvError(err)
-				clientIdToFlush := common.FlushClient{ClientID: c.id}
-				data, err := json.Marshal(clientIdToFlush)
-				if err != nil {
-					slog.Error("error marshalling client id to flush", slog.String("error", err.Error()))
-				} else {
-					if err := c.flushQueue.Send(data); err != nil {
-						slog.Error("error sending client id to flush", slog.String("error", err.Error()))
-					} else {
-						slog.Info("client id flushed", slog.String("id", c.id))
-					}
-				}
+				c.checkSendError(err, "error sending query results")
+				c.dead = true
+				c.deadChan <- deadState{ClientID: c.id, finishedCorrectly: false}
+				return
+			} else {
+				slog.Debug("query results sent", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
 			}
 		}
 	}
