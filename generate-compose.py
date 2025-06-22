@@ -39,6 +39,7 @@ HEALER_NODE= """
       - HEALER_ID={node_id}
       - DELAY=3
       - HEALERS_AMOUNT={healers_amt}
+      - DEBUG={debug}
     depends_on:
       - gateway
     volumes:
@@ -161,7 +162,8 @@ def create_compose(cfg):
             svc_name=svc_name,
             node="healer",
             node_id=h,
-            healers_amt=healer
+            healers_amt=healer,
+            debug=1 if debug else 0
         )
 
     # Clients
