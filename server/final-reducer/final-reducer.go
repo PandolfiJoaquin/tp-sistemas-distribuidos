@@ -384,7 +384,7 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
-	slog.Info("finishing and sending batch for query 2", slog.String("client id", clientId))
+	slog.Info("finishing and sending batch", slog.String("client id", clientId))
 	countries := r.Sessions[clientId].Q2Data
 	top5Countries := calculateTop5Countries(countries)
 	top5Countries.ClientId = clientId
@@ -398,7 +398,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
-	slog.Info("finishing and sending batch for query 3", slog.String("client id", clientId))
+	slog.Info("finishing and sending batch", slog.String("client id", clientId))
 	movies := r.Sessions[clientId].Q3Data
 	bestAndWorstMovies := calculateBestAndWorstMovie(movies)
 	bestAndWorstMovies.ClientId = clientId
@@ -412,7 +412,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
-	slog.Info("finishing and sending batch for query 4", slog.String("client id", clientId))
+	slog.Info("finishing and sending batch", slog.String("client id", clientId))
 	actorMovies := r.Sessions[clientId].Q4Data
 	top10Actors := calculateTop10Actors(actorMovies)
 	top10Actors.ClientId = clientId
@@ -426,7 +426,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
-	slog.Info("finishing and sending batch for query 5", slog.String("client id", clientId))
+	slog.Info("finishing and sending batch", slog.String("client id", clientId))
 	sentimentProfitRatios := r.Sessions[clientId].Q5Data
 	sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
 	sentimentProfitRatioAverage.ClientId = clientId

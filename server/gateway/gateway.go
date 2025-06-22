@@ -81,6 +81,7 @@ func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
 		return nil, err
 	}
 
+	slog.Info("starting gateway")
 	return gateway, nil
 }
 
@@ -157,7 +158,6 @@ func (g *Gateway) signalHandler(wg *sync.WaitGroup) {
 }
 
 func (g *Gateway) flushOldClients() error {
-	slog.Info("Flushing old clients")
 	// Reads the clients file of old gateway and sends a message to flush each client
 	data, err := os.ReadFile(dataPath + clientsFile)
 	if err != nil {
@@ -170,6 +170,10 @@ func (g *Gateway) flushOldClients() error {
 	clients := make([]common.FlushClient, 0)
 	if err := json.Unmarshal(data, &clients); err != nil {
 		return fmt.Errorf("error unmarshalling old clients: %w", err)
+	}
+
+	if len(clients) > 0 {
+		slog.Info("Flushing old clients", slog.Int("count", len(clients)))
 	}
 
 	for _, c := range clients {

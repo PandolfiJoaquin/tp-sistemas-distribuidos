@@ -1,5 +1,5 @@
 {
-  "logLevel": "DEBUG",
+  "logLevel": "ariel",
   "clients": 3,
   "joiners": 5,
   "healer": 3,

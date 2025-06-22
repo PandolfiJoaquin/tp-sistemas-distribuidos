@@ -188,7 +188,7 @@ func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, c
 			break
 		}
 	}
-	slog.Info("Total received", slog.String("type", batchType), slog.Int("total", total), slog.String("id", id))
+	slog.Debug("Total received", slog.String("type", batchType), slog.Int("total", total), slog.String("id", id))
 	return nil
 }
 

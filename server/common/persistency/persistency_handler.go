@@ -61,7 +61,6 @@ func NewPersistencyHandler[T Loggable[T]]() (*PersistencyHandler[T], error) {
 
 func (ph *PersistencyHandler[T]) loadCheckpointData(fileName string) ([]byte, error) {
 	path := strings.Split(fileName, "/")
-	slog.Info("filename", slog.String("fileName", fileName))
 	files, err := common.ScanDirectory("./"+path[0], path[1])
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -79,7 +78,6 @@ func (ph *PersistencyHandler[T]) loadCheckpointData(fileName string) ([]byte, er
 
 	if len(files) != 1 {
 		slog.Warn("there is not 1 checkpoint file", slog.Int("count", len(files)), slog.String("files", strings.Join(files, ", ")))
-		panic("there is not 1 checkpoint file, check log for more info") //TODO: sacar
 	}
 
 	file := files[0]
