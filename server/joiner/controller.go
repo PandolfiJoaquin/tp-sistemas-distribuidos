@@ -242,7 +242,7 @@ func (j *JoinerController) initializeChannels() error {
 		return fmt.Errorf("error creating channel %s: %w", q4ToReduceQueue, err)
 	}
 
-	flushChan, err := j.m.GetChanWithFanoutToRecv(flushExchange, fmt.Sprintf(flushExchange + "-" + "joiner-%d", j.joinerId))
+	flushChan, err := j.m.GetChanWithFanoutToRecv(flushExchange, fmt.Sprintf(flushExchange+"-"+"joiner-%d", j.joinerId))
 	if err != nil {
 		return fmt.Errorf("error creating channel %s: %w", flushExchange, err)
 	}
@@ -453,7 +453,7 @@ func (j *JoinerController) run(ctx context.Context) {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
 				continue
 			}
-			
+
 			if j.isBlacklisted(batch.GetClientID()) {
 				slog.Info("Discarding message from blacklisted client", slog.String("clientID", batch.GetClientID()))
 				if err := msg.Ack(); err != nil {

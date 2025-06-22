@@ -69,14 +69,13 @@ func (c *Client) connect() error {
 	return nil
 }
 
-func (c *Client) sigtermHandler(ctx context.Context, finishedChan chan bool) {
+func (c *Client) sigtermHandler(signalCtx context.Context, ctx context.Context, cancel context.CancelFunc) {
 	select {
-	case <-ctx.Done():
-
+	case <-signalCtx.Done():
 		slog.Info("Received shutdown signal, closing client")
 		c.close()
-	case <-finishedChan:
-		return
+		cancel() // Closes the other context not the signal context
+	case <-ctx.Done():
 	}
 }
 
@@ -90,13 +89,14 @@ func (c *Client) close() {
 }
 
 func (c *Client) Start() {
-	finishedChan := make(chan bool)
 	wg := &sync.WaitGroup{}
 	// SIGINT and SIGTERM signal handling
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+	SignalCtx, cancelSignal := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancelSignal()
 
-	go c.sigtermHandler(ctx, finishedChan)
+	ctx, cancel := context.WithCancel(SignalCtx)
+
+	go c.sigtermHandler(SignalCtx, ctx, cancel)
 
 	err := c.connect()
 	if err != nil {
@@ -110,26 +110,27 @@ func (c *Client) Start() {
 	AckChannel := make(chan int)
 
 	wg.Add(1)
-	go c.RecvAnswers(wg, ctx, AckChannel)
-	c.sendAllData(ctx, AckChannel)
+	go c.RecvAnswers(wg, SignalCtx, cancel, AckChannel)
+	c.sendAllData(SignalCtx, ctx, AckChannel)
 	wg.Wait()
-	close(finishedChan)
+	close(AckChannel)
 	slog.Info("Shutting down client")
 }
 
-func (c *Client) sendAllData(ctx context.Context, ackChannel <-chan int) {
-	MovieSender := NewSender(&c.conn, c.config.MoviesFile, c.config.MaxBatchMovie, utils.NewMoviesReader, "movies", ackChannel, ctx)
+func (c *Client) sendAllData(SignalCtx context.Context, ctx context.Context, ackChannel <-chan int) {
+	defer slog.Debug("sendAllData finished", slog.Int("id", c.config.Id))
+	MovieSender := NewSender(&c.conn, c.config.MoviesFile, c.config.MaxBatchMovie, utils.NewMoviesReader, "movies", ackChannel, SignalCtx, ctx)
 	if err := MovieSender.Send(); err != nil {
 		c.checkSendError(err, "error sending movies")
 		return
 	}
-	ReviewSender := NewSender(&c.conn, c.config.ReviewsFile, c.config.MaxBatchReview, utils.NewReviewReader, "reviews", ackChannel, ctx)
+	ReviewSender := NewSender(&c.conn, c.config.ReviewsFile, c.config.MaxBatchReview, utils.NewReviewReader, "reviews", ackChannel, SignalCtx, ctx)
 	if err := ReviewSender.Send(); err != nil {
 		c.checkSendError(err, "error sending reviews")
 		return
 	}
 
-	CreditsSender := NewSender(&c.conn, c.config.CreditsFile, c.config.MaxBatchCredit, utils.NewCreditsReader, "credits", ackChannel, ctx)
+	CreditsSender := NewSender(&c.conn, c.config.CreditsFile, c.config.MaxBatchCredit, utils.NewCreditsReader, "credits", ackChannel, SignalCtx, ctx)
 	if err := CreditsSender.Send(); err != nil {
 		c.checkSendError(err, "error sending credits")
 		return
@@ -137,20 +138,16 @@ func (c *Client) sendAllData(ctx context.Context, ackChannel <-chan int) {
 }
 
 func (c *Client) checkSendError(err error, msg string) {
-	// ignore EOF and closed errors (detection happens in recv)
 	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
 		slog.Error(msg, slog.String("error", err.Error()))
 	}
 }
 
 func (c *Client) CheckRecvError(err error) {
-	if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) {
+	if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) || errors.Is(err, net.ErrClosed) {
 		slog.Info("Server closed connection")
 		return
 	}
-	//if errors.Is(err, net.ErrClosed) {
-	//	return
-	//}
 	slog.Error("error receiving query results", slog.String("error", err.Error()))
 	return
 }
@@ -184,13 +181,17 @@ func (c *Client) writeQueryResults(queriesResults map[int][]models.QueryResult) 
 	}
 }
 
-func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context, ackChannel chan<- int) {
+func (c *Client) RecvAnswers(wg *sync.WaitGroup, SignalCtx context.Context, cancel context.CancelFunc, ackChannel chan<- int) {
 	queriesReceived := make([]bool, 0) // Array to store when we get the complete query
 	queriesResults := make(map[int][]models.QueryResult)
 	defer wg.Done()
+	// Cancel the context, not the signal context
+	// this is to ensure that the sender is also stopped when there's a connection error
+	defer cancel()
+	defer slog.Debug("RecvAnswers finished", slog.Int("id", c.config.Id))
 	for {
 		select {
-		case <-ctx.Done():
+		case <-SignalCtx.Done():
 			return
 		default:
 			if len(queriesReceived) == TotalQueries {

@@ -1,6 +1,6 @@
 {
   "logLevel": "DEBUG",
-  "clients": 5,
+  "clients": 1,
   "joiners": 5,
   "healer": 3,
   "nodes": {
