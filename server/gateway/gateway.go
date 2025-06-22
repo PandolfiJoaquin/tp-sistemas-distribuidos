@@ -12,6 +12,7 @@ import (
 	"pkg/models"
 	"sync"
 	"syscall"
+	"time"
 	"tp-sistemas-distribuidos/server/common"
 	"tp-sistemas-distribuidos/server/common/middleware"
 )
@@ -25,6 +26,7 @@ const (
 	nextStep      = "to-preprocess"
 	flushExchange = "flush-exchange"
 	flushTopic    = "client-flush"
+	heartbeatInterval = 1 * time.Second
 )
 
 type GatewayConfig struct {
@@ -236,12 +238,15 @@ func (g *Gateway) closeClients() {
 
 func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 	defer wg.Done()
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
 	for {
 		var err error
 		select {
 		case <-g.ctx.Done():
 			return
-
+		case <-ticker.C:
 		case msg := <-g.resultsQueues[1]:
 			err = g.handleResult(msg, 1)
 		case msg := <-g.resultsQueues[2]:
@@ -258,6 +263,7 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 			slog.Error("error processing message", slog.String("error", err.Error()))
 			return
 		}
+		g.middleware.SendHeartbeat()
 	}
 }
 

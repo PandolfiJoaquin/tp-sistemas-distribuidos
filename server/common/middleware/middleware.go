@@ -8,9 +8,10 @@ import (
 )
 
 type Middleware struct {
-	conn *amqp.Connection
-	ch   *amqp.Channel
-	hc   *HealthCheck
+	conn          *amqp.Connection
+	ch            *amqp.Channel
+	hc            *HealthCheck
+	heartbeatChan chan struct{}
 }
 
 func NewMiddleware(rabbitUser string, rabbitPass string, host string) (*Middleware, error) {
@@ -26,12 +27,22 @@ func NewMiddleware(rabbitUser string, rabbitPass string, host string) (*Middlewa
 		return nil, fmt.Errorf("failed to open a channel: %s", err)
 	}
 
-	hc, err := StartHealthCheck()
+	heartbeatChan := make(chan struct{}, 1)
+
+	hc, err := StartHealthCheck(heartbeatChan)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start health check: %s", err)
 	}
 
-	return &Middleware{conn: conn, ch: ch, hc: hc}, nil
+	return &Middleware{conn: conn, ch: ch, hc: hc, heartbeatChan: heartbeatChan}, nil
+}
+
+// SendHeartbeat sends a non-blocking heartbeat to the watchdog.
+func (m *Middleware) SendHeartbeat() {
+	select {
+	case m.heartbeatChan <- struct{}{}:
+	default:
+	}
 }
 
 func (m *Middleware) GetQueueToSend(name string) (SenderQueue, error) {

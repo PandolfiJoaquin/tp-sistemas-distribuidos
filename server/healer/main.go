@@ -38,13 +38,14 @@ func main() {
 		return
 	}
 
-	_, err = middleware.StartHealthCheck()
+	heartbeatChan := make(chan struct{}, 1)
+	_, err = middleware.StartHealthCheck(heartbeatChan)
 	if err != nil {
 		slog.Error("Error starting health check", err)
 		return
 	}
 
-	proc.StartProcess(ctx)
+	proc.StartProcess(ctx, heartbeatChan)
 	<-ctx.Done()
 	slog.Info("Healer service stopped")
 }

@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+
+	// "math/rand"
 	"os/signal"
 	"pkg/models"
 	"syscall"
+	"time"
 	"tp-sistemas-distribuidos/server/common"
 	"tp-sistemas-distribuidos/server/common/middleware"
 )
@@ -23,6 +26,7 @@ const (
 	reviewsExchange = "reviews-exchange"
 	creditsTopic    = "credits-to-join-%d"
 	creditsExchange = "credits-exchange"
+	heartbeatInterval = 1 * time.Second
 )
 
 type PreprocessorConfig struct {
@@ -31,14 +35,13 @@ type PreprocessorConfig struct {
 }
 
 type Preprocessor struct {
-	config           PreprocessorConfig
-	m                *middleware.Middleware
-	toProcessChan    <-chan middleware.Message
-	shards           int
-	reviewsQueues    map[int]middleware.SenderQueue
-	creditsQueues    map[int]middleware.SenderQueue
-	moviesQueues     []middleware.SenderQueue
-	pesoTotalQuePaso int
+	config        PreprocessorConfig
+	m             *middleware.Middleware
+	toProcessChan <-chan middleware.Message
+	shards        int
+	reviewsQueues map[int]middleware.SenderQueue
+	creditsQueues map[int]middleware.SenderQueue
+	moviesQueues  []middleware.SenderQueue
 }
 
 func NewPreprocessor(rabbitUser string, rabbitPass string, shards int) *Preprocessor {
@@ -127,11 +130,15 @@ func (p *Preprocessor) Start() {
 }
 
 func (p *Preprocessor) processMessages(ctx context.Context) {
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("Received shutdown signal, stopping...")
 			return
+		case <-ticker.C:
 		case msg := <-p.toProcessChan:
 			var batch common.ToProcessMsg
 
@@ -150,6 +157,7 @@ func (p *Preprocessor) processMessages(ctx context.Context) {
 				return
 			}
 		}
+		p.m.SendHeartbeat()
 	}
 }
 
@@ -281,6 +289,13 @@ func sendBatchMap[T any](batch common.Batch[T], shards int, chans map[int]middle
 			if err := ch.Send(data); err != nil {
 				return fmt.Errorf("sending batch: %w", err)
 			}
+			//DUPLICATE: depending on the probability, send the batch again to the same channel
+			// if rand.Float64() < 0.5 {
+			// 	slog.Debug("duplicating batch message", slog.Int("shard", id), slog.Int("batch id", batch.Header.MessageID.ID))
+			// 	if err := ch.Send(data); err != nil {
+			// 		return fmt.Errorf("sending batch: %w", err)
+			// 	}
+			// }
 		}
 		return nil
 	}

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os/signal"
 	"syscall"
+	"time"
 	"tp-sistemas-distribuidos/server/common"
 	"tp-sistemas-distribuidos/server/common/middleware"
 
@@ -17,6 +18,7 @@ const (
 	previousQueue = "sentiment-analyzer"
 	rabbitHost    = "rabbitmq"
 	nextQueue     = "q5-to-reduce"
+	heartbeatInterval = 1 * time.Second
 )
 
 type Analyzer struct {
@@ -62,20 +64,24 @@ func (a *Analyzer) Start() {
 }
 
 func (a *Analyzer) run(ctx context.Context, previousChan <-chan middleware.Message, nextChan middleware.SenderQueue) {
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping sentiment analyzer")
 			return
+		case <-ticker.C:
 		case msg := <-previousChan:
 			if err := a.processMessage(msg, nextChan); err != nil {
 				slog.Error("Error processing message", slog.String("error", err.Error()))
-				continue // TODO: ack?
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("Error acknowledging message", slog.String("error", err.Error()))
 			}
 		}
+		a.middleware.SendHeartbeat()
 	}
 }
 

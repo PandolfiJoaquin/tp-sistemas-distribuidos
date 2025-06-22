@@ -30,6 +30,7 @@ const (
 	separator            = ";"
 	blacklistDuration    = 300 // 5 minutes
 	flushExchange        = "flush-exchange"
+	heartbeatInterval    = 1 * time.Second
 )
 
 type LogOperations string
@@ -350,6 +351,9 @@ func (j *JoinerController) save(transaction persistency.Transaction) error {
 }
 
 func (j *JoinerController) run(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		var msg middleware.Message
 		var clientId string
@@ -358,6 +362,9 @@ func (j *JoinerController) run(ctx context.Context) {
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping joiner")
 			return
+		case <-ticker.C:
+			j.m.SendHeartbeat()
+			continue
 		case msg = <-j.flushQueue:
 			var flushClient common.FlushClient
 			if err := json.Unmarshal(msg.Body, &flushClient); err != nil {
@@ -488,6 +495,7 @@ func (j *JoinerController) run(ctx context.Context) {
 		if err := msg.Ack(); err != nil {
 			slog.Error("error acknowledging message", slog.String("error", err.Error()))
 		}
+		j.m.SendHeartbeat()
 	}
 }
 
