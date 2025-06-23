@@ -79,6 +79,23 @@ func (c *Client) sigtermHandler(signalCtx context.Context, ctx context.Context, 
 	}
 }
 
+func (c *Client) validateFiles() bool {
+	filesPath := []string{c.config.MoviesFile, c.config.ReviewsFile, c.config.CreditsFile}
+	allExists := true
+	for _, file := range filesPath {
+		_, err := os.Stat(file)
+		if err != nil {
+			if os.IsNotExist(err) {
+				slog.Error("file does not exist", slog.String("file", file))
+			} else {
+				slog.Error("error checking file", slog.String("file", file), slog.String("error", err.Error()))
+			}
+			allExists = false
+		}
+	}
+	return allExists
+}
+
 func (c *Client) close() {
 	if c.conn != nil {
 		err := c.conn.Close()
@@ -89,6 +106,9 @@ func (c *Client) close() {
 }
 
 func (c *Client) Start() {
+	if !c.validateFiles() {
+		return
+	}
 	wg := &sync.WaitGroup{}
 	// SIGINT and SIGTERM signal handling
 	SignalCtx, cancelSignal := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -114,7 +134,6 @@ func (c *Client) Start() {
 	c.sendAllData(SignalCtx, ctx, AckChannel)
 	wg.Wait()
 	close(AckChannel)
-	slog.Info("Shutting down client")
 }
 
 func (c *Client) sendAllData(SignalCtx context.Context, ctx context.Context, ackChannel <-chan int) {
