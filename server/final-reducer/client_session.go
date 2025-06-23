@@ -21,6 +21,7 @@ func NewClientSession(sessionId string, eofMultiplier uint32) *ClientSession {
 	return &ClientSession{
 		SessionId:     sessionId,
 		EofMultiplier: eofMultiplier,
+		EofWeight:     -1,
 		Filters:       common.NewDuplicateFilterWithShards(),
 		Q2Data:        make(map[string]uint64),
 		Q3Data:        make(map[string]common.MovieAvgRating),
@@ -45,5 +46,5 @@ func (c *ClientSession) GetEofWeight() int32 {
 }
 
 func (c *ClientSession) IsFinished() bool {
-	return c.EofWeight > 0 && c.CurrentWeight == (uint32(c.EofWeight)*c.EofMultiplier)
+	return c.EofWeight >= 0 && c.CurrentWeight == (uint32(c.EofWeight)*c.EofMultiplier)
 }

@@ -137,7 +137,7 @@ def print_comparison(comparison, file_name, cfg):
         credits_file = cfg["files"]["credits"][(id - 1) % len(cfg["files"]["credits"])]
         reviews_file = cfg["files"]["reviews"][(id - 1) % len(cfg["files"]["reviews"])]
 
-        print(f"\n{file_name}: ⏭️  Skipped - No expected results for")
+        print(f"\n{file_name}: ⏭️  Skipped - No expected results for") #TODO: fix :)
         print(f"{tabulation}   • Movies:    {os.path.basename(movie_file)}")
         print(f"{tabulation}   • Credits:   {os.path.basename(credits_file)}")
         print(f"{tabulation}   • Reviews:   {os.path.basename(reviews_file)}\n")

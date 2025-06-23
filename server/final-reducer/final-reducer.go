@@ -512,18 +512,18 @@ func calculateTop10Actors(actors map[string]common.ActorMoviesAmount) common.Top
 }
 
 func calculateSentimentProfitRatioAverage(sentimentProfitRatios common.SentimentProfitRatioAccumulator) common.SentimentProfitRatioAverage {
-	positiveAvg := -1.0
+	positiveAvg := 0.0
 	if sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount > 0 {
 		positiveAvg = sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum / float64(sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount)
 	} else {
-		slog.Warn("positive profit ratio count is 0, returning -1")
+		slog.Warn("positive profit ratio count is 0")
 	}
 
-	negativeAvg := -1.0
+	negativeAvg := 0.0
 	if sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount > 0 {
 		negativeAvg = sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum / float64(sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount)
 	} else {
-		slog.Warn("negative profit ratio count is 0, returning -1")
+		slog.Warn("negative profit ratio count is 0")
 	}
 
 	return common.SentimentProfitRatioAverage{
