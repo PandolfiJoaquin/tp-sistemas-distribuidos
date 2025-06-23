@@ -198,6 +198,11 @@ func readAndParse[T any](reader *baseReader, parseFunc func([]string) (*T, error
 		}
 	}
 
+	if len(record) == 0 {
+		reader.finished = true
+		return nil, nil
+	}
+
 	if len(record) != expectedFields {
 		record, err = joinRecords(reader.reader, record, expectedFields)
 		if err != nil {

@@ -141,6 +141,7 @@ func (c *Client) checkSendError(err error, msg string) {
 	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
 		slog.Error(msg, slog.String("error", err.Error()))
 	}
+	slog.Debug("Error when sending data", slog.String("error", err.Error()), slog.String("type", msg))
 }
 
 func (c *Client) CheckRecvError(err error) {
