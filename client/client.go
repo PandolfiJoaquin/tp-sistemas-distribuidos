@@ -153,25 +153,23 @@ func (c *Client) CheckRecvError(err error) {
 }
 
 func (c *Client) writeQueryResults(queriesResults map[int][]models.QueryResult) {
+	defer slog.Debug("writeQueryResults finished", slog.Int("id", c.config.Id))
 	var sb strings.Builder
 
 	for queryID := 1; queryID <= TotalQueries; queryID++ {
 		results, exists := queriesResults[queryID]
-		if !exists {
-			slog.Error("query results not found", slog.Int("queryID", queryID))
-			continue
-		}
-
 		sb.WriteString(fmt.Sprintf("Query %d: ", queryID))
-
-		// For other queries, write results normally
-		for i, result := range results {
-			if i > 0 {
-				sb.WriteString(", ")
+		if !exists || results == nil {
+			sb.WriteString("Results empty \n")
+		} else {
+			for i, result := range results {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(result.String())
 			}
-			sb.WriteString(result.String())
+			sb.WriteString("\n")
 		}
-		sb.WriteString("\n")
 	}
 
 	// Write all results to a single file
@@ -236,22 +234,35 @@ func (c *Client) handleAck(ackChannel chan<- int) error {
 	return nil
 }
 
+func (c *Client) checkQ1Empty(queriesResult *map[int][]models.QueryResult) bool {
+	_, exists := (*queriesResult)[1]
+	return !exists
+}
+
 func (c *Client) handleQueryResult(queriesResults *map[int][]models.QueryResult, queriesReceived *[]bool) error {
 	results, err := communication.RecvQueryResults(c.conn)
 	if err != nil {
 		return err
 	}
+	slog.Debug("Received Query Results", slog.Any("results", results))
 
-	_, alreadyHasResult := (*queriesResults)[results.QueryId]
-	isDuplicate := results.QueryId != 1 && alreadyHasResult
-	if results.Last && (!isDuplicate) {
+	if results.Last {
 		*queriesReceived = append(*queriesReceived, true)
+		if results.IsEmpty() || (results.QueryId == 1 && c.checkQ1Empty(queriesResults)) {
+			(*queriesResults)[results.QueryId] = nil
+			txt := fmt.Sprintf("Query result %d", results.QueryId)
+			slog.Info(txt, slog.String("result", "Empty"))
+		}
 	}
-
 	for _, result := range results.Items {
 		txt := fmt.Sprintf("Query result %d", results.QueryId)
-		slog.Info(txt, slog.String("result", result.String()))
-		(*queriesResults)[results.QueryId] = append((*queriesResults)[results.QueryId], result)
+		if result.IsEmpty() {
+			slog.Info(txt, slog.String("result", "Empty"))
+			(*queriesResults)[results.QueryId] = nil
+		} else {
+			slog.Info(txt, slog.String("result", result.String()))
+			(*queriesResults)[results.QueryId] = append((*queriesResults)[results.QueryId], result)
+		}
 	}
 	return nil
 }

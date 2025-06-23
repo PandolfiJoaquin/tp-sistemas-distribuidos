@@ -368,7 +368,6 @@ func (g *Gateway) handleResult(msg middleware.Message, query int) error {
 	}
 
 	if results != nil { // can be nil due to empty results in query 1
-		// slog.Info("Got results", slog.String("client id", results.Id), slog.Int("query", query))
 		client, ok := g.clients[results.Id]
 		if !ok {
 			return nil

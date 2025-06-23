@@ -69,6 +69,7 @@ func SendQueryResults(conn net.Conn, results models.TotalQueryResults) error {
 		QueryId: results.QueryId,
 		Items:   itemsJson,
 		Last:    results.Last,
+		Header:  results.Header,
 	}
 
 	err = sendResults(conn, rawResults)
@@ -126,6 +127,7 @@ func RecvQueryResults(conn net.Conn) (models.TotalQueryResults, error) {
 	totalResults.QueryId = results.QueryId
 	totalResults.Items = resultsArr
 	totalResults.Last = results.Last
+	totalResults.Header = results.Header
 	return totalResults, nil
 }
 
