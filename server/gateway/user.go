@@ -144,6 +144,10 @@ func (c *Client) recvHandler() {
 				c.queriesReceived[results.QueryId] = true
 				slog.Info("query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
 			}
+			if len(results.Items) == 0 && results.Header.TotalWeight < 0 {
+				// Empty results
+				continue
+			}
 			c.connMutex.Lock()
 			err := communication.SendQueryResults(c.conn, *results)
 			c.connMutex.Unlock()
