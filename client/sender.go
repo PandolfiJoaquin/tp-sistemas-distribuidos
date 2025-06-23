@@ -62,7 +62,6 @@ func (s *Sender[T]) SendBatch(batch []T, batchID int, total int, last bool) erro
 		slog.Debug("Sending EOF batch", slog.Int("batch_id", batchID), slog.Any("type", s.dataType), slog.Any("header", batch))
 		err = communication.SendBatchEOF(*s.conn, int32(total), batchID)
 	} else {
-		slog.Debug("Sending batch", slog.Int("batch_id", batchID), slog.Int("size", len(batch)), slog.Any("type", s.dataType))
 		err = communication.SendData(*s.conn, batch, batchID)
 	}
 
@@ -97,7 +96,6 @@ func (s *Sender[T]) sendAllData(reader utils.BatchReader[T]) (int, error) {
 	var batchID = 0
 	for !reader.Finished() {
 		batch, err := reader.ReadBatch()
-		slog.Debug("Read batch", slog.Int("batch_id", batchID), slog.Int("size", len(batch)))
 		if err != nil {
 			return -1, fmt.Errorf("error reading batch: %w", err)
 		}

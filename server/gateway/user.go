@@ -109,7 +109,7 @@ func (c *Client) handleQ1(results *models.TotalQueryResults) {
 		return
 	}
 	c.q1State.CurrentWeight += results.Header.Weight
-	if results.Header.TotalWeight > 0 {
+	if results.Header.TotalWeight >= 0 {
 		c.q1State.EofWeight = int32(results.Header.TotalWeight)
 	}
 	if c.q1State.EofWeight > 0 && c.q1State.CurrentWeight == uint32(c.q1State.EofWeight) { //TODO: va a romper si el peso del archivo es 0
