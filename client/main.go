@@ -10,9 +10,9 @@ import (
 
 const (
 	server       = "gateway:12345"
-	MoviesBatch  = 30
+	MoviesBatch  = 300
 	ReviewsBatch = 5120
-	CreditsBatch = 30
+	CreditsBatch = 50
 	sleep        = 1
 )
 
@@ -27,6 +27,21 @@ func main() {
 	moviesFile := os.Getenv("MOVIES_FILE")
 	reviewsFile := os.Getenv("REVIEWS_FILE")
 	creditsFile := os.Getenv("CREDITS_FILE")
+
+	//creditsFile := "empty_credits.csv"
+	//creditsReader, err := utils.NewCreditsReader(creditsFile, CreditsBatch)
+	//if err != nil {
+	//	slog.Error("error creating credits reader", slog.String("error", err.Error()))
+	//	return
+	//}
+	//
+	//batch, err := creditsReader.ReadBatch()
+	//if err != nil {
+	//	slog.Error("error reading credits batch", slog.String("error", err.Error()))
+	//	return
+	//}
+	//
+	//slog.Info("read credits batch successfully", slog.Int("batch_size", len(batch)), slog.Int("total_read", creditsReader.TotalRead()), slog.Any("batch", batch))
 	if moviesFile == "" || reviewsFile == "" || creditsFile == "" {
 		slog.Error("env variables MOVIES_FILE, REVIEWS_FILE and CREDITS_FILE must be set")
 		return

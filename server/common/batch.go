@@ -10,7 +10,7 @@ import (
 const headerSep = ","
 
 type BatchID struct {
-	ID       int  `json:"id"`
+	ID       int `json:"id"`
 	JoinerID int `json:"joiner_id"`
 }
 
@@ -56,7 +56,7 @@ func (b LoggableBatch[T]) AsBatch() Batch[T] {
 }
 
 func (h *Header) IsEof() bool {
-	return h.TotalWeight > 0
+	return h.TotalWeight >= 0
 }
 
 func (h *Header) GetClientID() string {

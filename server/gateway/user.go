@@ -168,6 +168,7 @@ func (c *Client) GetId() string {
 }
 
 func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, client *net.Conn, id string, connMutex *sync.Mutex) error {
+	slog.Debug("Receiving data", slog.String("type", batchType), slog.String("id", id))
 	total := 0
 	for {
 		batch, err := communication.RecvBatch[T](*client, connMutex)

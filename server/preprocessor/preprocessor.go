@@ -15,16 +15,16 @@ import (
 )
 
 const (
-	rabbitHost      = "rabbitmq"
-	toPreProcess    = "to-preprocess"
-	filterMoviesQ1  = "filter-year-q1"
-	filterMoviesQ2  = "filter-production-q2"
-	filterMovieQ3Q4 = "filter-year-q3q4"
-	AnalyzerQueue   = "sentiment-analyzer"
-	reviewsTopic    = "reviews-to-join-%d"
-	reviewsExchange = "reviews-exchange"
-	creditsTopic    = "credits-to-join-%d"
-	creditsExchange = "credits-exchange"
+	rabbitHost        = "rabbitmq"
+	toPreProcess      = "to-preprocess"
+	filterMoviesQ1    = "filter-year-q1"
+	filterMoviesQ2    = "filter-production-q2"
+	filterMovieQ3Q4   = "filter-year-q3q4"
+	AnalyzerQueue     = "sentiment-analyzer"
+	reviewsTopic      = "reviews-to-join-%d"
+	reviewsExchange   = "reviews-exchange"
+	creditsTopic      = "credits-to-join-%d"
+	creditsExchange   = "credits-exchange"
 	heartbeatInterval = 1 * time.Second
 )
 
@@ -170,6 +170,7 @@ func (p *Preprocessor) preprocessBatch(msg common.ToProcessMsg) error {
 
 		var payload any
 		if mb.IsEof() {
+			slog.Debug("received EOF for movies batch", slog.Int("batch_id", mb.Header.BatchID), slog.Int("total_weight", int(mb.Header.TotalWeight)))
 			payload = makeEOFBatch[common.Movie](mb.Header.TotalWeight, msg.ClientId, mb.Header.BatchID)
 		} else {
 			payload = preprocessMovies(mb, msg.ClientId)
@@ -289,6 +290,7 @@ func sendBatchMap[T any](batch common.Batch[T], shards int, chans map[int]middle
 				return fmt.Errorf("sending batch: %w", err)
 			}
 		}
+		slog.Debug("received EOF for credits/review batch", slog.Any("batch_id", batch.Header.MessageID), slog.Int("total_weight", int(batch.Header.TotalWeight)))
 		return nil
 	}
 
