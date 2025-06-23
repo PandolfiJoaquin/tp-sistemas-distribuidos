@@ -292,9 +292,9 @@ func (g *Gateway) handleResults2(msg middleware.Message) (*models.ResultWithId, 
 		return nil, fmt.Errorf("error unmarshalling top 5 countries: %w", err)
 	}
 
-	if len(top5Countries.Countries) != 5 {
-		return nil, fmt.Errorf("expected 5 countries, got %d", len(top5Countries.Countries))
-	}
+	// if len(top5Countries.Countries) != 5 {
+	// 	return nil, fmt.Errorf("expected 5 countries, got %d", len(top5Countries.Countries))
+	// }
 
 	results := Top5CountriesToQResult(top5Countries)
 	resultsWithId := models.ResultWithId{
@@ -393,7 +393,7 @@ func (g *Gateway) consumeBatch(msg []byte) (common.Batch[common.Movie], error) {
 
 func (g *Gateway) saveClients() error {
 	clients := make([]common.FlushClient, 0, len(g.clients))
-	for id, _ := range g.clients {
+	for id := range g.clients {
 		clients = append(clients, common.FlushClient{ClientID: id})
 	}
 
