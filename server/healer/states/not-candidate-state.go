@@ -20,7 +20,7 @@ func NewNotACandidateState(config election_model.Config) *NotACandidateState {
 func (n *NotACandidateState) HandleMailBox(mailbox chan election_model.Event, peers *concurrencyutils.Peers, ctx context.Context) ProcessState {
 
 	select {
-	case <-time.After(time.Second * 10):
+	case <-time.After(time.Second * 5):
 		slog.Warn("process time'd out as a non-candidate. Becoming candidate again")
 		return NewCandidateState(n.config, peers)
 	case event := <-mailbox:
@@ -33,6 +33,7 @@ func (n *NotACandidateState) HandleMailBox(mailbox chan election_model.Event, pe
 		case election_model.Ok:
 			return n
 		case election_model.Victory:
+			slog.Info("received victory event as a non-candidate.")
 			return NewWorkerState(n.config)
 		default:
 			panic(fmt.Sprintf("Unknown event: %v", event.Type))

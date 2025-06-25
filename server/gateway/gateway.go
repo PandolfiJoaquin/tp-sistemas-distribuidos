@@ -17,8 +17,6 @@ import (
 	"tp-sistemas-distribuidos/server/common/middleware"
 )
 
-//checkpointName := dataPath + fmt.Sprintf(checkpointFileName, ph.currSnapshotNumber)
-
 const (
 	dataPath          = "data/"
 	clientsFile       = "clients.json"
@@ -122,7 +120,7 @@ func (g *Gateway) middlewareSetup() error {
 
 func (g *Gateway) listen() {
 	for g.running {
-		slog.Info("Waiting for client connection")
+		slog.Debug("Waiting for client connection")
 		conn, err := g.listener.Accept()
 		if err != nil {
 			if g.running { // only log if not shutting down
@@ -249,6 +247,7 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 		var err error
 		select {
 		case <-g.ctx.Done():
+			slog.Info("Context done, stopping message processing")
 			return
 		case <-ticker.C:
 		case msg := <-g.resultsQueues[1]:
@@ -292,9 +291,6 @@ func (g *Gateway) handleResults2(msg middleware.Message) (*models.ResultWithId, 
 		return nil, fmt.Errorf("error unmarshalling top 5 countries: %w", err)
 	}
 
-	// if len(top5Countries.Countries) != 5 {
-	// 	return nil, fmt.Errorf("expected 5 countries, got %d", len(top5Countries.Countries))
-	// }
 
 	results := Top5CountriesToQResult(top5Countries)
 	resultsWithId := models.ResultWithId{
@@ -348,6 +344,8 @@ func (g *Gateway) handleResults5(msg middleware.Message) (*models.ResultWithId, 
 }
 
 func (g *Gateway) handleResult(msg middleware.Message, query int) error {
+	defer msg.Ack()
+	defer g.ClientMutex.Unlock()
 	var results *models.ResultWithId
 	var err error
 	switch query {
@@ -368,17 +366,17 @@ func (g *Gateway) handleResult(msg middleware.Message, query int) error {
 	}
 
 	if results != nil { // can be nil due to empty results in query 1
+		slog.Info("Received results", slog.Int("query", query), slog.String("client_id", results.Id))
+		g.ClientMutex.Lock()
 		client, ok := g.clients[results.Id]
+
 		if !ok {
 			return nil
 		}
+
 		if !client.IsDead() {
 			client.sendResult(&results.Results)
 		}
-	}
-
-	if err := msg.Ack(); err != nil {
-		return fmt.Errorf("error acknowledging message: %w", err)
 	}
 	return nil
 }
@@ -450,7 +448,5 @@ func (g *Gateway) persistencyHandler(wg *sync.WaitGroup) {
 		case <-g.ctx.Done():
 			return
 		}
-
 	}
-
 }

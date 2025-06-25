@@ -7,13 +7,14 @@ import (
 	"net"
 	"os"
 	"pkg/communication"
+	"sync"
 	"time"
 )
 
 const (
 	port            = "1500"
 	healthyResponse = "K"
-	watchdogTimeout = 30 * time.Second
+	watchdogTimeout = 20 * time.Second
 )
 
 type HealthCheck struct {
@@ -62,19 +63,25 @@ func watchDog(hb <-chan struct{}, listener *net.Listener) {
 	checkInterval := 1 * time.Second
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
+	var mu sync.Mutex
 
 	// Update lastHeartbeat when heartbeats arrive
 	go func() {
 		for range hb {
+			mu.Lock()
 			lastHeartbeat = time.Now()
+			mu.Unlock()
 		}
 	}()
 
 	// check for timeouts
 	for range ticker.C {
-		if time.Since(lastHeartbeat) > watchdogTimeout {
+		mu.Lock()
+		timeElapsed := time.Since(lastHeartbeat)
+		mu.Unlock()
+		if timeElapsed > watchdogTimeout {
 			slog.Error("health-check watchdog timeout: no heartbeat, terminating",
-				slog.Duration("elapsed", time.Since(lastHeartbeat)),
+				slog.Duration("elapsed", timeElapsed),
 				slog.Duration("timeout", watchdogTimeout))
 			_ = (*listener).Close()
 			os.Exit(1)

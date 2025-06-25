@@ -46,7 +46,7 @@ func NewClient(conn net.Conn, toPreprocess middleware.SenderQueue, flushQueue mi
 		connMutex:        sync.Mutex{},
 		conn:             conn,
 		dead:             false,
-		recvChannel:      make(chan *models.TotalQueryResults),
+		recvChannel:      make(chan *models.TotalQueryResults, 20),
 		toPreprocess:     toPreprocess,
 		flushQueue:       flushQueue,
 		deadChan:         deadChan,
@@ -172,6 +172,7 @@ func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, c
 	total := 0
 	batchID := 0
 	for {
+
 		batch, err := communication.RecvBatch[T](*client, connMutex)
 		if err != nil {
 			return fmt.Errorf("error receiving %s: %w", batchType, err)

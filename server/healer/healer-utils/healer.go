@@ -70,7 +70,7 @@ func (h *Healer) handleUnhealthyContainer(containerName string, failures int) in
 		"max_retries", maxRetries)
 
 	if failures >= maxRetries {
-		slog.Warn("Max retries reached, attempting to restart container", "name", containerName)
+		slog.Info("Restarting container", "name", containerName)
 		if err := h.restartContainer(containerName); err != nil {
 			slog.Error("Failted To restart container", "error", err)
 			// If restart fails, we can try again
