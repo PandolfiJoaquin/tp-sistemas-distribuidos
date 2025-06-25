@@ -46,7 +46,7 @@ func NewClient(conn net.Conn, toPreprocess middleware.SenderQueue, flushQueue mi
 		connMutex:        sync.Mutex{},
 		conn:             conn,
 		dead:             false,
-		recvChannel:      make(chan *models.TotalQueryResults),
+		recvChannel:      make(chan *models.TotalQueryResults, 20),
 		toPreprocess:     toPreprocess,
 		flushQueue:       flushQueue,
 		deadChan:         deadChan,

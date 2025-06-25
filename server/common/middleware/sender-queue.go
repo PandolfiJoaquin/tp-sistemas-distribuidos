@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math/rand"
-
 	// "math/rand"
 	"time"
 
@@ -37,10 +35,10 @@ func (q *amqpSenderQueue) Send(body []byte) error {
 	}
 
 	// DUPLICATE: 10% probability of resending
-	if rand.Float64() < 0.1 {
-		slog.Info("Duplicating message due to 10% probability")
-		return q.sendMessage(ctx, body)
-	}
+	//if rand.Float64() < 0.3 {
+	//slog.Info("Duplicating message due to 10% probability")
+	//return q.sendMessage(ctx, body)
+	//}
 
 	return nil
 }
@@ -85,11 +83,11 @@ func (q *amqpSenderQueueWithTopic) Send(body []byte) error {
 		return err
 	}
 
-	// DUPLICATE: 10% probability of resending
-	if rand.Float64() < 0.1 {
-		slog.Info("Duplicating message due to 10% probability")
-		return q.sendMessage(body)
-	}
+	//// DUPLICATE: 10% probability of resending
+	//if rand.Float64() < 0.1 {
+	//	slog.Info("Duplicating message due to 10% probability")
+	//	return q.sendMessage(body)
+	//}
 
 	return nil
 }
@@ -133,11 +131,11 @@ func (q *amqpFanoutSenderQueue) Send(body []byte) error {
 		return err
 	}
 
-	// DUPLICATE: 10% probability of resending
-	if true /*rand.Float64() < 0.1*/ {
-		slog.Info("Duplicating message due to 10% probability")
-		return q.sendMessage(body)
-	}
+	//// DUPLICATE: 10% probability of resending
+	//if true /*rand.Float64() < 0.1*/ {
+	//	slog.Info("Duplicating message due to 10% probability")
+	//	return q.sendMessage(body)
+	//}
 
 	return nil
 }
