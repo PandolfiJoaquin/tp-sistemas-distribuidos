@@ -132,6 +132,8 @@ type connection struct {
 }
 
 func NewFinalReducer(queryNum int, rabbitUser, rabbitPass string, amtOfShards int) (*FinalReducer, error) {
+	slog.Info("starting final reducer", slog.Int("query number", queryNum))
+
 	middleware, err := middleware.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
@@ -220,16 +222,12 @@ func (r *FinalReducer) Start() {
 
 	switch r.queryNum {
 	case 2:
-		slog.Info("starting final reducer for query 2")
 		r.startReceivingQ2(ctx)
 	case 3:
-		slog.Info("starting final reducer for query 3")
 		r.startReceivingQ3(ctx)
 	case 4:
-		slog.Info("starting final reducer for query 4")
 		r.startReceivingQ4(ctx)
 	case 5:
-		slog.Info("starting final reducer for query 5")
 		r.startReceivingQ5(ctx)
 	default:
 		slog.Error("query number not found", slog.Int("query number", r.queryNum))
@@ -307,7 +305,6 @@ func startReceiving[T common.Stringer](
 				finishAndSendBatch(session.SessionId)
 				freddyFazbear.deleteClient(session.SessionId)
 				transaction.Do(DeleteClientOp, session.SessionId)
-				slog.Info("deleted client session", slog.String("clientID", session.SessionId))
 			}
 
 			freddyFazbear.save(transaction)
@@ -512,18 +509,18 @@ func calculateTop10Actors(actors map[string]common.ActorMoviesAmount) common.Top
 }
 
 func calculateSentimentProfitRatioAverage(sentimentProfitRatios common.SentimentProfitRatioAccumulator) common.SentimentProfitRatioAverage {
-	positiveAvg := -1.0
+	positiveAvg := 0.0
 	if sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount > 0 {
 		positiveAvg = sentimentProfitRatios.PositiveProfitRatio.ProfitRatioSum / float64(sentimentProfitRatios.PositiveProfitRatio.ProfitRatioCount)
 	} else {
-		slog.Warn("positive profit ratio count is 0, returning -1")
+		slog.Warn("positive profit ratio count is 0")
 	}
 
-	negativeAvg := -1.0
+	negativeAvg := 0.0
 	if sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount > 0 {
 		negativeAvg = sentimentProfitRatios.NegativeProfitRatio.ProfitRatioSum / float64(sentimentProfitRatios.NegativeProfitRatio.ProfitRatioCount)
 	} else {
-		slog.Warn("negative profit ratio count is 0, returning -1")
+		slog.Warn("negative profit ratio count is 0")
 	}
 
 	return common.SentimentProfitRatioAverage{
@@ -650,5 +647,5 @@ func (r *FinalReducer) isBlacklisted(clientID string) bool {
 func (r *FinalReducer) deleteClient(clientID string) {
 	delete(r.Sessions, clientID)
 	r.BlacklistedClients[clientID] = time.Now().Unix()
+	slog.Info("deleted client session", slog.String("clientID", clientID))
 }
-

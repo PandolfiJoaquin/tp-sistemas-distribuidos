@@ -9,7 +9,7 @@ import (
 	"tp-sistemas-distribuidos/server/healer/election-model"
 )
 
-const timeToWinElection = 4 * time.Second
+const timeToWinElection = 2 * time.Second
 
 type CandidateState struct {
 	config election_model.Config
@@ -35,12 +35,14 @@ func (c *CandidateState) HandleMailBox(mailbox chan election_model.Event, peers 
 			return c
 		case election_model.Election:
 			if event.Parameter > c.config.Id {
+				slog.Info("Candidate received Election (Event.id > config.id)")
 				return NewNotACandidateState(c.config)
 			} else {
 				peers.SendToId(election_model.Event{Type: election_model.Ok, Parameter: c.config.Id}, event.Parameter)
 				return c
 			}
 		case election_model.Ok:
+			slog.Info("Candidate received Ok event")
 			return NewNotACandidateState(c.config)
 		case election_model.Victory:
 			slog.Warn(

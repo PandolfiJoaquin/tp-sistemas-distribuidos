@@ -387,7 +387,7 @@ services:
     environment:
       - HEALER_ID=1
       - DELAY=3
-      - HEALERS_AMOUNT=3
+      - HEALERS_AMOUNT=5
       - DEBUG=0
     depends_on:
       - gateway
@@ -404,7 +404,7 @@ services:
     environment:
       - HEALER_ID=2
       - DELAY=3
-      - HEALERS_AMOUNT=3
+      - HEALERS_AMOUNT=5
       - DEBUG=0
     depends_on:
       - gateway
@@ -421,7 +421,41 @@ services:
     environment:
       - HEALER_ID=3
       - DELAY=3
-      - HEALERS_AMOUNT=3
+      - HEALERS_AMOUNT=5
+      - DEBUG=0
+    depends_on:
+      - gateway
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yaml:/docker-compose.yaml
+
+  healer-4:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: healer
+    container_name: healer-4
+    environment:
+      - HEALER_ID=4
+      - DELAY=3
+      - HEALERS_AMOUNT=5
+      - DEBUG=0
+    depends_on:
+      - gateway
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yaml:/docker-compose.yaml
+
+  healer-5:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: healer
+    container_name: healer-5
+    environment:
+      - HEALER_ID=5
+      - DELAY=3
+      - HEALERS_AMOUNT=5
       - DEBUG=0
     depends_on:
       - gateway
@@ -467,6 +501,38 @@ services:
       dockerfile: ./client/Dockerfile
     environment:
       - CLI_ID=3
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings_small.csv
+      - CREDITS_FILE=archive/credits.csv
+      - DEBUG=0
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client4:
+    container_name: client4
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=4
+      - MOVIES_FILE=archive/movies_metadata.csv
+      - REVIEWS_FILE=archive/ratings.csv
+      - CREDITS_FILE=archive/credits.csv
+      - DEBUG=0
+    depends_on:
+      - gateway
+    volumes:
+      - ./archive/:/home/app/archive/
+      - ./client-results/:/home/app/results/
+
+  client5:
+    container_name: client5
+    build:
+      dockerfile: ./client/Dockerfile
+    environment:
+      - CLI_ID=5
       - MOVIES_FILE=archive/movies_metadata.csv
       - REVIEWS_FILE=archive/ratings_small.csv
       - CREDITS_FILE=archive/credits.csv

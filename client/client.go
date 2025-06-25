@@ -79,6 +79,23 @@ func (c *Client) sigtermHandler(signalCtx context.Context, ctx context.Context, 
 	}
 }
 
+func (c *Client) validateFiles() bool {
+	filesPath := []string{c.config.MoviesFile, c.config.ReviewsFile, c.config.CreditsFile}
+	allExists := true
+	for _, file := range filesPath {
+		_, err := os.Stat(file)
+		if err != nil {
+			if os.IsNotExist(err) {
+				slog.Error("file does not exist", slog.String("file", file))
+			} else {
+				slog.Error("error checking file", slog.String("file", file), slog.String("error", err.Error()))
+			}
+			allExists = false
+		}
+	}
+	return allExists
+}
+
 func (c *Client) close() {
 	if c.conn != nil {
 		err := c.conn.Close()
@@ -89,6 +106,9 @@ func (c *Client) close() {
 }
 
 func (c *Client) Start() {
+	if !c.validateFiles() {
+		return
+	}
 	wg := &sync.WaitGroup{}
 	// SIGINT and SIGTERM signal handling
 	SignalCtx, cancelSignal := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -114,7 +134,6 @@ func (c *Client) Start() {
 	c.sendAllData(SignalCtx, ctx, AckChannel)
 	wg.Wait()
 	close(AckChannel)
-	slog.Info("Shutting down client")
 }
 
 func (c *Client) sendAllData(SignalCtx context.Context, ctx context.Context, ackChannel <-chan int) {
@@ -141,6 +160,7 @@ func (c *Client) checkSendError(err error, msg string) {
 	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
 		slog.Error(msg, slog.String("error", err.Error()))
 	}
+	slog.Debug("Error when sending data", slog.String("error", err.Error()), slog.String("type", msg))
 }
 
 func (c *Client) CheckRecvError(err error) {
@@ -153,25 +173,23 @@ func (c *Client) CheckRecvError(err error) {
 }
 
 func (c *Client) writeQueryResults(queriesResults map[int][]models.QueryResult) {
+	defer slog.Debug("writeQueryResults finished", slog.Int("id", c.config.Id))
 	var sb strings.Builder
 
 	for queryID := 1; queryID <= TotalQueries; queryID++ {
 		results, exists := queriesResults[queryID]
-		if !exists {
-			slog.Error("query results not found", slog.Int("queryID", queryID))
-			continue
-		}
-
 		sb.WriteString(fmt.Sprintf("Query %d: ", queryID))
-
-		// For other queries, write results normally
-		for i, result := range results {
-			if i > 0 {
-				sb.WriteString(", ")
+		if !exists || results == nil {
+			sb.WriteString("Results empty \n")
+		} else {
+			for i, result := range results {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(result.String())
 			}
-			sb.WriteString(result.String())
+			sb.WriteString("\n")
 		}
-		sb.WriteString("\n")
 	}
 
 	// Write all results to a single file
@@ -236,22 +254,35 @@ func (c *Client) handleAck(ackChannel chan<- int) error {
 	return nil
 }
 
+func (c *Client) checkQ1Empty(queriesResult *map[int][]models.QueryResult) bool {
+	_, exists := (*queriesResult)[1]
+	return !exists
+}
+
 func (c *Client) handleQueryResult(queriesResults *map[int][]models.QueryResult, queriesReceived *[]bool) error {
 	results, err := communication.RecvQueryResults(c.conn)
 	if err != nil {
 		return err
 	}
+	slog.Debug("Received Query Results", slog.Any("results", results))
 
-	_, alreadyHasResult := (*queriesResults)[results.QueryId]
-	isDuplicate := results.QueryId != 1 && alreadyHasResult
-	if results.Last && (!isDuplicate) {
+	if results.Last {
 		*queriesReceived = append(*queriesReceived, true)
+		if results.IsEmpty() || (results.QueryId == 1 && c.checkQ1Empty(queriesResults)) {
+			(*queriesResults)[results.QueryId] = nil
+			txt := fmt.Sprintf("Query result %d", results.QueryId)
+			slog.Info(txt, slog.String("result", "Empty"))
+		}
 	}
-
 	for _, result := range results.Items {
 		txt := fmt.Sprintf("Query result %d", results.QueryId)
-		slog.Info(txt, slog.String("result", result.String()))
-		(*queriesResults)[results.QueryId] = append((*queriesResults)[results.QueryId], result)
+		if result.IsEmpty() {
+			slog.Info(txt, slog.String("result", "Empty"))
+			(*queriesResults)[results.QueryId] = nil
+		} else {
+			slog.Info(txt, slog.String("result", result.String()))
+			(*queriesResults)[results.QueryId] = append((*queriesResults)[results.QueryId], result)
+		}
 	}
 	return nil
 }

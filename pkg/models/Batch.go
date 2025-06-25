@@ -12,5 +12,5 @@ type RawBatch[T any] struct {
 }
 
 func (b *RawBatch[T]) IsEof() bool {
-	return b.Header.TotalWeight > 0
+	return b.Header.TotalWeight >= 0
 }

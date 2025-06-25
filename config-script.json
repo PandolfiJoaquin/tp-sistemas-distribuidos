@@ -1,8 +1,8 @@
 {
   "logLevel": "ariel",
-  "clients": 3,
+  "clients": 5,
   "joiners": 5,
-  "healer": 3,
+  "healer": 5,
   "nodes": {
     "preprocessor": 3,
     "production-filter": 2,

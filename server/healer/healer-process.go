@@ -61,6 +61,13 @@ func (p *Process) StartProcess(ctx context.Context, heartbeatChan chan struct{})
 	go p.listener(ctx)
 	go p.connector(ctx)
 
+	delay, err := strconv.Atoi(os.Getenv("DELAY"))
+	if err != nil {
+		slog.Error("Error converting DELAY env var to int", slog.String("error", err.Error()))
+		return
+	}
+	time.Sleep(time.Duration(delay) * time.Second)
+
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 

@@ -69,10 +69,10 @@ def run_kill_mode(client, running_containers):
         running_containers = client.containers.list(filters={"status": "running"})
     print("No more clients. Terminating...")
 
-def run_atomic_bomb_mode(client):
+def run_atomic_bomb_mode(client, _running_containers):
     #sleep for a random time between 10 and 20 seconds before killing the containers
-    print(f"Waiting perfect time to drop DA BOMB (1 minute)")
-    time.sleep(60)
+    print(f"Waiting perfect time to drop DA BOMB (30 seconds)...")
+    time.sleep(30)
 
     #Kill all containers in whitelist except 1 healer container
     running_containers = client.containers.list(filters={"status": "running"})

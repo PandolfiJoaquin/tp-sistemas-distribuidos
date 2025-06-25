@@ -21,7 +21,7 @@ func SetupLogger(appName string, file *string) (*slog.Logger, error) {
 		writer = f
 	}
 
-	handler := slog.NewJSONHandler(writer, &slog.HandlerOptions{
+	handler := slog.NewTextHandler(writer, &slog.HandlerOptions{
 		Level: level,
 		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
 			if attr.Key == slog.TimeKey {

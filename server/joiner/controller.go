@@ -28,7 +28,7 @@ const (
 	q4ToReduceQueue      = "q4-to-reduce"
 	maxTransactionsOnLog = 500
 	separator            = ";"
-	blacklistDuration    = 300 // 5 minutes
+	blacklistDuration    = 150 // 2.5 minutes
 	flushExchange        = "flush-exchange"
 	heartbeatInterval    = 1 * time.Second
 )
@@ -515,6 +515,7 @@ func (j *JoinerController) purgeBlacklist() {
 	now := time.Now().Unix()
 	for clientID, timestamp := range j.BlacklistedClients {
 		if now-timestamp >= blacklistDuration {
+			slog.Info("Removing id blacklist", slog.String("clientID", clientID))
 			delete(j.BlacklistedClients, clientID)
 		}
 	}

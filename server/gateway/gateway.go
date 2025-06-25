@@ -122,7 +122,7 @@ func (g *Gateway) middlewareSetup() error {
 
 func (g *Gateway) listen() {
 	for g.running {
-		slog.Info("Waiting for client connection")
+		slog.Debug("Waiting for client connection")
 		conn, err := g.listener.Accept()
 		if err != nil {
 			if g.running { // only log if not shutting down
@@ -292,9 +292,9 @@ func (g *Gateway) handleResults2(msg middleware.Message) (*models.ResultWithId, 
 		return nil, fmt.Errorf("error unmarshalling top 5 countries: %w", err)
 	}
 
-	if len(top5Countries.Countries) != 5 {
-		return nil, fmt.Errorf("expected 5 countries, got %d", len(top5Countries.Countries))
-	}
+	// if len(top5Countries.Countries) != 5 {
+	// 	return nil, fmt.Errorf("expected 5 countries, got %d", len(top5Countries.Countries))
+	// }
 
 	results := Top5CountriesToQResult(top5Countries)
 	resultsWithId := models.ResultWithId{
@@ -368,7 +368,6 @@ func (g *Gateway) handleResult(msg middleware.Message, query int) error {
 	}
 
 	if results != nil { // can be nil due to empty results in query 1
-		// slog.Info("Got results", slog.String("client id", results.Id), slog.Int("query", query))
 		client, ok := g.clients[results.Id]
 		if !ok {
 			return nil
@@ -394,7 +393,7 @@ func (g *Gateway) consumeBatch(msg []byte) (common.Batch[common.Movie], error) {
 
 func (g *Gateway) saveClients() error {
 	clients := make([]common.FlushClient, 0, len(g.clients))
-	for id, _ := range g.clients {
+	for id := range g.clients {
 		clients = append(clients, common.FlushClient{ClientID: id})
 	}
 

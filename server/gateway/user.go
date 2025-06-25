@@ -109,7 +109,7 @@ func (c *Client) handleQ1(results *models.TotalQueryResults) {
 		return
 	}
 	c.q1State.CurrentWeight += results.Header.Weight
-	if results.Header.TotalWeight > 0 {
+	if results.Header.TotalWeight >= 0 {
 		c.q1State.EofWeight = int32(results.Header.TotalWeight)
 	}
 	if c.q1State.EofWeight > 0 && c.q1State.CurrentWeight == uint32(c.q1State.EofWeight) { //TODO: va a romper si el peso del archivo es 0
@@ -144,6 +144,10 @@ func (c *Client) recvHandler() {
 				c.queriesReceived[results.QueryId] = true
 				slog.Info("query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
 			}
+			if len(results.Items) == 0 && results.Header.TotalWeight < 0 {
+				// Empty results
+				continue
+			}
 			c.connMutex.Lock()
 			err := communication.SendQueryResults(c.conn, *results)
 			c.connMutex.Unlock()
@@ -164,8 +168,10 @@ func (c *Client) GetId() string {
 }
 
 func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, client *net.Conn, id string, connMutex *sync.Mutex) error {
+	slog.Debug("Receiving data", slog.String("type", batchType), slog.String("id", id))
 	total := 0
 	for {
+
 		batch, err := communication.RecvBatch[T](*client, connMutex)
 		if err != nil {
 			return fmt.Errorf("error receiving %s: %w", batchType, err)

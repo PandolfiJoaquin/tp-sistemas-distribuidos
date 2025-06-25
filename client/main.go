@@ -10,9 +10,9 @@ import (
 
 const (
 	server       = "gateway:12345"
-	MoviesBatch  = 30
+	MoviesBatch  = 300
 	ReviewsBatch = 5120
-	CreditsBatch = 30
+	CreditsBatch = 50
 	sleep        = 1
 )
 
@@ -27,6 +27,7 @@ func main() {
 	moviesFile := os.Getenv("MOVIES_FILE")
 	reviewsFile := os.Getenv("REVIEWS_FILE")
 	creditsFile := os.Getenv("CREDITS_FILE")
+
 	if moviesFile == "" || reviewsFile == "" || creditsFile == "" {
 		slog.Error("env variables MOVIES_FILE, REVIEWS_FILE and CREDITS_FILE must be set")
 		return
@@ -45,4 +46,6 @@ func main() {
 	slog.Info("client created successfully")
 
 	client.Start()
+
+	slog.Info("Shutting down client")
 }
