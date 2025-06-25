@@ -1,7 +1,6 @@
 package common
 
 import (
-	"log/slog"
 	"sort"
 )
 
@@ -29,13 +28,11 @@ func NewDuplicateFilter() *DuplicateFilter {
 // returns true when a new ID is accepted and updates the Window accordingly.
 func (f *DuplicateFilter) Accept(id int) bool {
 	if len(f.Window) > 0 && id < f.Window[0] {
-		slog.Info("filtering message", slog.Any("id", id))
 		return false
 	}
 
 	idx := sort.SearchInts(f.Window, id)
 	if idx < len(f.Window) && f.Window[idx] == id {
-		slog.Info("filtering messagee", slog.Any("id", id))
 		return false
 	}
 

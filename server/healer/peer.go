@@ -16,6 +16,7 @@ import (
 const EventLenBytes = 4
 
 func (p *Process) startPeer(conn net.Conn, peerId int, ctx context.Context) chan electionmodel.Event {
+	slog.Info("Accepted connection", slog.Int("id", peerId))
 	peerMailbox := make(chan electionmodel.Event)
 	go p.startSender(conn, peerMailbox, peerId, ctx)
 	go p.startReceiver(conn, peerId) //sender will close its connection so no need to pass it a context

@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"fmt"
-	"log/slog"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -15,7 +14,6 @@ type Middleware struct {
 }
 
 func NewMiddleware(rabbitUser string, rabbitPass string, host string) (*Middleware, error) {
-	slog.Info("creating middleware", slog.String("dialing", "amqp://"+rabbitUser+":"+rabbitPass+"@"+host+":5672"))
 
 	conn, err := amqp.Dial("amqp://" + rabbitUser + ":" + rabbitPass + "@" + host + ":5672")
 	if err != nil {
@@ -26,6 +24,8 @@ func NewMiddleware(rabbitUser string, rabbitPass string, host string) (*Middlewa
 	if err != nil {
 		return nil, fmt.Errorf("failed to open a channel: %s", err)
 	}
+
+	ch.Qos(512, 0, false)
 
 	heartbeatChan := make(chan struct{}, 1)
 

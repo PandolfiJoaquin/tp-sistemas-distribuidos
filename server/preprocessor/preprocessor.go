@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	// "math/rand"
 	"os/signal"
 	"pkg/models"
 	"syscall"
@@ -75,7 +74,6 @@ func (p *Preprocessor) middlewareSetup() error {
 
 	for i := range p.shards {
 		shard := i + 1
-		slog.Info("Creating channel to send reviews", slog.Int("shard", shard))
 		p.reviewsQueues[shard], err = m.GetQueueWithTopicToSend(reviewsExchange, fmt.Sprintf(reviewsTopic, shard))
 		if err != nil {
 			return fmt.Errorf("error getting channel to send reviews: %s", err)
@@ -121,6 +119,7 @@ func (p *Preprocessor) close() {
 }
 
 func (p *Preprocessor) Start() {
+	slog.Info("starting preprocessor")
 	defer p.close()
 
 	// Sigterm , sigint
@@ -289,13 +288,6 @@ func sendBatchMap[T any](batch common.Batch[T], shards int, chans map[int]middle
 			if err := ch.Send(data); err != nil {
 				return fmt.Errorf("sending batch: %w", err)
 			}
-			//DUPLICATE: depending on the probability, send the batch again to the same channel
-			// if rand.Float64() < 0.5 {
-			// 	slog.Debug("duplicating batch message", slog.Int("shard", id), slog.Int("batch id", batch.Header.MessageID.ID))
-			// 	if err := ch.Send(data); err != nil {
-			// 		return fmt.Errorf("sending batch: %w", err)
-			// 	}
-			// }
 		}
 		return nil
 	}

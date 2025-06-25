@@ -54,7 +54,6 @@ func sendHeartbeat(heartbeatChan chan struct{}) {
 	select {
 	case heartbeatChan <- struct{}{}:
 	default:
-		slog.Error("failed to send heartbeat: channel is full")
 	}
 }
 
@@ -106,7 +105,6 @@ func (p *Process) listener(ctx context.Context) {
 				slog.Error("error getting service name", slog.Any("error", err))
 				wrapDeferredError(conn)
 			}
-			slog.Info("Accepted connection", slog.Int("id", id))
 			peerMailBox := p.startPeer(conn, id, ctx)
 			p.peers.SafeAddPeer(id, peerMailBox)
 		}(p)

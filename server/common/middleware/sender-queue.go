@@ -3,6 +3,8 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	// "math/rand"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -18,13 +20,31 @@ type amqpSenderQueue struct {
 }
 
 func NewAmqpQueue(ch *amqp.Channel, name string) SenderQueue {
+	if err := ch.Confirm(false); err != nil {
+		slog.Error("Failed to enable publisher confirms", slog.String("error", err.Error()))
+	}
 	return &amqpSenderQueue{ch: ch, name: name}
 }
 
 func (q *amqpSenderQueue) Send(body []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err := q.ch.PublishWithContext(
+
+	if err := q.sendMessage(ctx, body); err != nil {
+		return err
+	}
+
+	// DUPLICATE: 20% probability of resending
+	// if rand.Float64() < 0.2 {
+	// 	slog.Info("Duplicating message due to 20% probability")
+	// 	return q.sendMessage(ctx, body)
+	// }
+
+	return nil
+}
+
+func (q *amqpSenderQueue) sendMessage(ctx context.Context, body []byte) error {
+	confirmChan, err := q.ch.PublishWithDeferredConfirmWithContext(
 		ctx,
 		"",
 		q.name,
@@ -37,6 +57,11 @@ func (q *amqpSenderQueue) Send(body []byte) error {
 	if err != nil {
 		return fmt.Errorf("error sending message: %s", err)
 	}
+
+	if !confirmChan.Wait() {
+		return fmt.Errorf("message was not confirmed by RabbitMQ")
+	}
+
 	return nil
 }
 
@@ -47,11 +72,28 @@ type amqpSenderQueueWithTopic struct {
 }
 
 func NewAmqpQueueWithTopic(ch *amqp.Channel, exchange, topic string) SenderQueue {
+	if err := ch.Confirm(false); err != nil {
+		slog.Error("Failed to enable publisher confirms", slog.String("error", err.Error()))
+	}
 	return &amqpSenderQueueWithTopic{ch: ch, exchange: exchange, topic: topic}
 }
 
 func (q *amqpSenderQueueWithTopic) Send(body []byte) error {
-	err := q.ch.PublishWithContext(
+	if err := q.sendMessage(body); err != nil {
+		return err
+	}
+
+	// DUP{LICATE: 20% probability of resending
+	// if rand.Float64() < 0.2 {
+	// 	slog.Info("Duplicating message due to 20% probability")
+	// 	return q.sendMessage(body)
+	// }
+
+	return nil
+}
+
+func (q *amqpSenderQueueWithTopic) sendMessage(body []byte) error {
+	confirmChan, err := q.ch.PublishWithDeferredConfirmWithContext(
 		context.Background(),
 		q.exchange,
 		q.topic,
@@ -64,6 +106,11 @@ func (q *amqpSenderQueueWithTopic) Send(body []byte) error {
 	if err != nil {
 		return fmt.Errorf("error sending message: %s", err)
 	}
+
+	if !confirmChan.Wait() {
+		return fmt.Errorf("message was not confirmed by RabbitMQ")
+	}
+
 	return nil
 }
 
@@ -73,11 +120,28 @@ type amqpFanoutSenderQueue struct {
 }
 
 func NewAmqpQueueWithFanout(ch *amqp.Channel, exchange string) SenderQueue {
+	if err := ch.Confirm(false); err != nil {
+		slog.Error("Failed to enable publisher confirms", slog.String("error", err.Error()))
+	}
 	return &amqpFanoutSenderQueue{ch: ch, exchange: exchange}
 }
 
 func (q *amqpFanoutSenderQueue) Send(body []byte) error {
-	err := q.ch.PublishWithContext(
+	if err := q.sendMessage(body); err != nil {
+		return err
+	}
+
+	// // DUPLICATE: 20% probability of resending
+	// if rand.Float64() < 0.2 {
+	// 	slog.Info("Duplicating message due to 20% probability")
+	// 	return q.sendMessage(body)
+	// }
+
+	return nil
+}
+
+func (q *amqpFanoutSenderQueue) sendMessage(body []byte) error {
+	confirmChan, err := q.ch.PublishWithDeferredConfirmWithContext(
 		context.Background(),
 		q.exchange,
 		"",
@@ -87,8 +151,14 @@ func (q *amqpFanoutSenderQueue) Send(body []byte) error {
 			ContentType: "application/json",
 			Body:        body,
 		})
+
 	if err != nil {
 		return fmt.Errorf("error sending message: %s", err)
 	}
+
+	if !confirmChan.Wait() {
+		return fmt.Errorf("message was not confirmed by RabbitMQ")
+	}
+
 	return nil
 }

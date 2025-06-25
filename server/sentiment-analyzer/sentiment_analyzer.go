@@ -64,6 +64,7 @@ func (a *Analyzer) Start() {
 }
 
 func (a *Analyzer) run(ctx context.Context, previousChan <-chan middleware.Message, nextChan middleware.SenderQueue) {
+	slog.Info("starting sentiment analyzer")
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 

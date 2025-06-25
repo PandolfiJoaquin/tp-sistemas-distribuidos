@@ -20,12 +20,12 @@ import (
 //checkpointName := dataPath + fmt.Sprintf(checkpointFileName, ph.currSnapshotNumber)
 
 const (
-	dataPath      = "data/"
-	clientsFile   = "clients.json"
-	rabbitHost    = "rabbitmq"
-	nextStep      = "to-preprocess"
-	flushExchange = "flush-exchange"
-	flushTopic    = "client-flush"
+	dataPath          = "data/"
+	clientsFile       = "clients.json"
+	rabbitHost        = "rabbitmq"
+	nextStep          = "to-preprocess"
+	flushExchange     = "flush-exchange"
+	flushTopic        = "client-flush"
 	heartbeatInterval = 1 * time.Second
 )
 
@@ -48,7 +48,7 @@ type Gateway struct {
 	resultsQueues map[int]<-chan middleware.Message
 	flushQueue    middleware.SenderQueue
 	toPreprocess  middleware.SenderQueue
-	deadChan      chan string
+	deadChan      chan deadState
 	ClientMutex   sync.Mutex
 	config        GatewayConfig
 	listener      net.Listener
@@ -64,7 +64,7 @@ func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
 		running:       true,
 		resultsQueues: make(map[int]<-chan middleware.Message),
 		clients:       make(map[string]*Client),
-		deadChan:      make(chan string),
+		deadChan:      make(chan deadState),
 		ClientMutex:   sync.Mutex{},
 	}
 
@@ -81,6 +81,7 @@ func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
 		return nil, err
 	}
 
+	slog.Info("starting gateway")
 	return gateway, nil
 }
 
@@ -157,7 +158,6 @@ func (g *Gateway) signalHandler(wg *sync.WaitGroup) {
 }
 
 func (g *Gateway) flushOldClients() error {
-	slog.Info("Flushing old clients")
 	// Reads the clients file of old gateway and sends a message to flush each client
 	data, err := os.ReadFile(dataPath + clientsFile)
 	if err != nil {
@@ -172,13 +172,17 @@ func (g *Gateway) flushOldClients() error {
 		return fmt.Errorf("error unmarshalling old clients: %w", err)
 	}
 
+	if len(clients) > 0 {
+		slog.Info("Flushing old clients", slog.Int("count", len(clients)))
+	}
+
 	for _, c := range clients {
 		clientData, err := json.Marshal(c)
 		if err != nil {
 			return fmt.Errorf("error marshalling old client: %w", err)
 		}
 		err = g.flushQueue.Send(clientData)
-		slog.Debug("Flushing old client", slog.String("client_id", *c.ClientID))
+		slog.Debug("Flushing old client", slog.String("client_id", c.ClientID))
 		if err != nil {
 			return fmt.Errorf("error flushing old clients: %w", err)
 		}
@@ -391,7 +395,7 @@ func (g *Gateway) consumeBatch(msg []byte) (common.Batch[common.Movie], error) {
 func (g *Gateway) saveClients() error {
 	clients := make([]common.FlushClient, 0, len(g.clients))
 	for id, _ := range g.clients {
-		clients = append(clients, common.FlushClient{ClientID: &id})
+		clients = append(clients, common.FlushClient{ClientID: id})
 	}
 
 	data, err := json.Marshal(clients)
@@ -406,29 +410,48 @@ func (g *Gateway) saveClients() error {
 	return nil
 }
 
+type deadState struct {
+	ClientID          string
+	finishedCorrectly bool
+}
+
 func (g *Gateway) persistencyHandler(wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		select {
-		case deadClient := <-g.deadChan:
-			slog.Debug("Received dead client in handler", slog.String("client_id", deadClient))
-			if _, ok := g.clients[deadClient]; ok {
-				slog.Debug("Removing dead client", slog.String("client_id", deadClient))
+		case deadClientState := <-g.deadChan:
+			slog.Debug("Received dead client in handler", slog.String("client_id", deadClientState.ClientID))
+			if _, ok := g.clients[deadClientState.ClientID]; ok {
+				slog.Debug("Removing dead client", slog.String("client_id", deadClientState.ClientID))
 				g.ClientMutex.Lock()
-				delete(g.clients, deadClient)
+				delete(g.clients, deadClientState.ClientID)
 				err := g.saveClients()
 				g.ClientMutex.Unlock()
 				if err != nil {
 					slog.Error("error saving clients after removing dead client", slog.String("error", err.Error()))
 				} else {
-					slog.Info("Dead client removed and clients saved", slog.String("client_id", deadClient))
+					slog.Info("Dead client removed and clients saved", slog.String("client_id", deadClientState.ClientID))
+				}
+				if !deadClientState.finishedCorrectly {
+					flushMsg := common.FlushClient{ClientID: deadClientState.ClientID}
+					data, err := json.Marshal(flushMsg)
+					if err != nil {
+						slog.Error("error marshalling dead client for flush", slog.String("error", err.Error()))
+					} else {
+						if err := g.flushQueue.Send(data); err != nil {
+							slog.Error("error sending dead client to flush", slog.String("error", err.Error()))
+						} else {
+							slog.Info("Dead client sent to flush", slog.String("client_id", deadClientState.ClientID))
+						}
+					}
 				}
 			} else {
-				slog.Warn("Dead client not found in clients map", slog.String("client_id", deadClient))
+				slog.Warn("Dead client not found in clients map", slog.String("client_id", deadClientState.ClientID))
 			}
-
 		case <-g.ctx.Done():
 			return
 		}
+
 	}
+
 }

@@ -218,19 +218,20 @@ func (r *FinalReducer) Start() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	if r.queryNum == 2 {
+	switch r.queryNum {
+	case 2:
 		slog.Info("starting final reducer for query 2")
 		r.startReceivingQ2(ctx)
-	} else if r.queryNum == 3 {
+	case 3:
 		slog.Info("starting final reducer for query 3")
 		r.startReceivingQ3(ctx)
-	} else if r.queryNum == 4 {
+	case 4:
 		slog.Info("starting final reducer for query 4")
 		r.startReceivingQ4(ctx)
-	} else if r.queryNum == 5 {
+	case 5:
 		slog.Info("starting final reducer for query 5")
 		r.startReceivingQ5(ctx)
-	} else {
+	default:
 		slog.Error("query number not found", slog.Int("query number", r.queryNum))
 		return
 	}
@@ -258,17 +259,9 @@ func startReceiving[T common.Stringer](
 				continue
 			}
 			transaction := persistency.NewTransaction()
-			if flushClient.ClientID != nil {
-				transaction.Do(DeleteClientOp, *flushClient.ClientID)
-				freddyFazbear.deleteClient(*flushClient.ClientID)
-				slog.Info("deleted client", slog.String("clientID", *flushClient.ClientID))
-			} else {
-				for id := range freddyFazbear.Sessions {
-					transaction.Do(DeleteClientOp, id)
-				}
-				freddyFazbear.deleteClients()
-				slog.Info("deleted all clients")
-			}
+			transaction.Do(DeleteClientOp, flushClient.ClientID)
+			freddyFazbear.deleteClient(flushClient.ClientID)
+			slog.Info("flushing client", slog.String("clientID", flushClient.ClientID))
 			freddyFazbear.save(transaction)
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -282,7 +275,7 @@ func startReceiving[T common.Stringer](
 
 			if freddyFazbear.isBlacklisted(batch.GetClientID()) {
 				if !batch.IsEof() {
-					slog.Info("Discarding message from blacklisted client", slog.String("clientID", batch.GetClientID()))
+					slog.Info("Discarding message from blacklisted client", slog.Any("header", batch.Header))
 				}
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))
@@ -293,7 +286,7 @@ func startReceiving[T common.Stringer](
 
 			session := freddyFazbear.getSession(batch.GetClientID(), freddyFazbear.queryNum)
 			if !session.FilterMsg(batch.MessageID.ID, batch.MessageID.JoinerID) {
-				slog.Info("Filtering Msg", slog.Any("msg", batch))
+				slog.Info("Filtering Msg", slog.Any("header", batch.Header))
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				}
@@ -314,6 +307,7 @@ func startReceiving[T common.Stringer](
 				finishAndSendBatch(session.SessionId)
 				freddyFazbear.deleteClient(session.SessionId)
 				transaction.Do(DeleteClientOp, session.SessionId)
+				slog.Info("deleted client session", slog.String("clientID", session.SessionId))
 			}
 
 			freddyFazbear.save(transaction)
@@ -330,6 +324,7 @@ func (r *FinalReducer) getSession(clientID string, queryNum int) *ClientSession 
 	if _, ok := r.Sessions[clientID]; ok {
 		return r.Sessions[clientID]
 	}
+	slog.Info("detected new client", slog.String("clientID", clientID))
 	switch queryNum {
 	case 2:
 		r.Sessions[clientID] = NewClientSession(clientID, 1)
@@ -384,7 +379,7 @@ func (r *FinalReducer) startReceivingQ5(ctx context.Context) {
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
-	slog.Info("finishing and sending batch for query 2", slog.String("client id", clientId))
+	slog.Info("finishing and sending batch", slog.String("client id", clientId))
 	countries := r.Sessions[clientId].Q2Data
 	top5Countries := calculateTop5Countries(countries)
 	top5Countries.ClientId = clientId
@@ -398,7 +393,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
-	slog.Info("finishing and sending batch for query 3", slog.String("client id", clientId))
+	slog.Info("finishing and sending batch", slog.String("client id", clientId))
 	movies := r.Sessions[clientId].Q3Data
 	bestAndWorstMovies := calculateBestAndWorstMovie(movies)
 	bestAndWorstMovies.ClientId = clientId
@@ -412,7 +407,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
-	slog.Info("finishing and sending batch for query 4", slog.String("client id", clientId))
+	slog.Info("finishing and sending batch", slog.String("client id", clientId))
 	actorMovies := r.Sessions[clientId].Q4Data
 	top10Actors := calculateTop10Actors(actorMovies)
 	top10Actors.ClientId = clientId
@@ -426,7 +421,7 @@ func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
-	slog.Info("finishing and sending batch for query 5", slog.String("client id", clientId))
+	slog.Info("finishing and sending batch", slog.String("client id", clientId))
 	sentimentProfitRatios := r.Sessions[clientId].Q5Data
 	sentimentProfitRatioAverage := calculateSentimentProfitRatioAverage(sentimentProfitRatios)
 	sentimentProfitRatioAverage.ClientId = clientId
@@ -657,12 +652,3 @@ func (r *FinalReducer) deleteClient(clientID string) {
 	r.BlacklistedClients[clientID] = time.Now().Unix()
 }
 
-func (r *FinalReducer) deleteClients() {
-	clientsIds := make([]string, 0, len(r.Sessions))
-	for clientID := range r.Sessions {
-		clientsIds = append(clientsIds, clientID)
-	}
-	for _, clientID := range clientsIds {
-		r.deleteClient(clientID)
-	}
-}
