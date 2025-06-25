@@ -1,6 +1,6 @@
 {
-  "logLevel": "ariel",
-  "clients": 3,
+  "logLevel": "DEBUG",
+  "clients": 1,
   "joiners": 5,
   "healer": 3,
   "nodes": {

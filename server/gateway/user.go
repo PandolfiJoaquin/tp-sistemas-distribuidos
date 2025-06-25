@@ -170,11 +170,14 @@ func (c *Client) GetId() string {
 func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, client *net.Conn, id string, connMutex *sync.Mutex) error {
 	slog.Debug("Receiving data", slog.String("type", batchType), slog.String("id", id))
 	total := 0
+	batchID := 0
 	for {
 		batch, err := communication.RecvBatch[T](*client, connMutex)
 		if err != nil {
 			return fmt.Errorf("error receiving %s: %w", batchType, err)
 		}
+
+		batch.Header.BatchID = batchID
 
 		err = publishBatch(batch, batchType, toPreprocess, id)
 		if err != nil {
@@ -186,6 +189,10 @@ func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, c
 		if batch.IsEof() {
 			break
 		}
+
+		batchID++
+
+		slog.Debug("Received batch", slog.String("type", batchType), slog.Int("weight", int(batch.Header.Weight)), slog.Int("total_weight", int(batch.Header.TotalWeight)), slog.String("id", id), slog.Int("batch_id", batch.Header.BatchID))
 	}
 	slog.Debug("Total received", slog.String("type", batchType), slog.Int("total", total), slog.String("id", id))
 	return nil
