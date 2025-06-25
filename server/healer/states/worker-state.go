@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	heartBeatTolerance = 5 * time.Second
+	heartBeatTolerance = 2 * time.Second
 )
 
 type WorkerState struct {
@@ -35,17 +35,17 @@ func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event, peers *co
 			return w
 		case election_model.Election:
 			if event.Parameter > w.config.Id {
+				slog.Info("Received Election event as a worker (Event.id > config.id), becoming not a candidate")
 				return NewNotACandidateState(w.config)
 			} else {
+				slog.Info("Received Election event as a worker (Event.id <= config.id), sending Ok")
 				peers.SendToId(election_model.Event{Type: election_model.Ok, Parameter: w.config.Id}, event.Parameter)
 				return NewCandidateState(w.config, peers)
 			}
 		case election_model.Ok:
-			//TODO: mensaje viejo, ignoro, pero que hago si algun otro de los mensaes es viejo? revisar.
 			slog.Info("Received Ok event as a worker")
 			return w
 		case election_model.Victory:
-			//TODO: mensaje viejo, ignoro, pero que hago si algun otro de los mensaes es viejo? revisar.
 			slog.Info("Received Victory event as a worker", slog.Any("event.Parameter", event.Parameter))
 			return w
 		default:

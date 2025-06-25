@@ -122,7 +122,7 @@ func (g *Gateway) middlewareSetup() error {
 
 func (g *Gateway) listen() {
 	for g.running {
-		slog.Info("Waiting for client connection")
+		slog.Debug("Waiting for client connection")
 		conn, err := g.listener.Accept()
 		if err != nil {
 			if g.running { // only log if not shutting down

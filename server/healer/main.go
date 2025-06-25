@@ -4,12 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"os/signal"
 	"pkg/log"
-	"strconv"
 	"syscall"
-	"time"
 	"tp-sistemas-distribuidos/server/common/middleware"
 )
 
@@ -19,14 +16,6 @@ func main() {
 		fmt.Printf("error creating logger: %v", err)
 		return
 	}
-
-	delay, err := strconv.Atoi(os.Getenv("DELAY"))
-	if err != nil {
-		slog.Error("Error converting DELAY env var to int", slog.String("error", err.Error()))
-		return
-	}
-
-	time.Sleep(time.Duration(delay) * time.Second)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

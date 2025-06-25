@@ -171,6 +171,7 @@ func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, c
 	slog.Debug("Receiving data", slog.String("type", batchType), slog.String("id", id))
 	total := 0
 	for {
+
 		batch, err := communication.RecvBatch[T](*client, connMutex)
 		if err != nil {
 			return fmt.Errorf("error receiving %s: %w", batchType, err)
