@@ -246,7 +246,6 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 	defer ticker.Stop()
 
 	for {
-		//slog.Info("Begin loop to process messages")
 		var err error
 		select {
 		case <-g.ctx.Done():
@@ -266,7 +265,6 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 			err = g.handleResult(msg, 5)
 		}
 
-		//slog.Info("end of loop to process messages")
 		if err != nil {
 			slog.Error("error processing message", slog.String("error", err.Error()))
 			return
@@ -295,10 +293,6 @@ func (g *Gateway) handleResults2(msg middleware.Message) (*models.ResultWithId, 
 	if err := json.Unmarshal(msg.Body, &top5Countries); err != nil {
 		return nil, fmt.Errorf("error unmarshalling top 5 countries: %w", err)
 	}
-
-	// if len(top5Countries.Countries) != 5 {
-	// 	return nil, fmt.Errorf("expected 5 countries, got %d", len(top5Countries.Countries))
-	// }
 
 	results := Top5CountriesToQResult(top5Countries)
 	resultsWithId := models.ResultWithId{

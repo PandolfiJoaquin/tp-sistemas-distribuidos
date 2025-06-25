@@ -65,9 +65,7 @@ func (c *Client) Run() {
 }
 
 func (c *Client) sendResult(results *models.TotalQueryResults) {
-	slog.Info("PRECHAN")
 	c.recvChannel <- results
-	slog.Info("postçCHAN")
 }
 
 func (c *Client) Close() {
@@ -156,9 +154,7 @@ func (c *Client) recvHandler() {
 			if err != nil {
 				c.checkSendError(err, "error sending query results")
 				c.dead = true
-				slog.Debug("Before deadchan", slog.String("client id", c.id))
 				c.deadChan <- deadState{ClientID: c.id, finishedCorrectly: false}
-				slog.Debug("After deadchan", slog.String("client id", c.id))
 				return
 			} else {
 				slog.Debug("query results sent", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
@@ -172,7 +168,6 @@ func (c *Client) GetId() string {
 }
 
 func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, client *net.Conn, id string, connMutex *sync.Mutex) error {
-	slog.Debug("Receiving data", slog.String("type", batchType), slog.String("id", id))
 	total := 0
 	for {
 
