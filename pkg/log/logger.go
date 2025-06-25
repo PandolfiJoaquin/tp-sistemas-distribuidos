@@ -27,7 +27,7 @@ func SetupLogger(appName string, file *string) (*slog.Logger, error) {
 			if attr.Key == slog.TimeKey {
 				return slog.Attr{
 					Key:   "timestamp",
-					Value: slog.StringValue(attr.Value.Time().Format("15:04.00")),
+					Value: slog.StringValue(attr.Value.Time().Format("04:05.000")),
 				}
 			}
 			return attr

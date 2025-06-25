@@ -246,23 +246,32 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 	defer ticker.Stop()
 
 	for {
+		slog.Info("Begin loop to process messages")
 		var err error
 		select {
 		case <-g.ctx.Done():
+			slog.Info("Context done, stopping message processing")
 			return
 		case <-ticker.C:
+			slog.Info("Heartbeat tick")
 		case msg := <-g.resultsQueues[1]:
+			slog.Info("Case 1: received message from results queue 1")
 			err = g.handleResult(msg, 1)
 		case msg := <-g.resultsQueues[2]:
+			slog.Info("Case 2: received message from results queue 2")
 			err = g.handleResult(msg, 2)
 		case msg := <-g.resultsQueues[3]:
+			slog.Info("Case 3: received message from results queue 3")
 			err = g.handleResult(msg, 3)
 		case msg := <-g.resultsQueues[4]:
+			slog.Info("Case 4: received message from results queue 4")
 			err = g.handleResult(msg, 4)
 		case msg := <-g.resultsQueues[5]:
+			slog.Info("Case 5: received message from results queue 5")
 			err = g.handleResult(msg, 5)
 		}
 
+		slog.Info("end of loop to process messages")
 		if err != nil {
 			slog.Error("error processing message", slog.String("error", err.Error()))
 			return
@@ -368,13 +377,16 @@ func (g *Gateway) handleResult(msg middleware.Message, query int) error {
 	}
 
 	if results != nil { // can be nil due to empty results in query 1
+		g.ClientMutex.Lock()
 		client, ok := g.clients[results.Id]
 		if !ok {
+			g.ClientMutex.Unlock()
 			return nil
 		}
 		if !client.IsDead() {
 			client.sendResult(&results.Results)
 		}
+		g.ClientMutex.Unlock()
 	}
 
 	if err := msg.Ack(); err != nil {

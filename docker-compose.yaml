@@ -10,6 +10,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -43,6 +44,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
@@ -58,6 +60,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
@@ -73,6 +76,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
@@ -88,6 +92,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
@@ -103,6 +108,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - JOINER_SHARDS=5
     depends_on:
       rabbitmq:
@@ -118,6 +124,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -132,6 +139,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -146,6 +154,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -160,6 +169,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -174,6 +184,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -188,6 +199,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -202,6 +214,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -216,6 +229,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -230,6 +244,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - QUERY_NUM=2
       - JOINER_SHARDS=5
     depends_on:
@@ -248,6 +263,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - QUERY_NUM=3
       - JOINER_SHARDS=5
     depends_on:
@@ -266,6 +282,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - QUERY_NUM=4
       - JOINER_SHARDS=5
     depends_on:
@@ -284,6 +301,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - QUERY_NUM=5
       - JOINER_SHARDS=5
     depends_on:
@@ -302,6 +320,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - JOINER_ID=1
     depends_on:
       rabbitmq:
@@ -319,6 +338,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - JOINER_ID=2
     depends_on:
       rabbitmq:
@@ -336,6 +356,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - JOINER_ID=3
     depends_on:
       rabbitmq:
@@ -353,6 +374,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - JOINER_ID=4
     depends_on:
       rabbitmq:
@@ -370,6 +392,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=monke
       - RABBITMQ_DEFAULT_PASS=joaco1
+      - DEBUG=1
       - JOINER_ID=5
     depends_on:
       rabbitmq:
@@ -388,7 +411,7 @@ services:
       - HEALER_ID=1
       - DELAY=3
       - HEALERS_AMOUNT=5
-      - DEBUG=0
+      - DEBUG=1
     depends_on:
       - gateway
     volumes:
@@ -405,7 +428,7 @@ services:
       - HEALER_ID=2
       - DELAY=3
       - HEALERS_AMOUNT=5
-      - DEBUG=0
+      - DEBUG=1
     depends_on:
       - gateway
     volumes:
@@ -422,7 +445,7 @@ services:
       - HEALER_ID=3
       - DELAY=3
       - HEALERS_AMOUNT=5
-      - DEBUG=0
+      - DEBUG=1
     depends_on:
       - gateway
     volumes:
@@ -439,7 +462,7 @@ services:
       - HEALER_ID=4
       - DELAY=3
       - HEALERS_AMOUNT=5
-      - DEBUG=0
+      - DEBUG=1
     depends_on:
       - gateway
     volumes:
@@ -456,7 +479,7 @@ services:
       - HEALER_ID=5
       - DELAY=3
       - HEALERS_AMOUNT=5
-      - DEBUG=0
+      - DEBUG=1
     depends_on:
       - gateway
     volumes:
@@ -472,7 +495,7 @@ services:
       - MOVIES_FILE=archive/movies_metadata.csv
       - REVIEWS_FILE=archive/ratings_small.csv
       - CREDITS_FILE=archive/credits.csv
-      - DEBUG=0
+      - DEBUG=1
     depends_on:
       - gateway
     volumes:
@@ -488,7 +511,7 @@ services:
       - MOVIES_FILE=archive/movies_metadata.csv
       - REVIEWS_FILE=archive/ratings.csv
       - CREDITS_FILE=archive/credits.csv
-      - DEBUG=0
+      - DEBUG=1
     depends_on:
       - gateway
     volumes:
@@ -504,7 +527,7 @@ services:
       - MOVIES_FILE=archive/movies_metadata.csv
       - REVIEWS_FILE=archive/ratings_small.csv
       - CREDITS_FILE=archive/credits.csv
-      - DEBUG=0
+      - DEBUG=1
     depends_on:
       - gateway
     volumes:
@@ -520,7 +543,7 @@ services:
       - MOVIES_FILE=archive/movies_metadata.csv
       - REVIEWS_FILE=archive/ratings.csv
       - CREDITS_FILE=archive/credits.csv
-      - DEBUG=0
+      - DEBUG=1
     depends_on:
       - gateway
     volumes:
@@ -536,7 +559,7 @@ services:
       - MOVIES_FILE=archive/movies_metadata.csv
       - REVIEWS_FILE=archive/ratings_small.csv
       - CREDITS_FILE=archive/credits.csv
-      - DEBUG=0
+      - DEBUG=1
     depends_on:
       - gateway
     volumes:
