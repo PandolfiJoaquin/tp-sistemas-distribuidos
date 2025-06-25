@@ -168,7 +168,6 @@ func (c *Client) GetId() string {
 }
 
 func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, client *net.Conn, id string, connMutex *sync.Mutex) error {
-	slog.Debug("Receiving data", slog.String("type", batchType), slog.String("id", id))
 	total := 0
 	batchID := 0
 	for {
@@ -193,7 +192,6 @@ func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, c
 
 		batchID++
 
-		slog.Debug("Received batch", slog.String("type", batchType), slog.Int("weight", int(batch.Header.Weight)), slog.Int("total_weight", int(batch.Header.TotalWeight)), slog.String("id", id), slog.Int("batch_id", batch.Header.BatchID))
 	}
 	slog.Debug("Total received", slog.String("type", batchType), slog.Int("total", total), slog.String("id", id))
 	return nil
