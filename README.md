@@ -234,9 +234,11 @@ make run-kill-inf          # Bucle infinito de run-kill + validación
 
 ### Comandos de desarrollo:
 ```bash
-make run-local             # Solo RabbitMQ + servicio local
-make run-no-cache          # Reconstruir sin cache
+make run-local             
 ```
+
+Permite correr un nodo localmente en vez de en Docker, esta por default con el final reducer 3. 
+Deja que el final reducer se conecte a RabbitMQ para que pueda recibir mensajes de prueba en sus colas correspondientes. 
 
 ##  Flujo de Trabajo Típico
 
