@@ -35,7 +35,7 @@ const (
 
 type LogOperations string
 
-const ( //TODO: Optimize encoding
+const ( 
 	UpdateMoviesWeightsOp  = "update-movies-weights"
 	SaveMoviesOp           = "save-movies"
 	UpdateReviewsWeightsOp = "update-reviews-weights"

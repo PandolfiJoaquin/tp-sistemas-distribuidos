@@ -111,7 +111,7 @@ func (c *Client) handleQ1(results *models.TotalQueryResults) bool {
 	if results.Header.TotalWeight >= 0 {
 		c.q1State.EofWeight = int32(results.Header.TotalWeight)
 	}
-	if c.q1State.EofWeight > 0 && c.q1State.CurrentWeight == uint32(c.q1State.EofWeight) { //TODO: va a romper si el peso del archivo es 0
+	if c.q1State.EofWeight > 0 && c.q1State.CurrentWeight == uint32(c.q1State.EofWeight) { 
 		c.queriesReceived[1] = true
 		slog.Info("query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
 	}

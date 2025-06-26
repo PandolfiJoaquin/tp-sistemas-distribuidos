@@ -40,7 +40,7 @@ var queriesQueues = map[int]queuesNames{
 	5: {previousQueue: "q5-to-final-reduce", nextQueue: "q5-results"},
 }
 
-const ( //TODO: Optimize encoding
+const ( 
 	AggCountriesBudgetOp      = "AGG_COUNTRIES_BUDGET"
 	AggMovieRatingsOp         = "AGG_MOVIE_RATINGS"
 	AggActorMoviesOp          = "AGG_ACTOR_MOVIES"
