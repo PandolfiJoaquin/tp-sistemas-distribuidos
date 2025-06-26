@@ -46,7 +46,7 @@ func NewClient(conn net.Conn, toPreprocess middleware.SenderQueue, flushQueue mi
 		connMutex:        sync.Mutex{},
 		conn:             conn,
 		dead:             false,
-		recvChannel:      make(chan *models.TotalQueryResults),
+		recvChannel:      make(chan *models.TotalQueryResults, 20),
 		toPreprocess:     toPreprocess,
 		flushQueue:       flushQueue,
 		deadChan:         deadChan,
@@ -168,7 +168,6 @@ func (c *Client) GetId() string {
 }
 
 func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, client *net.Conn, id string, connMutex *sync.Mutex) error {
-	slog.Debug("Receiving data", slog.String("type", batchType), slog.String("id", id))
 	total := 0
 	for {
 

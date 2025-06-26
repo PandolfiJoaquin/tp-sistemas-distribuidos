@@ -37,7 +37,7 @@ func (q *amqpSenderQueue) Send(body []byte) error {
 	}
 
 	// DUPLICATE: 10% probability of resending
-	if rand.Float64() < 0.1 {
+	if rand.Float64() < 0.3 {
 		slog.Info("Duplicating message due to 10% probability")
 		return q.sendMessage(ctx, body)
 	}
@@ -134,7 +134,7 @@ func (q *amqpFanoutSenderQueue) Send(body []byte) error {
 	}
 
 	// DUPLICATE: 10% probability of resending
-	if rand.Float64() < 0.1 {
+	if true /*rand.Float64() < 0.1*/ {
 		slog.Info("Duplicating message due to 10% probability")
 		return q.sendMessage(body)
 	}

@@ -249,8 +249,10 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 		var err error
 		select {
 		case <-g.ctx.Done():
+			slog.Info("Context done, stopping message processing")
 			return
 		case <-ticker.C:
+			//slog.Info("Heartbeat tick")
 		case msg := <-g.resultsQueues[1]:
 			err = g.handleResult(msg, 1)
 		case msg := <-g.resultsQueues[2]:
@@ -291,10 +293,6 @@ func (g *Gateway) handleResults2(msg middleware.Message) (*models.ResultWithId, 
 	if err := json.Unmarshal(msg.Body, &top5Countries); err != nil {
 		return nil, fmt.Errorf("error unmarshalling top 5 countries: %w", err)
 	}
-
-	// if len(top5Countries.Countries) != 5 {
-	// 	return nil, fmt.Errorf("expected 5 countries, got %d", len(top5Countries.Countries))
-	// }
 
 	results := Top5CountriesToQResult(top5Countries)
 	resultsWithId := models.ResultWithId{
@@ -348,6 +346,8 @@ func (g *Gateway) handleResults5(msg middleware.Message) (*models.ResultWithId, 
 }
 
 func (g *Gateway) handleResult(msg middleware.Message, query int) error {
+	defer msg.Ack()
+	defer g.ClientMutex.Unlock()
 	var results *models.ResultWithId
 	var err error
 	switch query {
@@ -368,17 +368,18 @@ func (g *Gateway) handleResult(msg middleware.Message, query int) error {
 	}
 
 	if results != nil { // can be nil due to empty results in query 1
+		slog.Info("Received results", slog.Int("query", query), slog.String("client_id", results.Id))
+		// check if its duplicated
+		g.ClientMutex.Lock()
 		client, ok := g.clients[results.Id]
+
 		if !ok {
 			return nil
 		}
+
 		if !client.IsDead() {
 			client.sendResult(&results.Results)
 		}
-	}
-
-	if err := msg.Ack(); err != nil {
-		return fmt.Errorf("error acknowledging message: %w", err)
 	}
 	return nil
 }
@@ -452,5 +453,4 @@ func (g *Gateway) persistencyHandler(wg *sync.WaitGroup) {
 		}
 
 	}
-
 }

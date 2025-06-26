@@ -3,7 +3,6 @@ package communication
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net"
 	"pkg/models"
 	"sync"
@@ -46,7 +45,6 @@ func RecvBatch[T any](conn net.Conn, connMutex *sync.Mutex) (models.RawBatch[T],
 	var batch models.RawBatch[T]
 	var err error
 
-	slog.Debug("Receiving batch", slog.String("type", fmt.Sprintf("%T", batch.Data)), slog.Int("batch_id", batch.Header.BatchID))
 	batch, err = recvBatch[T](conn)
 	if err != nil {
 		return batch, err
@@ -54,7 +52,6 @@ func RecvBatch[T any](conn net.Conn, connMutex *sync.Mutex) (models.RawBatch[T],
 
 	connMutex.Lock()
 	defer connMutex.Unlock()
-	slog.Debug("Received batch", slog.String("type", fmt.Sprintf("%T", batch.Data)), slog.Int("batch_id", batch.Header.BatchID), slog.Int("weight", int(batch.Header.Weight)), slog.Int("total_weight", int(batch.Header.TotalWeight)))
 	if err := sendAck(conn, int(batch.Header.Weight)); err != nil {
 		return batch, fmt.Errorf("error sending ack: %w", err)
 	}
