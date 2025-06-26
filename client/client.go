@@ -80,20 +80,16 @@ func (c *Client) sigtermHandler(signalCtx context.Context, ctx context.Context, 
 }
 
 func (c *Client) validateFiles() bool {
+	fileTypes := []string{"movies", "reviews", "credits"}
 	filesPath := []string{c.config.MoviesFile, c.config.ReviewsFile, c.config.CreditsFile}
-	allExists := true
-	for _, file := range filesPath {
-		_, err := os.Stat(file)
+	for i, file := range filesPath {
+		err := utils.ValidateHeaders(file, fileTypes[i])
 		if err != nil {
-			if os.IsNotExist(err) {
-				slog.Error("file does not exist", slog.String("file", file))
-			} else {
-				slog.Error("error checking file", slog.String("file", file), slog.String("error", err.Error()))
-			}
-			allExists = false
+			slog.Error("Error validating file headers", slog.String("file", file), slog.String("type", fileTypes[i]), slog.String("error", err.Error()))
+			return false
 		}
 	}
-	return allExists
+	return true
 }
 
 func (c *Client) close() {
