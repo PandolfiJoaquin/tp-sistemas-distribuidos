@@ -3,6 +3,14 @@ Realizado para el 1C2025, para la materia sistemas distribuidos de la facultad d
 
 Este proyecto implementa un sistema distribuido para procesamiento de datos de películas con capacidades de tolerancia a fallos. El sistema incluye herramientas para generar configuraciones dinámicas, ejecutar pruebas de resiliencia y validar resultados automáticamente.
 
+### Integrantes
+| Nombre             | Padrón | Email               |
+|--------------------|--------|---------------------|
+| Joaquin Pandolfi   | 108215 | jpandolfi@fi.uba.ar |
+| Theo Lijs          | 109472 | tlijs@fi.uba.ar     |
+| Francisco Juarez   | 107748 | fjuarez@fi.uba.ar   |
+
+
 ## Tabla de Contenidos
 - [Documento de arquitectura](#Documentacion-de-Arquitectura)
 - [Configuración del Sistema](#configuración-del-sistema)
@@ -57,6 +65,17 @@ El sistema utiliza un archivo de configuración JSON que define la topología y 
 - `nodes`: Cantidad de cada tipo de nodo de procesamiento, los nodos son los que aparecen en el ejemplo. 
 - `files`: Archivos de datos que utilizará cada cliente (se asignan cíclicamente). Es decir, el cliente 1 tendra el archivo de `ratings_small.csv`, el cliente 2 tendra el archivo de `ratings.csv`, y el 3 tendra `rating`.
 
+### Archivos de datos soportados
+
+Los archivos de datos que estan integrados en el sistema con los varios scripts son:
+- `movies_metadata.csv`: Metadatos de películas ([link de kaggle](https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset?select=movies_metadata.csv))
+- `ratings_small.csv`: Conjunto reducido de ratings de películas ([link de kaggle](https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset?select=ratings_small.csv))
+- `ratings.csv`: Conjunto completo de ratings de películas ([link de kaggle](https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset?select=ratings.csv))
+- `credits.csv`: Información de créditos de películas ([link de kaggle](https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset?select=credits.csv))
+
+> Se pueden utilizar otros archivos pero estoss tiene que cumplir con el formato esperado, es decir, que tengan las columnas necesarias para las queries que se ejecutan.
+> De lo contrario el cliente tirara error de que los headers de los CSV no son los esperados.
+
 ## Generación de Docker Compose
 
 ### Script `generate-compose.sh`
@@ -100,9 +119,9 @@ make run
 5. Construye las imágenes Docker
 6. Levanta todos los servicios (`docker compose up -d`)
 
-> **Nota**: Ya que se utilizan volumenes para el manejo de datos, es necesario tener permisos de administrador ya que se hace un `sudo` para borrar el directorio de datos.
+> **Nota**: Ya que se utilizan volumenes para el manejo de datos y tolerancia a fallos, es necesario tener permisos de administrador ya que se hace un `sudo` para borrar el directorio de datos.
 
-## ✅ Validación de Resultados
+## Validación de Resultados
 
 ### Script `compare_outputs.sh`
 
