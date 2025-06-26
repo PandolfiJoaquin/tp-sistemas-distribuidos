@@ -57,6 +57,15 @@ def get_expected_results_for_file(file_path, cfg):
     else:
         return None
 
+def has_duplicates(results, query_num):
+    """Check if there are duplicate entries in the results"""
+    if len(results) != len(set(results)):
+        print(f"❌ Query {query_num}: Found duplicate results!")
+        duplicates = [item for item in set(results) if results.count(item) > 1]
+        for dup in duplicates:
+            print(f"   Duplicate: {dup}")
+        return True
+    return False
 
 def compare_results(actual_file_path, expected_results):
     """
@@ -114,12 +123,14 @@ def compare_results(actual_file_path, expected_results):
 
         expected = expected_results[query_num]
 
+        has_dups = has_duplicates(actual, query_num)
+
         # Compare sets to ignore order
         actual_set = set(actual)
         expected_set = set(expected)
 
         comparison[query_num] = {
-            "matches": actual_set == expected_set,
+            "matches": (actual_set == expected_set) and not has_dups,
             "actual": actual,
             "expected": expected,
             "missing": list(expected_set - actual_set),
