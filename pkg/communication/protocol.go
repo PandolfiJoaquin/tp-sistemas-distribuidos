@@ -3,7 +3,6 @@ package communication
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net"
 	"pkg/models"
 	"sync"
@@ -44,7 +43,6 @@ func RecvBatch[T any](conn net.Conn, connMutex *sync.Mutex) (models.RawBatch[T],
 	var batch models.RawBatch[T]
 	var err error
 
-	slog.Debug("Receiving batch", slog.String("type", fmt.Sprintf("%T", batch.Data)), slog.Int("batch_id", batch.Header.BatchID))
 	batch, err = recvBatch[T](conn)
 	if err != nil {
 		return batch, err
