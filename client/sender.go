@@ -12,7 +12,7 @@ import (
 
 // Monke: 2
 // Joaco: 20
-const msToSleep = 10
+const msToSleep = 5
 
 type Sender[T any] struct {
 	conn       *net.Conn
