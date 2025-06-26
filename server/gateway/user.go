@@ -103,10 +103,9 @@ func (c *Client) sendHandler() {
 	}
 }
 
-func (c *Client) handleQ1(results *models.TotalQueryResults) {
+func (c *Client) handleQ1(results *models.TotalQueryResults) bool {
 	if !c.q1State.DuplicateFilter.Accept(results.Header.BatchID) {
-		slog.Warn("duplicate query received WINDOW", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
-		return
+		return false
 	}
 	c.q1State.CurrentWeight += results.Header.Weight
 	if results.Header.TotalWeight >= 0 {
@@ -116,6 +115,7 @@ func (c *Client) handleQ1(results *models.TotalQueryResults) {
 		c.queriesReceived[1] = true
 		slog.Info("query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
 	}
+	return true
 }
 
 func (c *Client) recvHandler() {
@@ -139,7 +139,11 @@ func (c *Client) recvHandler() {
 				continue
 			}
 			if results.QueryId == 1 {
-				c.handleQ1(results)
+				if !c.handleQ1(results) {
+					slog.Warn("duplicate query received WINDOW", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
+					continue
+				}
+
 			} else {
 				c.queriesReceived[results.QueryId] = true
 				slog.Info("query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
