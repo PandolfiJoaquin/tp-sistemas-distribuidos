@@ -103,19 +103,19 @@ func (c *Client) sendHandler() {
 	}
 }
 
-func (c *Client) handleQ1(results *models.TotalQueryResults) {
+func (c *Client) handleQ1(results *models.TotalQueryResults) bool {
 	if !c.q1State.DuplicateFilter.Accept(results.Header.BatchID) {
-		slog.Warn("duplicate query received WINDOW", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
-		return
+		return false
 	}
 	c.q1State.CurrentWeight += results.Header.Weight
 	if results.Header.TotalWeight >= 0 {
 		c.q1State.EofWeight = int32(results.Header.TotalWeight)
 	}
-	if c.q1State.EofWeight > 0 && c.q1State.CurrentWeight == uint32(c.q1State.EofWeight) { //TODO: va a romper si el peso del archivo es 0
+	if c.q1State.EofWeight > 0 && c.q1State.CurrentWeight == uint32(c.q1State.EofWeight) { 
 		c.queriesReceived[1] = true
 		slog.Info("query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
 	}
+	return true
 }
 
 func (c *Client) recvHandler() {
@@ -139,7 +139,11 @@ func (c *Client) recvHandler() {
 				continue
 			}
 			if results.QueryId == 1 {
-				c.handleQ1(results)
+				if !c.handleQ1(results) {
+					slog.Warn("duplicate query received WINDOW", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
+					continue
+				}
+
 			} else {
 				c.queriesReceived[results.QueryId] = true
 				slog.Info("query received", slog.Int("query_id", results.QueryId), slog.String("client id", c.id))
@@ -169,12 +173,15 @@ func (c *Client) GetId() string {
 
 func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, client *net.Conn, id string, connMutex *sync.Mutex) error {
 	total := 0
+	batchID := 0
 	for {
 
 		batch, err := communication.RecvBatch[T](*client, connMutex)
 		if err != nil {
 			return fmt.Errorf("error receiving %s: %w", batchType, err)
 		}
+
+		batch.Header.BatchID = batchID
 
 		err = publishBatch(batch, batchType, toPreprocess, id)
 		if err != nil {
@@ -186,6 +193,9 @@ func receiveData[T any](toPreprocess middleware.SenderQueue, batchType string, c
 		if batch.IsEof() {
 			break
 		}
+
+		batchID++
+
 	}
 	slog.Debug("Total received", slog.String("type", batchType), slog.Int("total", total), slog.String("id", id))
 	return nil

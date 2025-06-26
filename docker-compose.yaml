@@ -387,7 +387,7 @@ services:
     environment:
       - HEALER_ID=1
       - DELAY=3
-      - HEALERS_AMOUNT=5
+      - HEALERS_AMOUNT=3
       - DEBUG=0
     depends_on:
       - gateway
@@ -404,7 +404,7 @@ services:
     environment:
       - HEALER_ID=2
       - DELAY=3
-      - HEALERS_AMOUNT=5
+      - HEALERS_AMOUNT=3
       - DEBUG=0
     depends_on:
       - gateway
@@ -421,41 +421,7 @@ services:
     environment:
       - HEALER_ID=3
       - DELAY=3
-      - HEALERS_AMOUNT=5
-      - DEBUG=0
-    depends_on:
-      - gateway
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./docker-compose.yaml:/docker-compose.yaml
-
-  healer-4:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-        NODE: healer
-    container_name: healer-4
-    environment:
-      - HEALER_ID=4
-      - DELAY=3
-      - HEALERS_AMOUNT=5
-      - DEBUG=0
-    depends_on:
-      - gateway
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./docker-compose.yaml:/docker-compose.yaml
-
-  healer-5:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-        NODE: healer
-    container_name: healer-5
-    environment:
-      - HEALER_ID=5
-      - DELAY=3
-      - HEALERS_AMOUNT=5
+      - HEALERS_AMOUNT=3
       - DEBUG=0
     depends_on:
       - gateway

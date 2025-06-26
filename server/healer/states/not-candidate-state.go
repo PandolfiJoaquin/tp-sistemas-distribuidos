@@ -39,8 +39,6 @@ func (n *NotACandidateState) HandleMailBox(mailbox chan election_model.Event, pe
 			panic(fmt.Sprintf("Unknown event: %v", event.Type))
 		}
 	}
-	slog.Info("unreachable")
-	panic("unreachable")
 }
 
 func (n *NotACandidateState) Close() {}

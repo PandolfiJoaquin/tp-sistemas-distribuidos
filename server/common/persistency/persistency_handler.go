@@ -109,9 +109,7 @@ func getLogPath() (string, error) {
 	files = common.Filter(files, func(file string) bool { return !strings.Contains(file, "tmp") })
 
 	if len(files) > 1 {
-		//TODO: manejar logs multiples
 		slog.Error("Multiple log files found, using the first one", slog.Any("files", files))
-		panic("Multiple log files found")
 	}
 
 	file := files[0]
@@ -139,7 +137,6 @@ func getCommitedLogs(logs []string) ([]TransactionEntry, error) {
 func entryFromLog(split []string) TransactionEntry {
 	if len(split) < 2 {
 		slog.Error("Invalid log entry format", slog.Any("entry", split))
-		panic("Invalid log entry format: " + strings.Join(split, sep)) //TODO: sacar
 	}
 
 	return TransactionEntry{

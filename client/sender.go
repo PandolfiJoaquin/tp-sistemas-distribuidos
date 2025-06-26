@@ -12,7 +12,7 @@ import (
 
 // Monke: 2
 // Joaco: 20
-const msToSleep = 10
+const msToSleep = 5
 
 type Sender[T any] struct {
 	conn       *net.Conn
@@ -56,13 +56,13 @@ func (s *Sender[T]) Send() error {
 	return nil
 }
 
-func (s *Sender[T]) SendBatch(batch []T, batchID int, total int, last bool) error {
+func (s *Sender[T]) SendBatch(batch []T, total int, last bool) error {
 	var err error
 	if last {
-		slog.Debug("Sending EOF batch", slog.Int("batch_id", batchID), slog.Any("type", s.dataType), slog.Any("header", batch))
-		err = communication.SendBatchEOF(*s.conn, int32(total), batchID)
+		slog.Debug("Sending EOF batch", slog.Any("type", s.dataType), slog.Any("header", batch))
+		err = communication.SendBatchEOF(*s.conn, int32(total))
 	} else {
-		err = communication.SendData(*s.conn, batch, batchID)
+		err = communication.SendData(*s.conn, batch)
 	}
 
 	if err != nil {
@@ -93,7 +93,6 @@ func (s *Sender[T]) sendAllData(reader utils.BatchReader[T]) (int, error) {
 		}
 	}(reader)
 
-	var batchID = 0
 	for !reader.Finished() {
 		batch, err := reader.ReadBatch()
 		if err != nil {
@@ -103,16 +102,15 @@ func (s *Sender[T]) sendAllData(reader utils.BatchReader[T]) (int, error) {
 			slog.Debug("Received nil batch, stopping sending data")
 			break
 		}
-		err = s.SendBatch(batch, batchID, -1, false)
+		err = s.SendBatch(batch, -1, false)
 		if err != nil {
-			return -1, fmt.Errorf("error sending batch %d: %w", batchID, err)
+			return -1, fmt.Errorf("error sending batch : %w", err)
 		}
-		batchID++
 	}
 
 	// Send EOF
-	slog.Debug("Sending EOF In sendAllData", slog.Int("batch_id", batchID), slog.Any("type", s.dataType))
-	err := s.SendBatch(nil, batchID, reader.TotalRead(), true)
+	slog.Debug("Sending EOF In sendAllData", slog.Any("type", s.dataType))
+	err := s.SendBatch(nil, reader.TotalRead(), true)
 	if err != nil {
 		return 0, fmt.Errorf("error sending EOF: %w", err)
 	}

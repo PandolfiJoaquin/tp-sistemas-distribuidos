@@ -52,9 +52,6 @@ func (w *WorkerState) HandleMailBox(mailbox chan election_model.Event, peers *co
 			panic(fmt.Sprintf("Unknown event: %v", event.Type))
 		}
 	}
-	slog.Info("unreachable")
-	panic("unreachable")
-
 }
 
 func (w *WorkerState) Close() {}

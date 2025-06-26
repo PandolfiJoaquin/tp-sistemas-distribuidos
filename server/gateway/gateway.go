@@ -17,8 +17,6 @@ import (
 	"tp-sistemas-distribuidos/server/common/middleware"
 )
 
-//checkpointName := dataPath + fmt.Sprintf(checkpointFileName, ph.currSnapshotNumber)
-
 const (
 	dataPath          = "data/"
 	clientsFile       = "clients.json"
@@ -252,7 +250,6 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 			slog.Info("Context done, stopping message processing")
 			return
 		case <-ticker.C:
-			//slog.Info("Heartbeat tick")
 		case msg := <-g.resultsQueues[1]:
 			err = g.handleResult(msg, 1)
 		case msg := <-g.resultsQueues[2]:
@@ -293,6 +290,7 @@ func (g *Gateway) handleResults2(msg middleware.Message) (*models.ResultWithId, 
 	if err := json.Unmarshal(msg.Body, &top5Countries); err != nil {
 		return nil, fmt.Errorf("error unmarshalling top 5 countries: %w", err)
 	}
+
 
 	results := Top5CountriesToQResult(top5Countries)
 	resultsWithId := models.ResultWithId{
@@ -369,7 +367,6 @@ func (g *Gateway) handleResult(msg middleware.Message, query int) error {
 
 	if results != nil { // can be nil due to empty results in query 1
 		slog.Info("Received results", slog.Int("query", query), slog.String("client_id", results.Id))
-		// check if its duplicated
 		g.ClientMutex.Lock()
 		client, ok := g.clients[results.Id]
 
@@ -451,6 +448,5 @@ func (g *Gateway) persistencyHandler(wg *sync.WaitGroup) {
 		case <-g.ctx.Done():
 			return
 		}
-
 	}
 }

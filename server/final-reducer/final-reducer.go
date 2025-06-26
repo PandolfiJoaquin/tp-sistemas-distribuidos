@@ -40,7 +40,7 @@ var queriesQueues = map[int]queuesNames{
 	5: {previousQueue: "q5-to-final-reduce", nextQueue: "q5-results"},
 }
 
-const ( //TODO: Optimize encoding
+const ( 
 	AggCountriesBudgetOp      = "AGG_COUNTRIES_BUDGET"
 	AggMovieRatingsOp         = "AGG_MOVIE_RATINGS"
 	AggActorMoviesOp          = "AGG_ACTOR_MOVIES"
@@ -384,10 +384,6 @@ func (r *FinalReducer) finishAndSendBatchForQuery2(clientId string) {
 	if err != nil {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
 	}
-	// Duplicate TODO:
-	if err := r.connection.ChanToSend.Send(response); err != nil {
-		slog.Error("error sending response", slog.String("error", err.Error()))
-	}
 	if err := r.connection.ChanToSend.Send(response); err != nil {
 		slog.Error("error sending response", slog.String("error", err.Error()))
 	}
@@ -401,9 +397,6 @@ func (r *FinalReducer) finishAndSendBatchForQuery3(clientId string) {
 	response, err := json.Marshal(bestAndWorstMovies)
 	if err != nil {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
-	}
-	if err := r.connection.ChanToSend.Send(response); err != nil {
-		slog.Error("error sending response", slog.String("error", err.Error()))
 	}
 	if err := r.connection.ChanToSend.Send(response); err != nil {
 		slog.Error("error sending response", slog.String("error", err.Error()))
@@ -422,9 +415,6 @@ func (r *FinalReducer) finishAndSendBatchForQuery4(clientId string) {
 	if err := r.connection.ChanToSend.Send(response); err != nil {
 		slog.Error("error sending response", slog.String("error", err.Error()))
 	}
-	if err := r.connection.ChanToSend.Send(response); err != nil {
-		slog.Error("error sending response", slog.String("error", err.Error()))
-	}
 }
 
 func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
@@ -435,9 +425,6 @@ func (r *FinalReducer) finishAndSendBatchForQuery5(clientId string) {
 	response, err := json.Marshal(sentimentProfitRatioAverage)
 	if err != nil {
 		slog.Error("error marshalling response", slog.String("error", err.Error()))
-	}
-	if err := r.connection.ChanToSend.Send(response); err != nil {
-		slog.Error("error sending response", slog.String("error", err.Error()))
 	}
 	if err := r.connection.ChanToSend.Send(response); err != nil {
 		slog.Error("error sending response", slog.String("error", err.Error()))

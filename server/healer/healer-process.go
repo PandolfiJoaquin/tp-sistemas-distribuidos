@@ -90,8 +90,6 @@ func (p *Process) StartProcess(ctx context.Context, heartbeatChan chan struct{})
 		}
 		sendHeartbeat(heartbeatChan)
 	}
-	//p.ProcState.Close()
-	//TODO: the defere stop is enough? if yes then remove close from interface and states
 }
 
 func (p *Process) listener(ctx context.Context) {
