@@ -330,6 +330,9 @@ def main():
 
         processed_files.add(result_file)
 
+        if comparison is None:
+            continue
+
         if len(comparison.items()) != 5:
             print("\nMissing results! ❌")
             missing = {1, 2, 3, 4, 5} - set([query_num for query_num, _ in comparison.items()])
