@@ -40,7 +40,7 @@ var queriesQueues = map[int]queuesNames{
 	5: {previousQueue: "q5-to-final-reduce", nextQueue: "q5-results"},
 }
 
-const ( 
+const (
 	AggCountriesBudgetOp      = "AGG_COUNTRIES_BUDGET"
 	AggMovieRatingsOp         = "AGG_MOVIE_RATINGS"
 	AggActorMoviesOp          = "AGG_ACTOR_MOVIES"
@@ -240,7 +240,7 @@ func startReceiving[T common.Stringer](
 	chanToRecv <-chan middleware.Message,
 	finishAndSendBatch func(clientId string),
 	processBatch func(batch common.LoggableBatch[T]) persistency.Transaction,
-	freddyFazbear *FinalReducer,
+	finalReducer *FinalReducer,
 ) error {
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
@@ -250,7 +250,7 @@ func startReceiving[T common.Stringer](
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-		case msg := <-freddyFazbear.flushQueue:
+		case msg := <-finalReducer.flushQueue:
 			var flushClient common.FlushClient
 			if err := json.Unmarshal(msg.Body, &flushClient); err != nil {
 				slog.Error("error unmarshalling message", slog.String("error", err.Error()))
@@ -258,9 +258,9 @@ func startReceiving[T common.Stringer](
 			}
 			transaction := persistency.NewTransaction()
 			transaction.Do(DeleteClientOp, flushClient.ClientID)
-			freddyFazbear.deleteClient(flushClient.ClientID)
+			finalReducer.deleteClient(flushClient.ClientID)
 			slog.Info("flushing client", slog.String("clientID", flushClient.ClientID))
-			freddyFazbear.save(transaction)
+			finalReducer.save(transaction)
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
@@ -271,24 +271,24 @@ func startReceiving[T common.Stringer](
 				continue
 			}
 
-			if freddyFazbear.isBlacklisted(batch.GetClientID()) {
+			if finalReducer.isBlacklisted(batch.GetClientID()) {
 				if !batch.IsEof() {
 					slog.Info("Discarding message from blacklisted client", slog.Any("header", batch.Header))
 				}
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				}
-				freddyFazbear.m.SendHeartbeat()
+				finalReducer.m.SendHeartbeat()
 				continue
 			}
 
-			session := freddyFazbear.getSession(batch.GetClientID(), freddyFazbear.queryNum)
+			session := finalReducer.getSession(batch.GetClientID(), finalReducer.queryNum)
 			if !session.FilterMsg(batch.MessageID.ID, batch.MessageID.JoinerID) {
 				slog.Info("Filtering Msg", slog.Any("header", batch.Header))
 				if err := msg.Ack(); err != nil {
 					slog.Error("error acknowledging message", slog.String("error", err.Error()))
 				}
-				freddyFazbear.m.SendHeartbeat()
+				finalReducer.m.SendHeartbeat()
 				continue
 			}
 
@@ -303,17 +303,17 @@ func startReceiving[T common.Stringer](
 
 			if session.IsFinished() {
 				finishAndSendBatch(session.SessionId)
-				freddyFazbear.deleteClient(session.SessionId)
+				finalReducer.deleteClient(session.SessionId)
 				transaction.Do(DeleteClientOp, session.SessionId)
 			}
 
-			freddyFazbear.save(transaction)
+			finalReducer.save(transaction)
 
 			if err := msg.Ack(); err != nil {
 				slog.Error("error acknowledging message", slog.String("error", err.Error()))
 			}
 		}
-		freddyFazbear.m.SendHeartbeat()
+		finalReducer.m.SendHeartbeat()
 	}
 }
 
