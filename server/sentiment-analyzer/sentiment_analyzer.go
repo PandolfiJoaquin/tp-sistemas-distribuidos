@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"os/signal"
 	"syscall"
+	"time"
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/middleware"
 
 	cdipaoloSentiment "github.com/cdipaolo/sentiment"
 )
@@ -16,15 +18,16 @@ const (
 	previousQueue = "sentiment-analyzer"
 	rabbitHost    = "rabbitmq"
 	nextQueue     = "q5-to-reduce"
+	heartbeatInterval = 1 * time.Second
 )
 
 type Analyzer struct {
-	middleware *common.Middleware
+	middleware *middleware.Middleware
 	model      cdipaoloSentiment.Models
 }
 
 func NewAnalyzer(rabbitUser, rabbitPass string) (*Analyzer, error) {
-	middleware, err := common.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
+	middleware, err := middleware.NewMiddleware(rabbitUser, rabbitPass, rabbitHost)
 	if err != nil {
 		return nil, fmt.Errorf("error creating middleware: %w", err)
 	}
@@ -51,7 +54,7 @@ func (a *Analyzer) Start() {
 		return
 	}
 
-	nextChan, err := a.middleware.GetChanToSend(nextQueue)
+	nextChan, err := a.middleware.GetQueueToSend(nextQueue)
 	if err != nil {
 		slog.Error("error creating channel", slog.String("queue", nextQueue), slog.String("error", err.Error()))
 		return
@@ -60,38 +63,45 @@ func (a *Analyzer) Start() {
 	a.run(ctx, previousChan, nextChan)
 }
 
-func (a *Analyzer) run(ctx context.Context, previousChan <-chan common.Message, nextChan chan<- []byte) {
+func (a *Analyzer) run(ctx context.Context, previousChan <-chan middleware.Message, nextChan middleware.SenderQueue) {
+	slog.Info("starting sentiment analyzer")
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("received termination signal, stopping sentiment analyzer")
 			return
+		case <-ticker.C:
 		case msg := <-previousChan:
 			if err := a.processMessage(msg, nextChan); err != nil {
 				slog.Error("Error processing message", slog.String("error", err.Error()))
-				continue // TODO: ack?
 			}
 			if err := msg.Ack(); err != nil {
 				slog.Error("Error acknowledging message", slog.String("error", err.Error()))
 			}
 		}
+		a.middleware.SendHeartbeat()
 	}
 }
 
-func (a *Analyzer) processMessage(msg common.Message, nextChan chan<- []byte) error {
+func (a *Analyzer) processMessage(msg middleware.Message, nextChan middleware.SenderQueue) error {
 	var batch common.Batch[common.Movie]
 	if err := json.Unmarshal(msg.Body, &batch); err != nil {
 		return fmt.Errorf("error unmarshalling message: %v", err)
 
 	}
-	slog.Debug("Received message", slog.String("message", string(msg.Body)))
+	//slog.Debug("Received message", slog.String("message", string(msg.Body)))
 
 	batchWithSentiment := a.analyzeSentiment(batch)
 	serializedBatch, err := json.Marshal(batchWithSentiment)
 	if err != nil {
 		return fmt.Errorf("error marshalling response: %v", err)
 	}
-	nextChan <- serializedBatch
+	if err := nextChan.Send(serializedBatch); err != nil {
+		return fmt.Errorf("error sending batch: %w", err)
+	}
 	return nil
 }
 

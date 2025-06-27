@@ -26,7 +26,7 @@ func preprocessMovies(batch models.RawBatch[models.RawMovie], id string) common.
 		})
 	}
 
-	res := makeBatchMsg[common.Movie](batch.Header.Weight, movies, batch.Header.TotalWeight, id)
+	res := makeBatchMsg(batch.Header.Weight, movies, batch.Header.TotalWeight, id, batch.Header.BatchID)
 
 	return res
 }
@@ -45,7 +45,7 @@ func preprocessReviews(batch models.RawBatch[models.RawReview], id string) commo
 			Rating:  rating,
 		})
 	}
-	res := makeBatchMsg[common.Review](batch.Header.Weight, reviews, batch.Header.TotalWeight, id)
+	res := makeBatchMsg(batch.Header.Weight, reviews, batch.Header.TotalWeight, id, batch.Header.BatchID)
 
 	return res
 }
@@ -70,7 +70,7 @@ func preprocessCredits(batch models.RawBatch[models.RawCredits], id string) comm
 		})
 	}
 
-	res := makeBatchMsg[common.Credit](batch.Header.Weight, credits, batch.Header.TotalWeight, id)
+	res := makeBatchMsg(batch.Header.Weight, credits, batch.Header.TotalWeight, id, batch.Header.BatchID)
 
 	return res
 }

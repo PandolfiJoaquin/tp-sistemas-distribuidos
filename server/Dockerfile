@@ -17,8 +17,13 @@ COPY server/${NODE}/ ${NODE}/
 
 RUN go build -o /build/app tp-sistemas-distribuidos/server/${NODE}
 
-FROM busybox:1.32.1
+FROM alpine:3.21.3
 LABEL app="imdb"
+
+ARG NODE
+RUN if [ "$NODE" = "healer" ]; then \
+        apk add --no-cache docker; \
+    fi
 
 COPY --from=builder /build/app /
 

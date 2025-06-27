@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	logger, err := log.SetupLogger("preprocessor", false, nil)
+	logger, err := log.SetupLogger("preprocessor", nil)
 	if err != nil {
 		fmt.Printf("error creating logger: %v", err)
 		return

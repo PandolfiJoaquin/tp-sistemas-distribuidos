@@ -3,19 +3,28 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"os/signal"
 	"pkg/models"
 	"sync"
 	"syscall"
+	"time"
 	"tp-sistemas-distribuidos/server/common"
+	"tp-sistemas-distribuidos/server/common/middleware"
 )
 
 const (
-	rabbitHost = "rabbitmq"
-	nextStep   = "to-preprocess"
+	dataPath          = "data/"
+	clientsFile       = "clients.json"
+	rabbitHost        = "rabbitmq"
+	nextStep          = "to-preprocess"
+	flushExchange     = "flush-exchange"
+	flushTopic        = "client-flush"
+	heartbeatInterval = 1 * time.Second
 )
 
 type GatewayConfig struct {
@@ -33,9 +42,12 @@ func NewGatewayConfig(rabbitUser, rabbitPass, port string) GatewayConfig {
 }
 
 type Gateway struct {
-	middleware    *common.Middleware
-	resultsQueues map[int]<-chan common.Message
-	toPreprocess  chan<- []byte
+	middleware    *middleware.Middleware
+	resultsQueues map[int]<-chan middleware.Message
+	flushQueue    middleware.SenderQueue
+	toPreprocess  middleware.SenderQueue
+	deadChan      chan deadState
+	ClientMutex   sync.Mutex
 	config        GatewayConfig
 	listener      net.Listener
 	clients       map[string]*Client
@@ -48,8 +60,10 @@ func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
 	gateway := &Gateway{
 		config:        config,
 		running:       true,
-		resultsQueues: make(map[int]<-chan common.Message),
+		resultsQueues: make(map[int]<-chan middleware.Message),
 		clients:       make(map[string]*Client),
+		deadChan:      make(chan deadState),
+		ClientMutex:   sync.Mutex{},
 	}
 
 	listener, err := net.Listen("tcp", ":"+port)
@@ -65,41 +79,48 @@ func NewGateway(rabbitUser, rabbitPass, port string) (*Gateway, error) {
 		return nil, err
 	}
 
+	slog.Info("starting gateway")
 	return gateway, nil
 }
 
 func (g *Gateway) middlewareSetup() error {
-	middleware, err := common.NewMiddleware(g.config.RabbitUser, g.config.RabbitPass, rabbitHost)
+	middleware, err := middleware.NewMiddleware(g.config.RabbitUser, g.config.RabbitPass, rabbitHost)
 	if err != nil {
 		slog.Error("error creating middleware", slog.String("error", err.Error()))
-		return err
+		return fmt.Errorf("error creating middleware: %w", err)
 	}
 	g.middleware = middleware
 
-	processorChan, err := g.middleware.GetChanToSend(nextStep)
+	processorChan, err := g.middleware.GetQueueToSend(nextStep)
 	if err != nil {
 		slog.Error("error getting channel to send", slog.String("queue", nextStep), slog.String("error", err.Error()))
-		return err
+		return fmt.Errorf("error getting channel to send: %w", err)
 	}
 
 	for i := 1; i <= 5; i++ {
 		resultsChan, err := g.middleware.GetChanToRecv(fmt.Sprintf("q%d-results", i))
 		if err != nil {
 			slog.Error("error getting channel to receive", slog.String("queue", fmt.Sprintf("q%d-results", i)), slog.String("error", err.Error()))
-			return err
+			return fmt.Errorf("error getting channel to receive: %w", err)
 		}
 		g.resultsQueues[i] = resultsChan
 	}
 
 	g.toPreprocess = processorChan
 
+	flushChan, err := g.middleware.GetFanoutQueueToSend(flushExchange)
+	if err != nil {
+		slog.Error("error getting flush channel", slog.String("error", err.Error()))
+		return fmt.Errorf("error getting flush channel: %w", err)
+	}
+	g.flushQueue = flushChan
+
 	return nil
 }
 
 func (g *Gateway) listen() {
 	for g.running {
-		g.reapDeadClients()
-		slog.Info("Waiting for client connection")
+		slog.Debug("Waiting for client connection")
 		conn, err := g.listener.Accept()
 		if err != nil {
 			if g.running { // only log if not shutting down
@@ -107,9 +128,15 @@ func (g *Gateway) listen() {
 			}
 			return
 		}
-		client := NewClient(conn, &g.toPreprocess)
+		client := NewClient(conn, g.toPreprocess, g.flushQueue, g.deadChan)
 		slog.Info("Client connected", slog.String("address", conn.RemoteAddr().String()))
+		g.ClientMutex.Lock()
 		g.clients[client.GetId()] = client
+		if err := g.saveClients(); err != nil {
+			slog.Error("error saving clients", slog.String("error", err.Error()))
+			continue
+		}
+		g.ClientMutex.Unlock()
 		fmt.Printf("Client %s connected\n", client.GetId())
 		go client.Run()
 	}
@@ -119,21 +146,60 @@ func (g *Gateway) signalHandler(wg *sync.WaitGroup) {
 	defer wg.Done()
 	// Hears SIGINT and SIGTERM signals
 	// and closes the listener and current connection
-	select {
-	case <-g.ctx.Done():
-		slog.Info("Received shutdown signal")
-		g.running = false
-		if err := g.listener.Close(); err != nil {
-			slog.Error("error closing listener", slog.String("error", err.Error()))
-		}
-		slog.Info("listener closed")
+	<-g.ctx.Done()
+	slog.Info("Received shutdown signal")
+	g.running = false
+	if err := g.listener.Close(); err != nil {
+		slog.Error("error closing listener", slog.String("error", err.Error()))
 	}
+	slog.Info("listener closed")
+}
+
+func (g *Gateway) flushOldClients() error {
+	// Reads the clients file of old gateway and sends a message to flush each client
+	data, err := os.ReadFile(dataPath + clientsFile)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) { // If the file does not exist, we just ignore it, means no old clients
+			return fmt.Errorf("error reading old clients: %w", err)
+		}
+		return nil
+	}
+
+	clients := make([]common.FlushClient, 0)
+	if err := json.Unmarshal(data, &clients); err != nil {
+		return fmt.Errorf("error unmarshalling old clients: %w", err)
+	}
+
+	if len(clients) > 0 {
+		slog.Info("Flushing old clients", slog.Int("count", len(clients)))
+	}
+
+	for _, c := range clients {
+		clientData, err := json.Marshal(c)
+		if err != nil {
+			return fmt.Errorf("error marshalling old client: %w", err)
+		}
+		err = g.flushQueue.Send(clientData)
+		slog.Debug("Flushing old client", slog.String("client_id", c.ClientID))
+		if err != nil {
+			return fmt.Errorf("error flushing old clients: %w", err)
+		}
+	}
+
+	err = os.Remove(dataPath + clientsFile)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) { // If the file does not exist, we just ignore it
+			return fmt.Errorf("error removing old clients file: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (g *Gateway) Start() {
 	wg := &sync.WaitGroup{}
 
-	defer func(middleware *common.Middleware) {
+	defer func(middleware *middleware.Middleware) {
 		err := middleware.Close()
 		if err != nil {
 			slog.Error("error closing middleware", slog.String("error", err.Error()))
@@ -144,9 +210,16 @@ func (g *Gateway) Start() {
 	g.ctx = ctx
 	defer cancel()
 
-	wg.Add(2)
+	err := g.flushOldClients()
+	if err != nil {
+		slog.Error("error flushing old clients", slog.String("error", err.Error()))
+		return
+	}
+
+	wg.Add(3)
 	go g.signalHandler(wg)
 	go g.processMessages(wg)
+	go g.persistencyHandler(wg)
 	g.listen()
 	wg.Wait()
 
@@ -167,12 +240,16 @@ func (g *Gateway) closeClients() {
 
 func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 	defer wg.Done()
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
 	for {
 		var err error
 		select {
 		case <-g.ctx.Done():
+			slog.Info("Context done, stopping message processing")
 			return
-
+		case <-ticker.C:
 		case msg := <-g.resultsQueues[1]:
 			err = g.handleResult(msg, 1)
 		case msg := <-g.resultsQueues[2]:
@@ -189,26 +266,14 @@ func (g *Gateway) processMessages(wg *sync.WaitGroup) {
 			slog.Error("error processing message", slog.String("error", err.Error()))
 			return
 		}
+		g.middleware.SendHeartbeat()
 	}
 }
 
-func (g *Gateway) reapDeadClients() {
-	for id, client := range g.clients {
-		if client.IsDead() {
-			slog.Info("Client is dead", slog.String("id", id))
-			delete(g.clients, id)
-		}
-	}
-}
-
-func (g *Gateway) handleResult1(msg common.Message) (*models.ResultWithId, error) {
+func (g *Gateway) handleResult1(msg middleware.Message) (*models.ResultWithId, error) {
 	batch, err := g.consumeBatch(msg.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error consuming results: %w", err)
-	}
-
-	if len(batch.Data) == 0 && !batch.IsEof() {
-		return nil, nil
 	}
 
 	results := MovieToQResult(batch)
@@ -220,17 +285,12 @@ func (g *Gateway) handleResult1(msg common.Message) (*models.ResultWithId, error
 	return &resultsWithId, err
 }
 
-func (g *Gateway) handleResults2(msg common.Message) (*models.ResultWithId, error) {
+func (g *Gateway) handleResults2(msg middleware.Message) (*models.ResultWithId, error) {
 	var top5Countries common.Top5Countries
 	if err := json.Unmarshal(msg.Body, &top5Countries); err != nil {
 		return nil, fmt.Errorf("error unmarshalling top 5 countries: %w", err)
 	}
 
-	if len(top5Countries.Countries) != 5 {
-		return nil, fmt.Errorf("expected 5 countries, got %d", len(top5Countries.Countries))
-	}
-
-	slog.Info("Top 5 countries", slog.Any("top5Countries", top5Countries))
 
 	results := Top5CountriesToQResult(top5Countries)
 	resultsWithId := models.ResultWithId{
@@ -241,12 +301,11 @@ func (g *Gateway) handleResults2(msg common.Message) (*models.ResultWithId, erro
 	return &resultsWithId, nil
 }
 
-func (g *Gateway) handleResults3(msg common.Message) (*models.ResultWithId, error) {
+func (g *Gateway) handleResults3(msg middleware.Message) (*models.ResultWithId, error) {
 	var bestAndWorstMovies common.BestAndWorstMovies
 	if err := json.Unmarshal(msg.Body, &bestAndWorstMovies); err != nil {
 		return nil, fmt.Errorf("error unmarshalling best and worst movies: %w", err)
 	}
-	slog.Info("Best and worst movies", slog.Any("bestAndWorstMovies", bestAndWorstMovies))
 
 	results := BestAndWorstToQResult(bestAndWorstMovies)
 	resultsWithId := models.ResultWithId{
@@ -256,13 +315,11 @@ func (g *Gateway) handleResults3(msg common.Message) (*models.ResultWithId, erro
 	return &resultsWithId, nil
 }
 
-func (g *Gateway) handleResults4(msg common.Message) (*models.ResultWithId, error) {
+func (g *Gateway) handleResults4(msg middleware.Message) (*models.ResultWithId, error) {
 	var top10Actors common.Top10Actors
 	if err := json.Unmarshal(msg.Body, &top10Actors); err != nil {
 		return nil, fmt.Errorf("error unmarshalling top 10 actors: %w", err)
 	}
-
-	slog.Info("Top 10 actors", slog.Any("top10Actors", top10Actors))
 
 	results := Top10ActorsToQResult(top10Actors)
 	resultsWithId := models.ResultWithId{
@@ -272,13 +329,11 @@ func (g *Gateway) handleResults4(msg common.Message) (*models.ResultWithId, erro
 	return &resultsWithId, nil
 }
 
-func (g *Gateway) handleResults5(msg common.Message) (*models.ResultWithId, error) {
+func (g *Gateway) handleResults5(msg middleware.Message) (*models.ResultWithId, error) {
 	var sentimentProfitRatio common.SentimentProfitRatioAverage
 	if err := json.Unmarshal(msg.Body, &sentimentProfitRatio); err != nil {
 		return nil, fmt.Errorf("error unmarshalling sentiment profit ratio: %w", err)
 	}
-
-	slog.Info("received query 5 results", slog.Any("sentiment profit ratio", sentimentProfitRatio))
 
 	results := SentimentToQResult(sentimentProfitRatio)
 	resultsWithId := models.ResultWithId{
@@ -288,7 +343,9 @@ func (g *Gateway) handleResults5(msg common.Message) (*models.ResultWithId, erro
 	return &resultsWithId, nil
 }
 
-func (g *Gateway) handleResult(msg common.Message, query int) error {
+func (g *Gateway) handleResult(msg middleware.Message, query int) error {
+	defer msg.Ack()
+	defer g.ClientMutex.Unlock()
 	var results *models.ResultWithId
 	var err error
 	switch query {
@@ -309,18 +366,17 @@ func (g *Gateway) handleResult(msg common.Message, query int) error {
 	}
 
 	if results != nil { // can be nil due to empty results in query 1
-		slog.Info("Received results", slog.String("clientId", results.Id), slog.Int("query", query))
+		slog.Info("Received results", slog.Int("query", query), slog.String("client_id", results.Id))
+		g.ClientMutex.Lock()
 		client, ok := g.clients[results.Id]
+
 		if !ok {
-			return fmt.Errorf("client %s not found", results.Id)
+			return nil
 		}
+
 		if !client.IsDead() {
 			client.sendResult(&results.Results)
 		}
-	}
-
-	if err := msg.Ack(); err != nil {
-		return fmt.Errorf("error acknowledging message: %w", err)
 	}
 	return nil
 }
@@ -333,30 +389,64 @@ func (g *Gateway) consumeBatch(msg []byte) (common.Batch[common.Movie], error) {
 	return batch, nil
 }
 
-//func (g *Gateway) publishCleanupBatch() error {
-//	// TODO: tidy up this code
-//	cleanHeader := models.Header{
-//		Weight:      0,
-//		TotalWeight: -2,
-//	}
-//
-//	emptyBatch := models.RawBatch[any]{ // no data
-//		Header: cleanHeader,
-//	}
-//
-//	err := publishBatch(emptyBatch, "movies", g.toPreprocess)
-//	if err != nil {
-//		return fmt.Errorf("error publishing movies batch: %w", err)
-//	}
-//
-//	err = publishBatch(emptyBatch, "reviews", g.toPreprocess)
-//	if err != nil {
-//		return fmt.Errorf("error publishing reviews batch: %w", err)
-//	}
-//
-//	err = publishBatch(emptyBatch, "credits", g.toPreprocess)
-//	if err != nil {
-//		return fmt.Errorf("error publishing credits batch: %w", err)
-//	}
-//	return nil
-//}
+func (g *Gateway) saveClients() error {
+	clients := make([]common.FlushClient, 0, len(g.clients))
+	for id := range g.clients {
+		clients = append(clients, common.FlushClient{ClientID: id})
+	}
+
+	data, err := json.Marshal(clients)
+	if err != nil {
+		return fmt.Errorf("error marshalling clients: %w", err)
+	}
+
+	err = common.AtomicWriteFile(dataPath+clientsFile, data, nil)
+	if err != nil {
+		return fmt.Errorf("error writing clients to file: %w", err)
+	}
+	return nil
+}
+
+type deadState struct {
+	ClientID          string
+	finishedCorrectly bool
+}
+
+func (g *Gateway) persistencyHandler(wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		select {
+		case deadClientState := <-g.deadChan:
+			slog.Debug("Received dead client in handler", slog.String("client_id", deadClientState.ClientID))
+			if _, ok := g.clients[deadClientState.ClientID]; ok {
+				slog.Debug("Removing dead client", slog.String("client_id", deadClientState.ClientID))
+				g.ClientMutex.Lock()
+				delete(g.clients, deadClientState.ClientID)
+				err := g.saveClients()
+				g.ClientMutex.Unlock()
+				if err != nil {
+					slog.Error("error saving clients after removing dead client", slog.String("error", err.Error()))
+				} else {
+					slog.Info("Dead client removed and clients saved", slog.String("client_id", deadClientState.ClientID))
+				}
+				if !deadClientState.finishedCorrectly {
+					flushMsg := common.FlushClient{ClientID: deadClientState.ClientID}
+					data, err := json.Marshal(flushMsg)
+					if err != nil {
+						slog.Error("error marshalling dead client for flush", slog.String("error", err.Error()))
+					} else {
+						if err := g.flushQueue.Send(data); err != nil {
+							slog.Error("error sending dead client to flush", slog.String("error", err.Error()))
+						} else {
+							slog.Info("Dead client sent to flush", slog.String("client_id", deadClientState.ClientID))
+						}
+					}
+				}
+			} else {
+				slog.Warn("Dead client not found in clients map", slog.String("client_id", deadClientState.ClientID))
+			}
+		case <-g.ctx.Done():
+			return
+		}
+	}
+}

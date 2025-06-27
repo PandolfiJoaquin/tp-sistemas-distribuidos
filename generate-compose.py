@@ -1,14 +1,17 @@
 import json
 import sys
 
+VOLUME = "    volumes:\n      - ./data/{type}/id-{node_id}/:/data/\n"
+
 YAML_FILE = "docker-compose.yaml"
 
-# nodos que inyectan JOINER_SHARDS automáticamente
+# nodes that inject JOINER_SHARDS automatically
 NEEDS_SHARDS = {"preprocessor", "production-filter"}
+NEEDS_VOLUME = {"joiner", "fina-reducer"}
 
 QUERY_AMNT = 5
 
-# plantillas
+# templates
 BASE_NODE = """
   {svc_name}:
     build:
@@ -25,6 +28,25 @@ BASE_NODE = """
         restart: true
 """
 
+HEALER_NODE= """
+  {svc_name}:
+    build:
+      dockerfile: ./server/Dockerfile
+      args:
+        NODE: {node}
+    container_name: {svc_name}
+    environment:
+      - HEALER_ID={node_id}
+      - DELAY=3
+      - HEALERS_AMOUNT={healers_amt}
+      - DEBUG={debug}
+    depends_on:
+      - gateway
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yaml:/docker-compose.yaml
+"""
+
 CLIENT_NODE = """
   client{idx}:
     container_name: client{idx}
@@ -35,46 +57,12 @@ CLIENT_NODE = """
       - MOVIES_FILE={movies_file}
       - REVIEWS_FILE={reviews_file}
       - CREDITS_FILE={credits_file}
+      - DEBUG={debug}
     depends_on:
       - gateway
     volumes:
       - ./archive/:/home/app/archive/
       - ./client-results/:/home/app/results/
-"""
-
-FINAL_REDUCER_NODE = """
-  final-reducer-q{idx}:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-        NODE: final-reducer
-    container_name: final-reducer-q{idx}
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-      - QUERY_NUM={idx}
-      - JOINER_SHARDS={joiners}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
-"""
-
-JOINER_NODE = """
-  joiner-{idx}:
-    build:
-      dockerfile: ./server/Dockerfile
-      args:
-        NODE: joiner
-    container_name: joiner-{idx}
-    environment:
-      - RABBITMQ_DEFAULT_USER=monke
-      - RABBITMQ_DEFAULT_PASS=joaco1
-      - JOINER_ID={idx}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
 """
 
 RABBITMQ_SERVICE = """
@@ -90,71 +78,140 @@ RABBITMQ_SERVICE = """
     volumes:
       - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
-      interval: 2s
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 15
 """
+
+def get_node_env(node_type, debug=False, node_id=None, joiners=None):
+    """Generate environment variables for a node based on its type"""
+    env_vars = []
+    if debug:
+        env_vars.append("\n      - DEBUG=1")
+    if node_type == "final-reducer":
+        env_vars += [
+            f"\n      - QUERY_NUM={node_id}",
+            f"\n      - JOINER_SHARDS={joiners}"
+        ]
+    elif node_type == "joiner":
+        env_vars.append(f"\n      - JOINER_ID={node_id}")
+    elif node_type in NEEDS_SHARDS:
+        env_vars.append(f"\n      - JOINER_SHARDS={joiners}")
+
+    return "".join(env_vars)
 
 def create_compose(cfg):
     clients = cfg["clients"]
     joiners = cfg["joiners"]
     nodes    = cfg["nodes"]    # dict: { "preprocessor": n, "production-filter": m, ... }
+    files    = cfg["files"]    # dict: { "movies": [paths], "reviews": [paths], ... }
+    healer   = cfg["healer"]
+    debug   = cfg["logLevel"]  == "DEBUG"
 
     compose = "name: tp-dist\nservices:\n"
 
     # Gateway
+    extra_env = "\n      - DEBUG=1" if debug else ""
     compose += BASE_NODE.format(
         svc_name="gateway",
         node="gateway",
-        extra_env=""
+        extra_env=extra_env
     )
+    compose += VOLUME.format(node_id=1, type="gateway")
 
-    # RabbitMQ
+    # RabbitM
     compose += RABBITMQ_SERVICE
 
     # Nodos Dinamicos
     for node, count in nodes.items():
         for i in range(1, count+1):
             svc_name = f"{node}-{i}" if count > 1 else node
-            extra = f"\n      - JOINER_SHARDS={joiners}" if node in NEEDS_SHARDS else ""
-            compose += BASE_NODE.format(svc_name=svc_name, node=node, extra_env=extra)
+            extra_env = get_node_env(node, debug, joiners=joiners)
+            compose += BASE_NODE.format(
+                svc_name=svc_name,
+                node=node,
+                extra_env=extra_env
+            )
 
     # Final Reducer
     for q in range(2, QUERY_AMNT+1):
-        compose += FINAL_REDUCER_NODE.format(idx=q, joiners=joiners)
+        svc_name = f"final-reducer-q{q}"
+        extra_env = get_node_env("final-reducer", debug, node_id=q, joiners=joiners)
+        compose += BASE_NODE.format(
+            svc_name=svc_name,
+            node="final-reducer",
+            extra_env=extra_env
+        ) + VOLUME.format(node_id=q, type="final-reducer")
+
 
     # Joiners
     for j in range(1, joiners+1):
-        compose += JOINER_NODE.format(idx=j)
+        svc_name = f"joiner-{j}"
+        extra_env = get_node_env("joiner", debug, node_id=j)
+        compose += BASE_NODE.format(
+            svc_name=svc_name,
+            node="joiner",
+            extra_env=extra_env
+        ) + VOLUME.format(node_id=j, type="joiner")
+
+    # Healer
+    for h in range (1, healer+1):
+        svc_name = f"healer-{h}"
+        compose += HEALER_NODE.format(
+            svc_name=svc_name,
+            node="healer",
+            node_id=h,
+            healers_amt=healer,
+            debug=1 if debug else 0
+        )
 
     # Clients
     print(f"   • clients ×{clients}")
     for c in range(1, clients+1):
-        review_file = "archive/ratings.csv" if c % 2 == 1 else "archive/ratings_small.csv" # Multiples of 2 use small dataset
-        compose += CLIENT_NODE.format(idx=c, movies_file="archive/movies_metadata.csv", reviews_file=review_file, credits_file="archive/credits.csv")
+        # Cycle through the file arrays using module
+        movies_file = files["movies"][(c-1) % len(files["movies"])]
+        reviews_file = files["reviews"][(c-1) % len(files["reviews"])]
+        credits_file = files["credits"][(c-1) % len(files["credits"])]
+
+        compose += CLIENT_NODE.format(
+            idx=c,
+            movies_file=movies_file,
+            reviews_file=reviews_file,
+            credits_file=credits_file,
+            debug=1 if debug else 0
+        )
 
     with open(YAML_FILE, "w") as f:
         f.write(compose)
 
     print(f"   • joiners ×{joiners}")
+    print(f"   • healers ×{healer}")
     for node, count in nodes.items():
         print(f"   • {node} ×{count}")
 
 def main():
     if len(sys.argv) != 2:
-        print("Uso: python generate-compose.py <config.json>")
+        print("Use: python generate-compose.py <config.json>")
         sys.exit(1)
 
     try:
         cfg = json.load(open(sys.argv[1]))
     except Exception as e:
-        print(f"Error al leer config.json: {e}")
+        print(f"Error reading {sys.argv[1]}: {e}")
         sys.exit(1)
 
-    for key in ("clients", "joiners", "nodes"):
+    for key in ("clients", "joiners", "nodes", "files", "healer"):
         if key not in cfg:
-            print(f"Falta la clave '{key}' en el JSON")
+            print(f"Missing key '{key}' in JSON")
+            sys.exit(1)
+
+    for file_type, file_list in cfg["files"].items():
+        if not isinstance(file_list, list):
+            print(f"Error: '{file_type}' must be a list of files")
+            sys.exit(1)
+        if len(file_list) == 0:
+            print(f"Error: '{file_type}' must not be empty")
             sys.exit(1)
 
     create_compose(cfg)

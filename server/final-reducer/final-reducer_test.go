@@ -12,24 +12,24 @@ import (
 func TestCalculateTop5Countries(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    map[pkg.Country]uint64
+		input    map[string]uint64
 		expected common.Top5Countries
 	}{
 		{
 			name: "normal case with more than 5 countries",
-			input: map[pkg.Country]uint64{
-				{Code: "US", Name: "USA"}:     1000,
-				{Code: "CN", Name: "China"}:   2000,
-				{Code: "JP", Name: "Japan"}:   1500,
-				{Code: "DE", Name: "Germany"}: 800,
-				{Code: "FR", Name: "France"}:  700,
-				{Code: "GB", Name: "UK"}:      600,
+			input: map[string]uint64{
+				"US,United States":  1000,
+				"CN,China":          2000,
+				"JP,Japan":          1500,
+				"DE,Germany":        800,
+				"FR,France":         700,
+				"GB,United Kingdom": 600,
 			},
 			expected: common.Top5Countries{
 				Countries: []common.CountryBudget{
 					{Country: pkg.Country{Code: "CN", Name: "China"}, Budget: 2000},
 					{Country: pkg.Country{Code: "JP", Name: "Japan"}, Budget: 1500},
-					{Country: pkg.Country{Code: "US", Name: "USA"}, Budget: 1000},
+					{Country: pkg.Country{Code: "US", Name: "United States"}, Budget: 1000},
 					{Country: pkg.Country{Code: "DE", Name: "Germany"}, Budget: 800},
 					{Country: pkg.Country{Code: "FR", Name: "France"}, Budget: 700},
 				},
@@ -37,23 +37,23 @@ func TestCalculateTop5Countries(t *testing.T) {
 		},
 		{
 			name:     "empty map",
-			input:    map[pkg.Country]uint64{},
+			input:    map[string]uint64{},
 			expected: common.Top5Countries{},
 		},
 		{
 			name: "less than 5 countries",
-			input: map[pkg.Country]uint64{
-				{Code: "US", Name: "USA"}:   1000,
-				{Code: "CN", Name: "China"}: 2000,
-				{Code: "JP", Name: "Japan"}: 1500,
+			input: map[string]uint64{
+				"US,United States": 1000,
+				"CN,China":         2000,
+				"JP,Japan":         1500,
 			},
 			expected: common.Top5Countries{
 				Countries: []common.CountryBudget{
 					{Country: pkg.Country{Code: "CN", Name: "China"}, Budget: 2000},
 					{Country: pkg.Country{Code: "JP", Name: "Japan"}, Budget: 1500},
-					{Country: pkg.Country{Code: "US", Name: "USA"}, Budget: 1000},
-					{Country: pkg.Country{Code: "US", Name: "USA"}, Budget: 1000},
-					{Country: pkg.Country{Code: "US", Name: "USA"}, Budget: 1000},
+					{Country: pkg.Country{Code: "US", Name: "United States"}, Budget: 1000},
+					{Country: pkg.Country{Code: "US", Name: "United States"}, Budget: 1000},
+					{Country: pkg.Country{Code: "US", Name: "United States"}, Budget: 1000},
 				},
 			},
 		},

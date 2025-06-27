@@ -30,3 +30,7 @@ go.work.sum
 
 archive/
 client-results/
+data/
+server/data
+
+client-results/

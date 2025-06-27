@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"pkg/models"
+	"sync"
 )
 
 func SendBatchEOF(conn net.Conn, total int32) error {
@@ -34,16 +35,23 @@ func SendData[T any](conn net.Conn, data []T) error {
 	if err := sendBatch(conn, batch); err != nil {
 		return err
 	}
+
 	return nil
 }
 
-func RecvBatch[T any](conn net.Conn) (models.RawBatch[T], error) {
+func RecvBatch[T any](conn net.Conn, connMutex *sync.Mutex) (models.RawBatch[T], error) {
 	var batch models.RawBatch[T]
 	var err error
 
 	batch, err = recvBatch[T](conn)
 	if err != nil {
 		return batch, err
+	}
+
+	connMutex.Lock()
+	defer connMutex.Unlock()
+	if err := sendAck(conn, int(batch.Header.Weight)); err != nil {
+		return batch, fmt.Errorf("error sending ack: %w", err)
 	}
 
 	return batch, nil
@@ -59,6 +67,7 @@ func SendQueryResults(conn net.Conn, results models.TotalQueryResults) error {
 		QueryId: results.QueryId,
 		Items:   itemsJson,
 		Last:    results.Last,
+		Header:  results.Header,
 	}
 
 	err = sendResults(conn, rawResults)
@@ -116,5 +125,28 @@ func RecvQueryResults(conn net.Conn) (models.TotalQueryResults, error) {
 	totalResults.QueryId = results.QueryId
 	totalResults.Items = resultsArr
 	totalResults.Last = results.Last
+	totalResults.Header = results.Header
 	return totalResults, nil
+}
+
+func RecvAck(conn net.Conn) (int, error) {
+	acked, err := recvAck(conn)
+	if err != nil {
+		return -1, err
+	}
+
+	return acked, nil
+}
+
+func RecvTypeOfResults(conn net.Conn) (int, error) {
+	resType, err := recvTypeOfResults(conn)
+	if err != nil {
+		return -1, err
+	}
+
+	if resType != QueryMsg && resType != AckMsg {
+		return -1, fmt.Errorf("invalid response type: %d", resType)
+	}
+
+	return resType, nil
 }

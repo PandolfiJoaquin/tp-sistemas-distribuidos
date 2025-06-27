@@ -1,28 +1,40 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
 	"pkg/communication"
+	"time"
 	"tp-sistemas-distribuidos/client/utils"
 )
 
+// Monke: 2
+// Joaco: 20
+const msToSleep = 5
+
 type Sender[T any] struct {
-	conn      *net.Conn
-	dataType  string // for logging
-	newReader func(string, int) (utils.BatchReader[T], error)
-	path      string
-	batchSize int
+	conn       *net.Conn
+	dataType   string // for logging
+	newReader  func(string, int) (utils.BatchReader[T], error)
+	path       string
+	batchSize  int
+	signalCtx  context.Context
+	ctx        context.Context
+	ackChannel <-chan int
 }
 
-func NewSender[T any](conn *net.Conn, path string, batchSize int, newReader func(string, int) (utils.BatchReader[T], error), dataType string) *Sender[T] {
+func NewSender[T any](conn *net.Conn, path string, batchSize int, newReader func(string, int) (utils.BatchReader[T], error), dataType string, ackChannel <-chan int, signalCtx context.Context, ctx context.Context) *Sender[T] {
 	return &Sender[T]{
-		conn:      conn,
-		dataType:  dataType,
-		newReader: newReader,
-		path:      path,
-		batchSize: batchSize,
+		conn:       conn,
+		dataType:   dataType,
+		newReader:  newReader,
+		path:       path,
+		batchSize:  batchSize,
+		signalCtx:  signalCtx,
+		ctx:        ctx,
+		ackChannel: ackChannel,
 	}
 }
 
@@ -32,7 +44,7 @@ func (s *Sender[T]) Send() error {
 		return fmt.Errorf("error creating %s reader: %w", s.dataType, err)
 	}
 
-	total, err := sendAllData(reader, *s.conn)
+	total, err := s.sendAllData(reader)
 	if err != nil {
 		return fmt.Errorf("error sending %s: %w", s.dataType, err)
 	}
@@ -44,19 +56,36 @@ func (s *Sender[T]) Send() error {
 	return nil
 }
 
-func readAndSendData[T any](reader utils.BatchReader[T], conn net.Conn) error {
-	batch, err := reader.ReadBatch()
-	if err != nil {
-		return fmt.Errorf("error reading batch: %w", err)
+func (s *Sender[T]) SendBatch(batch []T, total int, last bool) error {
+	var err error
+	if last {
+		slog.Debug("Sending EOF batch", slog.Any("type", s.dataType), slog.Any("header", batch))
+		err = communication.SendBatchEOF(*s.conn, int32(total))
+	} else {
+		err = communication.SendData(*s.conn, batch)
 	}
-	err = communication.SendData[T](conn, batch)
+
 	if err != nil {
-		return fmt.Errorf("error sending data: %w", err)
+		return fmt.Errorf("error sending %s batch: %w", s.dataType, err)
 	}
+
+	select {
+	case <-s.signalCtx.Done():
+		slog.Info("Context done, stopping sending data")
+	case <-s.ctx.Done():
+	case ack := <-s.ackChannel:
+		if batch == nil && ack != 0 {
+			return fmt.Errorf("eof ack value mismatch: expected 0, got %d", ack)
+		} else if batch != nil && ack != len(batch) {
+			return fmt.Errorf("ack value mismatch: expected %d, got %d", len(batch), ack)
+		}
+	}
+
+	time.Sleep(time.Duration(msToSleep) * time.Millisecond)
 	return nil
 }
 
-func sendAllData[T any](reader utils.BatchReader[T], conn net.Conn) (int, error) {
+func (s *Sender[T]) sendAllData(reader utils.BatchReader[T]) (int, error) {
 	defer func(reader utils.BatchReader[T]) {
 		err := reader.Close()
 		if err != nil {
@@ -65,13 +94,23 @@ func sendAllData[T any](reader utils.BatchReader[T], conn net.Conn) (int, error)
 	}(reader)
 
 	for !reader.Finished() {
-		err := readAndSendData(reader, conn)
+		batch, err := reader.ReadBatch()
 		if err != nil {
-			return 0, fmt.Errorf("error sending data: %w", err)
+			return -1, fmt.Errorf("error reading batch: %w", err)
+		}
+		if batch == nil {
+			slog.Debug("Received nil batch, stopping sending data")
+			break
+		}
+		err = s.SendBatch(batch, -1, false)
+		if err != nil {
+			return -1, fmt.Errorf("error sending batch : %w", err)
 		}
 	}
 
-	err := communication.SendBatchEOF(conn, int32(reader.TotalRead()))
+	// Send EOF
+	slog.Debug("Sending EOF In sendAllData", slog.Any("type", s.dataType))
+	err := s.SendBatch(nil, reader.TotalRead(), true)
 	if err != nil {
 		return 0, fmt.Errorf("error sending EOF: %w", err)
 	}

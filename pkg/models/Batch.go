@@ -3,6 +3,7 @@ package models
 type Header struct {
 	Weight      uint32 `json:"weight"`
 	TotalWeight int32  `json:"total_weight"`
+	BatchID     int    `json:"batch_id"`
 }
 
 type RawBatch[T any] struct {
@@ -11,5 +12,5 @@ type RawBatch[T any] struct {
 }
 
 func (b *RawBatch[T]) IsEof() bool {
-	return b.Header.TotalWeight > 0
+	return b.Header.TotalWeight >= 0
 }

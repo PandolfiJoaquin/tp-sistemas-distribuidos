@@ -7,6 +7,25 @@ import (
 	"io"
 	"os"
 	"pkg/models"
+	"strings"
+)
+
+var (
+	MovieHeadersActual = []string{
+		"adult", "belongs_to_collection", "budget", "genres", "homepage",
+		"id", "imdb_id", "original_language", "original_title", "overview",
+		"popularity", "poster_path", "production_companies", "production_countries",
+		"release_date", "revenue", "runtime", "spoken_languages", "status",
+		"tagline", "title", "video", "vote_average", "vote_count",
+	}
+
+	ReviewHeadersActual = []string{
+		"userId", "movieId", "rating", "timestamp",
+	}
+
+	CreditHeadersActual = []string{
+		"cast", "crew", "id",
+	}
 )
 
 type BatchReader[T any] interface {
@@ -198,6 +217,11 @@ func readAndParse[T any](reader *baseReader, parseFunc func([]string) (*T, error
 		}
 	}
 
+	if len(record) == 0 {
+		reader.finished = true
+		return nil, nil
+	}
+
 	if len(record) != expectedFields {
 		record, err = joinRecords(reader.reader, record, expectedFields)
 		if err != nil {
@@ -214,4 +238,45 @@ func readAndParse[T any](reader *baseReader, parseFunc func([]string) (*T, error
 
 	return parsedRecord, nil
 
+}
+
+func ValidateHeaders(filePath string, fileType string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("error opening file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+
+	headers, err := reader.Read()
+	if err != nil {
+		return fmt.Errorf("error reading header line from file %s: %w", filePath, err)
+	}
+
+	var expectedHeaders []string
+	switch strings.ToLower(fileType) {
+	case "movies":
+		expectedHeaders = MovieHeadersActual
+	case "reviews":
+		expectedHeaders = ReviewHeadersActual
+	case "credits":
+		expectedHeaders = CreditHeadersActual
+	default:
+		return fmt.Errorf("unknown file type %s for validation", fileType)
+	}
+
+	// Check header count
+	if len(headers) != len(expectedHeaders) {
+		return fmt.Errorf("header count mismatch in file %s: expected %d, got %d", filePath, len(expectedHeaders), len(headers))
+	}
+
+	// Check each header
+	for i, h := range headers {
+		if h != expectedHeaders[i] {
+			return fmt.Errorf("header mismatch in file %s: expected %s, got %s", filePath, expectedHeaders[i], h)
+		}
+	}
+
+	return nil
 }

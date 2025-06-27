@@ -1,51 +1,39 @@
 package common
 
-import "crypto/sha256"
+import (
+	"crypto/sha256"
+	"os"
+	"path/filepath"
+	"strings"
+)
 
-func Filter[T any](slice []T, predicate func(T) bool) []T {
-	var result []T
-	for _, item := range slice {
-		if predicate(item) {
-			result = append(result, item)
+// ScanDirectory scans a directory and returns all files that have prefix as prefix
+func ScanDirectory(dirPath string, prefix string) ([]string, error) {
+	var prefixFiles []string
+
+	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
 		}
-	}
-	return result
-}
 
-func First[T any](slice []T, predicate func(T) bool) *T {
-	for _, item := range slice {
-		if predicate(item) {
-			return &item
+		filename := filepath.Base(path)
+
+		if strings.HasPrefix(filename, prefix) {
+			prefixFiles = append(prefixFiles, path)
 		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
-	return nil
+
+	return prefixFiles, nil
 }
 
-func Map[T, U any](slice []T, mapper func(T) U) []U {
-	var result []U
-	for _, item := range slice {
-		result = append(result, mapper(item))
-	}
-	return result
-}
-
-func Sum[T uint32 | int32 | int | float64](slice []T) int {
-	sum := 0
-	for _, item := range slice {
-		sum += int(item)
-	}
-	return sum
-}
-
-func Flatten[T any](slices [][]T) []T {
-	var result []T
-	for _, slice := range slices {
-		result = append(result, slice...)
-	}
-	return result
-}
-
-func GetShard(movieId string, shards int) int {
-	hash := sha256.Sum256([]byte(movieId))
+// GetShard returns the shard number for a given id and the number of shards
+func GetShard(id string, shards int) int {
+	hash := sha256.Sum256([]byte(id))
 	return (int(hash[0]) % shards) + 1
 }

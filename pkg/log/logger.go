@@ -5,7 +5,8 @@ import (
 	"os"
 )
 
-func SetupLogger(appName string, debug bool, file *string) (*slog.Logger, error) {
+func SetupLogger(appName string, file *string) (*slog.Logger, error) {
+	debug := os.Getenv("DEBUG") == "1"
 	level := slog.LevelInfo
 	if debug {
 		level = slog.LevelDebug
@@ -20,13 +21,13 @@ func SetupLogger(appName string, debug bool, file *string) (*slog.Logger, error)
 		writer = f
 	}
 
-	handler := slog.NewJSONHandler(writer, &slog.HandlerOptions{
+	handler := slog.NewTextHandler(writer, &slog.HandlerOptions{
 		Level: level,
 		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
 			if attr.Key == slog.TimeKey {
 				return slog.Attr{
 					Key:   "timestamp",
-					Value: slog.StringValue(attr.Value.Time().Format("15:04.00")),
+					Value: slog.StringValue(attr.Value.Time().Format("04:05.000")),
 				}
 			}
 			return attr

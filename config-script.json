@@ -1,11 +1,25 @@
 {
-  "clients": 4,
+  "logLevel": "ariel",
+  "clients": 5,
   "joiners": 5,
+  "healer": 5,
   "nodes": {
     "preprocessor": 3,
     "production-filter": 2,
     "year-filter": 2,
     "sentiment-analyzer": 2,
     "reducer": 4
+  },
+  "files": {
+    "movies": [
+      "archive/movies_metadata.csv"
+    ],
+    "reviews": [
+      "archive/ratings_small.csv",
+      "archive/ratings.csv"
+    ],
+    "credits": [
+      "archive/credits.csv"
+    ]
   }
 }

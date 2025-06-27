@@ -69,15 +69,27 @@ func (c *Client) connect() error {
 	return nil
 }
 
-func (c *Client) sigtermHandler(ctx context.Context, finishedChan chan bool) {
+func (c *Client) sigtermHandler(signalCtx context.Context, ctx context.Context, cancel context.CancelFunc) {
 	select {
-	case <-ctx.Done():
-
+	case <-signalCtx.Done():
 		slog.Info("Received shutdown signal, closing client")
 		c.close()
-	case <-finishedChan:
-		return
+		cancel() // Closes the other context not the signal context
+	case <-ctx.Done():
 	}
+}
+
+func (c *Client) validateFiles() bool {
+	fileTypes := []string{"movies", "reviews", "credits"}
+	filesPath := []string{c.config.MoviesFile, c.config.ReviewsFile, c.config.CreditsFile}
+	for i, file := range filesPath {
+		err := utils.ValidateHeaders(file, fileTypes[i])
+		if err != nil {
+			slog.Error("Error validating file headers", slog.String("file", file), slog.String("type", fileTypes[i]), slog.String("error", err.Error()))
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Client) close() {
@@ -90,13 +102,17 @@ func (c *Client) close() {
 }
 
 func (c *Client) Start() {
-	finishedChan := make(chan bool)
+	if !c.validateFiles() {
+		return
+	}
 	wg := &sync.WaitGroup{}
 	// SIGINT and SIGTERM signal handling
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+	SignalCtx, cancelSignal := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancelSignal()
 
-	go c.sigtermHandler(ctx, finishedChan)
+	ctx, cancel := context.WithCancel(SignalCtx)
+
+	go c.sigtermHandler(SignalCtx, ctx, cancel)
 
 	err := c.connect()
 	if err != nil {
@@ -107,27 +123,29 @@ func (c *Client) Start() {
 
 	slog.Info("client connected to server", slog.String("serverAddress", c.config.ServerAddress))
 
+	AckChannel := make(chan int)
+
 	wg.Add(1)
-	go c.RecvAnswers(wg, ctx)
-	c.sendAllData()
+	go c.RecvAnswers(wg, SignalCtx, cancel, AckChannel)
+	c.sendAllData(SignalCtx, ctx, AckChannel)
 	wg.Wait()
-	close(finishedChan)
-	slog.Info("Shutting down client")
+	close(AckChannel)
 }
 
-func (c *Client) sendAllData() {
-	MovieSender := NewSender(&c.conn, c.config.MoviesFile, c.config.MaxBatchMovie, utils.NewMoviesReader, "movies")
+func (c *Client) sendAllData(SignalCtx context.Context, ctx context.Context, ackChannel <-chan int) {
+	defer slog.Debug("sendAllData finished", slog.Int("id", c.config.Id))
+	MovieSender := NewSender(&c.conn, c.config.MoviesFile, c.config.MaxBatchMovie, utils.NewMoviesReader, "movies", ackChannel, SignalCtx, ctx)
 	if err := MovieSender.Send(); err != nil {
 		c.checkSendError(err, "error sending movies")
 		return
 	}
-	ReviewSender := NewSender(&c.conn, c.config.ReviewsFile, c.config.MaxBatchReview, utils.NewReviewReader, "reviews")
+	ReviewSender := NewSender(&c.conn, c.config.ReviewsFile, c.config.MaxBatchReview, utils.NewReviewReader, "reviews", ackChannel, SignalCtx, ctx)
 	if err := ReviewSender.Send(); err != nil {
 		c.checkSendError(err, "error sending reviews")
 		return
 	}
 
-	CreditsSender := NewSender(&c.conn, c.config.CreditsFile, c.config.MaxBatchCredit, utils.NewCreditsReader, "credits")
+	CreditsSender := NewSender(&c.conn, c.config.CreditsFile, c.config.MaxBatchCredit, utils.NewCreditsReader, "credits", ackChannel, SignalCtx, ctx)
 	if err := CreditsSender.Send(); err != nil {
 		c.checkSendError(err, "error sending credits")
 		return
@@ -135,32 +153,39 @@ func (c *Client) sendAllData() {
 }
 
 func (c *Client) checkSendError(err error, msg string) {
-	// ignore EOF and closed errors (detection happens in recv)
 	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
 		slog.Error(msg, slog.String("error", err.Error()))
 	}
+	slog.Debug("Error when sending data", slog.String("error", err.Error()), slog.String("type", msg))
+}
+
+func (c *Client) CheckRecvError(err error) {
+	if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) || errors.Is(err, net.ErrClosed) {
+		slog.Info("Server closed connection")
+		return
+	}
+	slog.Error("error receiving query results", slog.String("error", err.Error()))
+	return
 }
 
 func (c *Client) writeQueryResults(queriesResults map[int][]models.QueryResult) {
+	defer slog.Debug("writeQueryResults finished", slog.Int("id", c.config.Id))
 	var sb strings.Builder
 
 	for queryID := 1; queryID <= TotalQueries; queryID++ {
 		results, exists := queriesResults[queryID]
-		if !exists {
-			slog.Error("query results not found", slog.Int("queryID", queryID))
-			continue
-		}
-
 		sb.WriteString(fmt.Sprintf("Query %d: ", queryID))
-
-		// For other queries, write results normally
-		for i, result := range results {
-			if i > 0 {
-				sb.WriteString(", ")
+		if !exists || results == nil {
+			sb.WriteString("Results empty \n")
+		} else {
+			for i, result := range results {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(result.String())
 			}
-			sb.WriteString(result.String())
+			sb.WriteString("\n")
 		}
-		sb.WriteString("\n")
 	}
 
 	// Write all results to a single file
@@ -170,13 +195,17 @@ func (c *Client) writeQueryResults(queriesResults map[int][]models.QueryResult) 
 	}
 }
 
-func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
+func (c *Client) RecvAnswers(wg *sync.WaitGroup, SignalCtx context.Context, cancel context.CancelFunc, ackChannel chan<- int) {
 	queriesReceived := make([]bool, 0) // Array to store when we get the complete query
 	queriesResults := make(map[int][]models.QueryResult)
 	defer wg.Done()
+	// Cancel the context, not the signal context
+	// this is to ensure that the sender is also stopped when there's a connection error
+	defer cancel()
+	defer slog.Debug("RecvAnswers finished", slog.Int("id", c.config.Id))
 	for {
 		select {
-		case <-ctx.Done():
+		case <-SignalCtx.Done():
 			return
 		default:
 			if len(queriesReceived) == TotalQueries {
@@ -185,28 +214,71 @@ func (c *Client) RecvAnswers(wg *sync.WaitGroup, ctx context.Context) {
 				return
 			}
 
-			results, err := communication.RecvQueryResults(c.conn)
+			typeOfRes, err := communication.RecvTypeOfResults(c.conn)
 			if err != nil {
-				if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) {
-					slog.Info("Server closed connection")
-					return
-				}
-				if errors.Is(err, net.ErrClosed) {
-					return
-				}
-				slog.Error("error receiving query results", slog.String("error", err.Error()))
+				c.CheckRecvError(err)
 				return
 			}
 
-			if results.Last {
-				queriesReceived = append(queriesReceived, true)
+			if typeOfRes == communication.AckMsg {
+				err = c.handleAck(ackChannel)
+				if err != nil {
+					c.CheckRecvError(err)
+					return
+				}
+			} else if typeOfRes == communication.QueryMsg {
+				err = c.handleQueryResult(&queriesResults, &queriesReceived)
+				if err != nil {
+					c.CheckRecvError(err)
+					return
+				}
+			} else {
+				slog.Error("unknown message type received", slog.Int("type", typeOfRes))
+				return
 			}
 
-			for _, result := range results.Items {
-				txt := fmt.Sprintf("Query result %d", results.QueryId)
-				slog.Info(txt, slog.String("result", result.String()))
-				queriesResults[results.QueryId] = append(queriesResults[results.QueryId], result)
-			}
 		}
 	}
+}
+
+func (c *Client) handleAck(ackChannel chan<- int) error {
+	acked, err := communication.RecvAck(c.conn)
+	if err != nil {
+		return fmt.Errorf("error receiving ack: %w", err)
+	}
+	ackChannel <- acked
+	return nil
+}
+
+func (c *Client) checkQ1Empty(queriesResult *map[int][]models.QueryResult) bool {
+	_, exists := (*queriesResult)[1]
+	return !exists
+}
+
+func (c *Client) handleQueryResult(queriesResults *map[int][]models.QueryResult, queriesReceived *[]bool) error {
+	results, err := communication.RecvQueryResults(c.conn)
+	if err != nil {
+		return err
+	}
+	slog.Debug("Received Query Results", slog.Any("results", results))
+
+	if results.Last {
+		*queriesReceived = append(*queriesReceived, true)
+		if results.IsEmpty() || (results.QueryId == 1 && c.checkQ1Empty(queriesResults)) {
+			(*queriesResults)[results.QueryId] = nil
+			txt := fmt.Sprintf("Query result %d", results.QueryId)
+			slog.Info(txt, slog.String("result", "Empty"))
+		}
+	}
+	for _, result := range results.Items {
+		txt := fmt.Sprintf("Query result %d", results.QueryId)
+		if result.IsEmpty() {
+			slog.Info(txt, slog.String("result", "Empty"))
+			(*queriesResults)[results.QueryId] = nil
+		} else {
+			slog.Info(txt, slog.String("result", result.String()))
+			(*queriesResults)[results.QueryId] = append((*queriesResults)[results.QueryId], result)
+		}
+	}
+	return nil
 }
