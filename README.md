@@ -21,7 +21,7 @@ Este proyecto implementa un sistema distribuido para procesamiento de datos de p
 - [Comandos Disponibles](#comandos-disponibles)
 
 ## Documentacion de Arquitectura
-Ver el PDF sobre la documentacion del proyecto [link al pdf en el repositorio]()
+Dentro de la carpeta `docs` se encuentra un documento de arquitectura que detalla el diseño del sistema distribuido.
 
 ## Configuración del Sistema
 
